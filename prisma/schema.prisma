@@ -1,0 +1,367 @@
+// Focus Realm Workspace — data model
+//
+// One Postgres database. Every table is owned by this app except where an
+// external system (the HR console) is the source of truth for a field, which
+// is called out on that field.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// Founders see and manage everything. Managers lead teams. Employees and
+/// interns work on what is assigned to them.
+enum Role {
+  FOUNDER
+  MANAGER
+  EMPLOYEE
+  INTERN
+}
+
+/// INACTIVE means the person has left: they cannot sign in, but their history
+/// (tasks, updates) is kept and they can be shown greyed out on the org chart.
+enum EmploymentStatus {
+  ACTIVE
+  ON_LEAVE
+  INACTIVE
+}
+
+/// Where an account came from. HR_CONSOLE accounts are kept in sync by the
+/// signed provisioning webhook.
+enum AccountSource {
+  MANUAL
+  HR_CONSOLE
+  SEED
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  IN_REVIEW
+  BLOCKED
+  DONE
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum AttachmentKind {
+  LINK
+  NOTE
+  FILE
+}
+
+enum ActivityKind {
+  CREATED
+  EDITED
+  STATUS_CHANGED
+  PRIORITY_CHANGED
+  DUE_CHANGED
+  ASSIGNEES_CHANGED
+  COMMENT
+  PROGRESS_UPDATE
+  UPDATE_REQUESTED
+  ATTACHMENT_ADDED
+  ATTACHMENT_REMOVED
+  CHECKLIST_CHANGED
+}
+
+enum NotificationKind {
+  TASK_ASSIGNED
+  TASK_DUE_SOON
+  TASK_OVERDUE
+  UPDATE_REQUESTED
+  UPDATE_POSTED
+  TASK_COMMENT
+  TASK_STATUS
+  TASK_COMPLETED
+  ANNOUNCEMENT
+  SYSTEM
+}
+
+model Department {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  /// A key from the UI palette (blue, sky, indigo, violet, teal, emerald, amber, rose, slate).
+  color       String   @default("blue")
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  members     User[]
+}
+
+model User {
+  id                 String           @id @default(cuid())
+  /// The login ID, e.g. FR-0042. Stored upper-case.
+  employeeCode       String           @unique
+  /// Stored lower-case. Also accepted as a login ID.
+  email              String           @unique
+  firstName          String
+  lastName           String
+  title              String?
+  role               Role             @default(EMPLOYEE)
+  status             EmploymentStatus @default(ACTIVE)
+
+  /// Granular grants for management. Founders implicitly have all of them.
+  canAssignTasks     Boolean          @default(false)
+  canManageOrg       Boolean          @default(false)
+  canManagePeople    Boolean          @default(false)
+
+  phone              String?
+  location           String?
+  bio                String?
+  /// What the person says they are focused on right now. Self-reported, optional.
+  focus              String?
+  focusUpdatedAt     DateTime?
+  /// Hue (0–360) used for the initials avatar.
+  avatarHue          Int              @default(212)
+  joinedAt           DateTime?
+
+  passwordHash       String
+  mustChangePassword Boolean          @default(true)
+  passwordChangedAt  DateTime?
+  failedLoginCount   Int              @default(0)
+  lockedUntil        DateTime?
+
+  source             AccountSource    @default(MANUAL)
+  /// The record id in the HR console. Set only for HR-provisioned accounts.
+  externalId         String?          @unique
+
+  managerId          String?
+  manager            User?            @relation("ReportingLine", fields: [managerId], references: [id], onDelete: SetNull)
+  reports            User[]           @relation("ReportingLine")
+  /// Order among siblings on the org chart.
+  orgOrder           Int              @default(0)
+
+  departmentId       String?
+  department         Department?      @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  sessions           Session[]
+  tasksCreated       Task[]           @relation("TaskCreator")
+  assignments        TaskAssignee[]
+  activities         TaskActivity[]
+  attachments        Attachment[]
+  updateRequestsMade UpdateRequest[]  @relation("UpdateRequester")
+  notifications      Notification[]   @relation("NotificationRecipient")
+  notificationsSent  Notification[]   @relation("NotificationActor")
+  announcements      Announcement[]
+  auditEntries       AuditLog[]
+
+  @@index([managerId])
+  @@index([departmentId])
+  @@index([status])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  /// SHA-256 of the cookie token. The raw token is never stored.
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  /// Coarse device label ("Chrome on macOS") so people can recognise their own sessions.
+  device    String?
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Task {
+  id             String          @id @default(cuid())
+  /// Human-friendly sequence number, shown as T-123.
+  number         Int             @unique @default(autoincrement())
+  title          String
+  description    String?         @db.Text
+  status         TaskStatus      @default(TODO)
+  priority       TaskPriority    @default(MEDIUM)
+  /// The deadline: a date AND a time, stored in UTC.
+  dueAt          DateTime
+  /// 0–100, set by assignees when they post a progress update.
+  progress       Int             @default(0)
+  completedAt    DateTime?
+  archivedAt     DateTime?
+
+  createdById    String
+  createdBy      User            @relation("TaskCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  assignees      TaskAssignee[]
+  attachments    Attachment[]
+  activities     TaskActivity[]
+  updateRequests UpdateRequest[]
+  checklist      ChecklistItem[]
+  notifications  Notification[]
+
+  @@index([dueAt])
+  @@index([status])
+  @@index([createdById])
+}
+
+model TaskAssignee {
+  taskId     String
+  userId     String
+  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignedAt DateTime @default(now())
+
+  @@id([taskId, userId])
+  @@index([userId])
+}
+
+model ChecklistItem {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  text      String
+  done      Boolean  @default(false)
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([taskId])
+}
+
+model Attachment {
+  id          String         @id @default(cuid())
+  taskId      String
+  task        Task           @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  kind        AttachmentKind
+  title       String
+  /// LINK: the http(s) URL.
+  url         String?
+  /// NOTE: the text body.
+  content     String?        @db.Text
+  /// FILE: metadata. Bytes live in FileBlob so listing attachments never loads them.
+  fileName    String?
+  mimeType    String?
+  size        Int?
+  blobId      String?        @unique
+  blob        FileBlob?      @relation(fields: [blobId], references: [id], onDelete: SetNull)
+  createdById String
+  createdBy   User           @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime       @default(now())
+
+  @@index([taskId])
+}
+
+/// Uploaded file bytes. Kept in Postgres so the app runs anywhere with no
+/// extra storage service; swap the storage driver in src/lib/storage.ts for S3.
+model FileBlob {
+  id         String      @id @default(cuid())
+  data       Bytes
+  createdAt  DateTime    @default(now())
+  attachment Attachment?
+}
+
+model TaskActivity {
+  id        String       @id @default(cuid())
+  taskId    String
+  task      Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  actorId   String
+  actor     User         @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  kind      ActivityKind
+  body      String?      @db.Text
+  /// Structured detail, e.g. { from: "TODO", to: "IN_PROGRESS" } or { progress: 60 }.
+  meta      Json?
+  createdAt DateTime     @default(now())
+
+  @@index([taskId, createdAt])
+  @@index([actorId])
+}
+
+/// A founder or manager asking the assignees "where is this at?".
+/// Resolved automatically when an assignee posts a progress update.
+model UpdateRequest {
+  id            String    @id @default(cuid())
+  taskId        String
+  task          Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  requestedById String
+  requestedBy   User      @relation("UpdateRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+  message       String?
+  createdAt     DateTime  @default(now())
+  resolvedAt    DateTime?
+
+  @@index([taskId, resolvedAt])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  actorId   String?
+  actor     User?            @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+  taskId    String?
+  task      Task?            @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  kind      NotificationKind
+  title     String
+  body      String?
+  href      String?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+  /// Makes system-generated alerts (deadline reminders) idempotent.
+  dedupeKey String?
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
+}
+
+model Announcement {
+  id        String   @id @default(cuid())
+  title     String
+  body      String   @db.Text
+  pinned    Boolean  @default(false)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([pinned, createdAt])
+}
+
+/// Every call the HR console makes, minus any credentials. Lets founders see
+/// that the integration is healthy and makes webhook delivery idempotent.
+model IntegrationEvent {
+  id         String   @id @default(cuid())
+  source     String
+  /// The sender's event id. Unique, so a retried delivery is never applied twice.
+  eventId    String   @unique
+  type       String
+  status     String
+  error      String?
+  summary    Json?
+  userId     String?
+  createdAt  DateTime @default(now())
+
+  @@index([source, createdAt])
+}
+
+/// Administrative changes to accounts and the organisation (who changed a
+/// role, reset a password, moved someone on the org chart). Not activity
+/// tracking: nothing about how employees spend their time is recorded.
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action     String
+  targetType String
+  targetId   String?
+  summary    String
+  meta       Json?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+}

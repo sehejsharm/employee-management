@@ -1,0 +1,123 @@
+/* ==========================================================================
+   Mission Control — the founders' command screen. Always dark, whatever the
+   app theme: it's a display, not a page. Continuous motion is CSS-only and
+   transform/opacity-only, so it stays smooth and costs the main thread nothing.
+   ========================================================================== */
+
+.mc {
+  --mc-bg: #030814;
+  --mc-panel: rgba(10, 20, 40, 0.62);
+  --mc-line: rgba(90, 167, 248, 0.16);
+  --mc-line-strong: rgba(90, 167, 248, 0.32);
+  --mc-text: #e6f0ff;
+  --mc-muted: #7f93b5;
+  --mc-dim: #4c5f80;
+  --mc-blue: #5aa7f8;
+  --mc-cyan: #67e8f9;
+  --mc-green: #34d399;
+  --mc-amber: #fbbf24;
+  --mc-red: #f87171;
+  color: var(--mc-text);
+  background: var(--mc-bg);
+  color-scheme: dark;
+}
+
+.mc-grid {
+  background-image:
+    linear-gradient(to right, rgba(90, 167, 248, 0.07) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(90, 167, 248, 0.07) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* Fine CRT lines plus one bright bar that sweeps the screen. */
+.mc-scanlines {
+  background: repeating-linear-gradient(to bottom, rgba(255, 255, 255, 0.025) 0, rgba(255, 255, 255, 0.025) 1px, transparent 1px, transparent 3px);
+}
+.mc-scanbar {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: 140px;
+  background: linear-gradient(to bottom, transparent, rgba(103, 232, 249, 0.06) 70%, rgba(103, 232, 249, 0.14) 98%, transparent);
+  animation: mc-scan 9s linear infinite;
+  will-change: transform;
+}
+@keyframes mc-scan {
+  from { transform: translateY(-160px); }
+  to { transform: translateY(calc(var(--mc-h, 1600px) + 20px)); }
+}
+
+.mc-blob {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(80px);
+  will-change: transform;
+}
+.mc-blob--a { animation: mc-drift-a 18s ease-in-out infinite; }
+.mc-blob--b { animation: mc-drift-b 22s ease-in-out infinite; }
+@keyframes mc-drift-a { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(80px, 40px); } }
+@keyframes mc-drift-b { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(-90px, -30px); } }
+
+/* HUD panel corner brackets */
+.mc-corner { position: absolute; width: 12px; height: 12px; border-color: var(--mc-cyan); opacity: 0.75; }
+.mc-corner--tl { top: -1px; left: -1px; border-top: 2px solid; border-left: 2px solid; border-top-left-radius: 6px; }
+.mc-corner--tr { top: -1px; right: -1px; border-top: 2px solid; border-right: 2px solid; border-top-right-radius: 6px; }
+.mc-corner--bl { bottom: -1px; left: -1px; border-bottom: 2px solid; border-left: 2px solid; border-bottom-left-radius: 6px; }
+.mc-corner--br { bottom: -1px; right: -1px; border-bottom: 2px solid; border-right: 2px solid; border-bottom-right-radius: 6px; }
+
+.mc-glow-text { text-shadow: 0 0 18px rgba(103, 232, 249, 0.35); }
+.mc-glow-red { text-shadow: 0 0 18px rgba(248, 113, 113, 0.5); }
+
+.mc-blink { animation: mc-blink 1.4s steps(2, start) infinite; }
+@keyframes mc-blink { to { visibility: hidden; } }
+
+.mc-pulse { animation: mc-pulse 2s ease-in-out infinite; }
+@keyframes mc-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+/* Radar */
+.mc-spin { transform-box: view-box; transform-origin: 300px 300px; animation: mc-spin var(--mc-spin, 60s) linear infinite; }
+.mc-spin--rev { animation-direction: reverse; }
+.mc-counter { transform-box: fill-box; transform-origin: center; animation: mc-spin var(--mc-spin, 60s) linear infinite reverse; }
+.mc-counter--rev { animation-direction: normal; }
+@keyframes mc-spin { to { transform: rotate(360deg); } }
+
+.mc-sweep { transform-box: view-box; transform-origin: 300px 300px; animation: mc-spin 5.5s linear infinite; }
+
+.mc-ping { transform-box: view-box; transform-origin: 300px 300px; animation: mc-ping 3.6s cubic-bezier(0.16, 1, 0.3, 1) infinite; }
+.mc-ping--late { animation-delay: 1.8s; }
+@keyframes mc-ping {
+  0% { transform: scale(0.08); opacity: 0.8; }
+  100% { transform: scale(1); opacity: 0; }
+}
+
+.mc-alarm { transform-box: fill-box; transform-origin: center; animation: mc-alarm 1.6s ease-out infinite; }
+@keyframes mc-alarm {
+  0% { transform: scale(1); opacity: 0.9; }
+  100% { transform: scale(2.6); opacity: 0; }
+}
+
+/* Progress shimmer */
+.mc-shimmer { position: relative; overflow: hidden; }
+.mc-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  transform: translateX(-100%);
+  animation: mc-shimmer 2.4s ease-in-out infinite;
+}
+@keyframes mc-shimmer { to { transform: translateX(100%); } }
+
+/* Terminal cursor */
+.mc-cursor::after {
+  content: "▋";
+  margin-left: 2px;
+  color: var(--mc-cyan);
+  animation: mc-blink 1.1s steps(2, start) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mc-scanbar, .mc-blob, .mc-spin, .mc-counter, .mc-sweep, .mc-ping, .mc-alarm, .mc-shimmer::after, .mc-blink, .mc-pulse {
+    animation: none !important;
+  }
+}

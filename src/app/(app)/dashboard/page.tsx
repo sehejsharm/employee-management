@@ -62,7 +62,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             <div className="inline-flex rounded-xl border border-line bg-surface-sunken p-0.5">
               {(
                 [
-                  ["team", isFounder(user) ? "Command center" : "My team", UsersRound],
+                  ["team", isFounder(user) ? "Mission Control" : "My team", UsersRound],
                   ["me", "My work", ClipboardList],
                 ] as const
               ).map(([key, label, Icon]) => (
@@ -120,14 +120,14 @@ async function MemberView({ tz }: { tz: string }) {
 
       {data.requests.length > 0 && (
         <FadeIn delay={0.15}>
-          <div className="overflow-hidden rounded-2xl border border-violet-500/25 bg-violet-500/[0.05]">
-            <div className="flex items-center gap-2 border-b border-violet-500/15 px-5 py-3 text-[13px] font-semibold text-violet-700 dark:text-violet-300">
+          <div className="overflow-hidden rounded-2xl border border-info/25 bg-info-soft/60">
+            <div className="flex items-center gap-2 border-b border-info/15 px-5 py-3 text-[13px] font-semibold text-info">
               <MessageCircleQuestion className="size-4" /> {data.requests.length === 1 ? "An update has" : `${data.requests.length} updates have`} been requested from you
             </div>
             <ul>
               {data.requests.map((r) => (
-                <li key={r.id} className="border-b border-violet-500/10 last:border-0">
-                  <Link href={`/tasks/${r.task.id}#post-update`} className="flex items-center gap-3 px-5 py-3.5 transition hover:bg-violet-500/[0.06]">
+                <li key={r.id} className="border-b border-info/10 last:border-0">
+                  <Link href={`/tasks/${r.task.id}#post-update`} className="flex items-center gap-3 px-5 py-3.5 transition hover:bg-info-soft">
                     <Avatar person={r.requestedBy} size="sm" />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[13.5px]">
@@ -139,7 +139,7 @@ async function MemberView({ tz }: { tz: string }) {
                     <span className="hidden text-xs text-fg-subtle sm:block" suppressHydrationWarning>
                       {timeAgo(r.createdAt)}
                     </span>
-                    <span className="inline-flex h-8 items-center gap-1 rounded-lg bg-violet-600 px-3 text-xs font-medium text-white">
+                    <span className="inline-flex h-8 items-center gap-1 rounded-lg bg-brand px-3 text-xs font-medium text-brand-fg">
                       Reply <ArrowRight className="size-3.5" />
                     </span>
                   </Link>
@@ -231,7 +231,7 @@ async function LeaderView({ tz }: { tz: string }) {
 
   return (
     <div className="space-y-6">
-      <MissionControl data={data} tz={tz} scopeLabel={isFounder(user) ? "COMPANY-WIDE TELEMETRY" : "YOUR TEAM'S TELEMETRY"} />
+      <MissionControl data={data} tz={tz} scopeLabel={isFounder(user) ? "Everything Focus Realm is working on, live" : "Everything your team is working on, live"} />
 
       {pulse.length > 0 && (
         <Card>
@@ -241,8 +241,9 @@ async function LeaderView({ tz }: { tz: string }) {
             description="What each founder is driving right now"
             action={
               <Button asChild variant="ghost" size="sm">
-                <Link href="/leadership">
-                  Leadership board <ArrowRight />
+                <Link href="/leadership" aria-label="Leadership board">
+                  <span className="hidden sm:inline">Leadership board</span>
+                  <span className="sm:hidden">Board</span> <ArrowRight />
                 </Link>
               </Button>
             }

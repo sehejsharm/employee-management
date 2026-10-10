@@ -7,7 +7,7 @@ const TONES = {
   warning: "bg-warning-soft text-warning ring-warning/20",
   danger: "bg-danger-soft text-danger ring-danger/15",
   info: "bg-info-soft text-info ring-info/15",
-  violet: "bg-violet-500/10 text-violet-600 ring-violet-500/15 dark:text-violet-300",
+  brandSolid: "bg-brand text-brand-fg ring-brand",
 } as const;
 
 export type BadgeTone = keyof typeof TONES;

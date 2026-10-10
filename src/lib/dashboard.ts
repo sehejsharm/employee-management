@@ -3,10 +3,12 @@ import type { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { isFounder, type Actor } from "@/lib/permissions";
 import { taskRowSelect, toClientRow } from "@/lib/tasks/queries";
-import { dayKey, startOfDayInZone } from "@/lib/time";
+import { DUE_SOON_HOURS, dayKey, startOfDayInZone } from "@/lib/time";
 
 const HOUR = 3600_000;
 const DAY = 24 * HOUR;
+/** "Due soon" means the same thing everywhere: within a day (matches the 24h reminder). */
+const DUE_SOON_MS = DUE_SOON_HOURS * HOUR;
 
 const open: Prisma.TaskWhereInput = { archivedAt: null, status: { not: "DONE" } };
 
@@ -149,7 +151,7 @@ export async function missionControl(user: Actor, subordinateIds: Set<string>, t
       const entry = load.get(a.userId) ?? { open: 0, overdue: 0, soon: 0 };
       entry.open += 1;
       if (ms < 0) entry.overdue += 1;
-      else if (ms <= 2 * DAY) entry.soon += 1;
+      else if (ms <= DUE_SOON_MS) entry.soon += 1;
       load.set(a.userId, entry);
     }
   }
@@ -175,7 +177,7 @@ export async function missionControl(user: Actor, subordinateIds: Set<string>, t
     generatedAt: now.toISOString(),
     stats: {
       open: openTasks.length,
-      dueSoon: openTasks.filter((t) => t.dueAt >= now && t.dueAt.getTime() - now.getTime() <= 2 * DAY).length,
+      dueSoon: openTasks.filter((t) => t.dueAt >= now && t.dueAt.getTime() - now.getTime() <= DUE_SOON_MS).length,
       overdue: openTasks.filter((t) => t.dueAt < now).length,
       doneThisWeek,
       donePrevWeek,

@@ -11,9 +11,12 @@ export function BrandMark({
   size = 32,
   className,
   variant = "color",
+  parts,
 }: {
   size?: number;
   className?: string;
+  /** Class names for the F and R groups, so a screen can animate the letters (e.g. the splash). */
+  parts?: { f?: string; r?: string };
   /** color: blue on light · inverse: white on blue/dark · tile: white rounded tile with blue mark. */
   variant?: "color" | "inverse" | "tile";
 }) {
@@ -42,13 +45,13 @@ export function BrandMark({
         </linearGradient>
       </defs>
       {/* F — sky */}
-      <g fill={`url(#${f})`}>
+      <g fill={`url(#${f})`} className={parts?.f}>
         <rect x="12" y="8" width="5" height="48" />
         <rect x="12" y="8" width="29" height="5" />
         <rect x="12" y="27.5" width="18" height="5" />
       </g>
       {/* R — royal, its bowl growing out of the F's middle arm */}
-      <g fill={`url(#${r})`}>
+      <g fill={`url(#${r})`} className={parts?.r}>
         <path
           fillRule="evenodd"
           d="M26 56 V27.5 H40.5 A10 10 0 0 1 40.5 47.5 H31 V56 Z M31 32.5 V42.5 H40.5 A5 5 0 0 0 40.5 32.5 Z"

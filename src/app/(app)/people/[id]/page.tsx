@@ -94,12 +94,7 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
 
       <div className="relative mb-6 overflow-hidden rounded-3xl border border-line bg-surface shadow-sm">
         <div className="relative h-28 sm:h-36">
-          <div
-            className="absolute inset-0"
-            style={{
-              background: `linear-gradient(120deg, hsl(${person.avatarHue} 80% 62% / 0.9), hsl(${(person.avatarHue + 30) % 360} 70% 42% / 0.95))`,
-            }}
-          />
+          <div className="absolute inset-0 bg-brand-gradient" />
           <div className="absolute inset-0 opacity-25 [background-image:radial-gradient(circle_at_1px_1px,white_1px,transparent_0)] [background-size:18px_18px]" />
         </div>
         <div className="flex flex-col gap-4 px-5 pb-5 sm:flex-row sm:items-end sm:px-8 sm:pb-6">
@@ -109,7 +104,7 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
               <h1 className="text-[24px] font-semibold tracking-[-0.02em] sm:text-[28px]">
                 {person.firstName} {person.lastName}
               </h1>
-              <Badge tone={person.role === "FOUNDER" ? "brand" : person.role === "MANAGER" ? "violet" : "neutral"}>{ROLE_LABEL[person.role]}</Badge>
+              <Badge tone={person.role === "FOUNDER" ? "brandSolid" : person.role === "MANAGER" ? "brand" : "neutral"}>{ROLE_LABEL[person.role]}</Badge>
               {person.status !== "ACTIVE" && <Badge tone={former ? "neutral" : "warning"}>{STATUS_LABEL[person.status]}</Badge>}
             </div>
             <p className="mt-0.5 text-[14.5px] text-fg-muted">{person.title ?? ROLE_LABEL[person.role]}</p>

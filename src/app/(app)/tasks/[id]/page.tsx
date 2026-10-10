@@ -124,11 +124,11 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
       </div>
 
       {openRequests.length > 0 && (
-        <div className="mb-6 overflow-hidden rounded-2xl border border-violet-500/25 bg-violet-500/[0.06]">
+        <div className="mb-6 overflow-hidden rounded-2xl border border-info/25 bg-info-soft/60">
           {openRequests.map((r) => (
-            <div key={r.id} className="flex flex-col gap-3 border-b border-violet-500/15 p-4 last:border-0 sm:flex-row sm:items-center">
+            <div key={r.id} className="flex flex-col gap-3 border-b border-info/15 p-4 last:border-0 sm:flex-row sm:items-center">
               <div className="flex flex-1 items-start gap-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-500/15 text-violet-600 dark:text-violet-300">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-info-soft text-info">
                   <MessageCircleQuestion className="size-[18px]" />
                 </span>
                 <div>
@@ -144,7 +144,7 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
               {isAssignee && (
                 <a
                   href="#post-update"
-                  className="inline-flex h-9 items-center justify-center rounded-[10px] bg-violet-600 px-3.5 text-[13px] font-medium text-white shadow-sm transition hover:bg-violet-700"
+                  className="inline-flex h-9 items-center justify-center rounded-[10px] bg-brand px-3.5 text-[13px] font-medium text-brand-fg shadow-sm transition hover:bg-brand-hover"
                 >
                   Post an update
                 </a>

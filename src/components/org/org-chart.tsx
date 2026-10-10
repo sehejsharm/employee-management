@@ -38,6 +38,7 @@ import { Field, Input, NativeSelect } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { setManager, updatePlacement } from "@/actions/org";
 import { buildForest, countDescendants, wouldCreateCycle, type TreeNode } from "@/lib/org";
+import { useSyncedState } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import "./org-tree.css";
 
@@ -78,9 +79,7 @@ export function OrgChart({
   const [selected, setSelected] = React.useState<OrgPerson | null>(null);
   const [zoom, setZoom] = React.useState(1);
   const [dragging, setDragging] = React.useState<OrgPerson | null>(null);
-  const [local, setLocal] = React.useState(people);
-
-  React.useEffect(() => setLocal(people), [people]);
+  const [local, setLocal] = useSyncedState(people);
 
   const visible = React.useMemo(() => local.filter((p) => showFormer || p.status !== "INACTIVE"), [local, showFormer]);
   const forest = React.useMemo(
@@ -99,27 +98,30 @@ export function OrgChart({
     );
   }, [query, visible]);
 
-  // Reveal matches hidden inside collapsed branches.
+  // While searching, branches holding a match are shown even if collapsed.
+  const effectiveCollapsed = React.useMemo(() => {
+    if (!matches || matches.size === 0) return collapsed;
+    const parent = new Map(visible.map((p) => [p.id, p.managerId]));
+    const next = new Set(collapsed);
+    for (const id of matches) {
+      let cur = parent.get(id);
+      while (cur) {
+        next.delete(cur);
+        cur = parent.get(cur) ?? null;
+      }
+    }
+    return next;
+  }, [collapsed, matches, visible]);
+
+  // Bring the first match into view.
   React.useEffect(() => {
     if (!matches || matches.size === 0) return;
-    const parent = new Map(visible.map((p) => [p.id, p.managerId]));
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      for (const id of matches) {
-        let cur = parent.get(id);
-        while (cur) {
-          next.delete(cur);
-          cur = parent.get(cur) ?? null;
-        }
-      }
-      return next;
-    });
     const first = [...matches][0];
     const t = window.setTimeout(() => {
       document.getElementById(`org-${first}`)?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
     }, 120);
     return () => window.clearTimeout(t);
-  }, [matches, visible]);
+  }, [matches]);
 
   /* ----- zoom & pan ----- */
   const viewport = React.useRef<HTMLDivElement>(null);
@@ -220,7 +222,7 @@ export function OrgChart({
           <Branch
             key={node.item.id}
             node={node}
-            collapsed={collapsed}
+            collapsed={effectiveCollapsed}
             onToggle={toggle}
             onSelect={setSelected}
             matches={matches}
@@ -300,7 +302,7 @@ export function OrgChart({
       </AnimatePresence>
 
       <div className="relative overflow-hidden rounded-3xl border border-line bg-surface-sunken/50 shadow-sm">
-        <div className="pointer-events-none absolute inset-0 bg-grid opacity-60 [mask-image:radial-gradient(90%_80%_at_50%_30%,#000,transparent)]" />
+        <div className="pointer-events-none absolute inset-0 bg-grid opacity-60 [mask-image:radial-gradient(90%_80%_at_50%_30%,var(--brand),transparent)]" />
         {/* Zoom controls */}
         <div className="absolute bottom-4 right-4 z-10 flex items-center gap-1 rounded-xl border border-line bg-surface/90 p-1 shadow-md backdrop-blur">
           <Button variant="ghost" size="icon-sm" onClick={() => setZoom((z) => Math.max(0.35, Number((z - 0.1).toFixed(2))))} aria-label="Zoom out">
@@ -360,6 +362,7 @@ export function OrgChart({
       </div>
 
       <PersonSheet
+        key={selected?.id ?? "none"}
         person={selected}
         people={local}
         departments={departments}
@@ -469,21 +472,21 @@ function EditableNode({
   onToggle: () => void;
   onSelect: () => void;
 }) {
-  const drag = useDraggable({ id: person.id, disabled: !editMode });
-  const drop = useDroppable({ id: `drop-${person.id}`, disabled: !editMode });
+  const { setNodeRef: setDragRef, attributes, listeners, isDragging } = useDraggable({ id: person.id, disabled: !editMode });
+  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: `drop-${person.id}`, disabled: !editMode });
   return (
-    <div ref={drop.setNodeRef} className="relative flex flex-col items-center">
-      <div ref={drag.setNodeRef} className={cn(drag.isDragging && "opacity-30")}>
+    <div ref={setDropRef} className="relative flex flex-col items-center">
+      <div ref={setDragRef} className={cn(isDragging && "opacity-30")}>
         <NodeCard
           person={person}
           reports={reports}
           dim={dim}
           highlight={highlight}
           isMe={isMe}
-          dropTarget={drop.isOver && !drag.isDragging}
+          dropTarget={isOver && !isDragging}
           editMode={editMode}
           onClick={onSelect}
-          handleProps={editMode ? { ...drag.attributes, ...drag.listeners } : undefined}
+          handleProps={editMode ? { ...attributes, ...listeners } : undefined}
         />
       </div>
       {reports > 0 && (
@@ -599,19 +602,12 @@ function PersonSheet({
   onClose: () => void;
   onSaved: (p: OrgPerson) => void;
 }) {
-  const [title, setTitle] = React.useState("");
-  const [departmentId, setDepartmentId] = React.useState<string>("");
-  const [managerId, setManagerId] = React.useState<string>("");
-  const [status, setStatus] = React.useState<OrgPerson["status"]>("ACTIVE");
+  // Keyed by person in the parent, so these start fresh for each person opened.
+  const [title, setTitle] = React.useState(person?.title ?? "");
+  const [departmentId, setDepartmentId] = React.useState<string>(person?.department?.id ?? "");
+  const [managerId, setManagerId] = React.useState<string>(person?.managerId ?? "");
+  const [status, setStatus] = React.useState<OrgPerson["status"]>(person?.status ?? "ACTIVE");
   const [pending, start] = React.useTransition();
-
-  React.useEffect(() => {
-    if (!person) return;
-    setTitle(person.title ?? "");
-    setDepartmentId(person.department?.id ?? "");
-    setManagerId(person.managerId ?? "");
-    setStatus(person.status);
-  }, [person]);
 
   if (!person) return <Dialog open={false} />;
 

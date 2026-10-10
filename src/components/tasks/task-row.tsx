@@ -76,7 +76,7 @@ export function TaskRow({
 
         {task.awaitingUpdate && (
           <Tooltip content="An update has been requested">
-            <span className="relative z-10 hidden h-6 items-center gap-1 rounded-full bg-violet-500/10 px-2 text-[11px] font-medium text-violet-600 md:inline-flex dark:text-violet-300">
+            <span className="relative z-10 hidden h-6 items-center gap-1 rounded-full bg-info-soft px-2 text-[11px] font-medium text-info md:inline-flex">
               <MessageCircleQuestion className="size-3.5" /> Update asked
             </span>
           </Tooltip>

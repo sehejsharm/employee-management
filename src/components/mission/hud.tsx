@@ -1,15 +1,20 @@
 "use client";
 
 import * as React from "react";
-import { animate, motion, useInView, useMotionValue, useTransform } from "motion/react";
+import { animate, motion, useInView, useMotionValue, useReducedMotion, useTransform } from "motion/react";
+import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 export const EASE = [0.16, 1, 0.3, 1] as const;
 
-/** A framed HUD module: corner brackets, a coded title strip, and a boot-in animation. */
+/**
+ * A Mission Control module: the brand Card and CardHeader, unchanged, with a
+ * soft rise-in on arrival. One card spec for the whole Workspace.
+ */
 export function HudPanel({
   title,
-  code,
+  icon,
+  eyebrow,
   right,
   children,
   className,
@@ -17,7 +22,8 @@ export function HudPanel({
   delay = 0,
 }: {
   title: string;
-  code?: string;
+  icon?: React.ReactNode;
+  eyebrow?: string;
   right?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
@@ -25,43 +31,35 @@ export function HudPanel({
   delay?: number;
 }) {
   return (
-    <motion.section
-      initial={{ opacity: 0, y: 16, filter: "blur(6px)" }}
-      animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-      transition={{ duration: 0.8, ease: EASE, delay }}
-      className={cn(
-        "relative flex min-w-0 flex-col rounded-2xl border border-[var(--mc-line)] bg-[var(--mc-panel)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_20px_60px_-30px_rgba(0,0,0,0.9)] backdrop-blur-md",
-        className,
-      )}
+    <motion.div
+      initial={{ opacity: 0, y: 14 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.6, ease: EASE, delay }}
+      className={cn("min-w-0", className)}
     >
-      <span className="mc-corner mc-corner--tl" />
-      <span className="mc-corner mc-corner--tr" />
-      <span className="mc-corner mc-corner--bl" />
-      <span className="mc-corner mc-corner--br" />
-      <header className="flex items-center gap-2 border-b border-[var(--mc-line)] px-4 py-2.5">
-        <span className="h-1.5 w-1.5 rounded-full bg-[var(--mc-cyan)] shadow-[0_0_8px_2px_rgba(103,232,249,0.6)]" />
-        <h3 className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.22em] text-[var(--mc-muted)]">{title}</h3>
-        {code && <span className="font-mono text-[10px] tracking-wider text-[var(--mc-dim)]">{code}</span>}
-        <div className="ml-auto">{right}</div>
-      </header>
-      <div className={cn("relative min-h-0 flex-1 p-4", bodyClassName)}>{children}</div>
-    </motion.section>
+      <Card className="flex h-full flex-col">
+        <CardHeader icon={icon} title={title} description={eyebrow} action={right} />
+        <CardBody className={cn("relative min-h-0 flex-1", bodyClassName)}>{children}</CardBody>
+      </Card>
+    </motion.div>
   );
 }
 
-/** A number that rolls up from zero the first time it's seen. */
-export function Telemetry({ value, className, decimals = 0, suffix = "" }: { value: number; className?: string; decimals?: number; suffix?: string }) {
+/** A figure that counts up from zero the first time it comes into view (instantly, under reduced motion). */
+export function Telemetry({ value, className, suffix = "" }: { value: number; className?: string; suffix?: string }) {
   const ref = React.useRef<HTMLSpanElement>(null);
   const inView = useInView(ref, { once: true });
+  const reduce = useReducedMotion();
+  // Zero on server and client alike (hydration-safe); reduced motion jumps straight to the value.
   const mv = useMotionValue(0);
-  const text = useTransform(mv, (v) => `${v.toFixed(decimals)}${suffix}`);
+  const text = useTransform(mv, (v) => `${Math.round(v)}${suffix}`);
   React.useEffect(() => {
     if (!inView) return;
-    const c = animate(mv, value, { duration: 1.6, ease: EASE });
+    const c = animate(mv, value, { duration: reduce ? 0 : 1.2, ease: EASE });
     return () => c.stop();
-  }, [inView, value, mv]);
+  }, [inView, value, mv, reduce]);
   return (
-    <motion.span ref={ref} className={cn("font-mono tabular-nums", className)}>
+    <motion.span ref={ref} className={cn("tabular", className)}>
       {text}
     </motion.span>
   );
@@ -70,7 +68,7 @@ export function Telemetry({ value, className, decimals = 0, suffix = "" }: { val
 /** Each character slides in when it changes — an odometer for clocks and countdowns. */
 export function FlipText({ text, className }: { text: string; className?: string }) {
   return (
-    <span className={cn("inline-flex font-mono tabular-nums", className)} aria-label={text}>
+    <span className={cn("inline-flex font-mono tabular", className)} aria-label={text}>
       {text.split("").map((ch, i) => (
         <span key={i} className="relative inline-block overflow-hidden" style={{ width: /[0-9]/.test(ch) ? "0.62em" : undefined }}>
           <motion.span
@@ -92,18 +90,24 @@ export function FlipText({ text, className }: { text: string; className?: string
 export function useTick(ms = 1000) {
   const [now, setNow] = React.useState<Date | null>(null);
   React.useEffect(() => {
-    setNow(new Date());
-    const id = window.setInterval(() => setNow(new Date()), ms);
-    return () => window.clearInterval(id);
+    const tick = () => setNow(new Date());
+    const first = window.setTimeout(tick, 0);
+    const id = window.setInterval(tick, ms);
+    return () => {
+      window.clearTimeout(first);
+      window.clearInterval(id);
+    };
   }, [ms]);
   return now;
 }
+
+export { useMounted } from "@/lib/hooks";
 
 export function clock(date: Date, tz: string) {
   return new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }).format(date);
 }
 
-/** "T– 02:13:45" before a deadline, "T+ 05:10:00" after it; days roll into "3D 04:00:00". */
+/** Time to (or past) a deadline: "02:13:45", rolling into "3d 04:00:00". `late` once it has passed. */
 export function tMinus(due: Date, now: Date) {
   const ms = due.getTime() - now.getTime();
   const abs = Math.abs(ms);
@@ -112,12 +116,8 @@ export function tMinus(due: Date, now: Date) {
   const m = Math.floor((abs % 3_600_000) / 60_000);
   const s = Math.floor((abs % 60_000) / 1000);
   const pad = (n: number) => String(n).padStart(2, "0");
-  return { sign: ms >= 0 ? "T–" : "T+", late: ms < 0, text: `${d ? `${d}D ` : ""}${pad(h)}:${pad(m)}:${pad(s)}` };
+  return { ms, late: ms < 0, text: `${d ? `${d}d ` : ""}${pad(h)}:${pad(m)}:${pad(s)}` };
 }
 
-/** True after hydration. Animated SVGs render client-side only, so server HTML never disagrees with them. */
-export function useMounted() {
-  const [mounted, setMounted] = React.useState(false);
-  React.useEffect(() => setMounted(true), []);
-  return mounted;
-}
+/** "Due soon" everywhere in the Workspace means within a day — the same window as the 24-hour reminder. */
+export const SOON_MS = 24 * 3_600_000;

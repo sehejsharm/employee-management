@@ -1,0 +1,33 @@
+# Local or single-server deployment: Postgres + the Workspace.
+#   docker compose up --build
+#   docker compose exec app npx tsx scripts/create-founder.ts --email you@focusrealm.com --first You
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: focusrealm
+      POSTGRES_PASSWORD: focusrealm
+      POSTGRES_DB: focusrealm_ems
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U focusrealm"]
+      interval: 5s
+      retries: 10
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://focusrealm:focusrealm@db:5432/focusrealm_ems
+      APP_URL: http://localhost:3000
+      APP_TIMEZONE: Asia/Kolkata
+      HR_WEBHOOK_SECRET: ${HR_WEBHOOK_SECRET:-}
+      CRON_SECRET: ${CRON_SECRET:-}
+
+volumes:
+  db-data:

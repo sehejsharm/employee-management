@@ -4,6 +4,7 @@ import * as React from "react";
 import { CalendarClock } from "lucide-react";
 import { fieldBase } from "@/components/ui/input";
 import { formatCountdown } from "@/lib/time";
+import { useNow } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 
 /** "2026-10-09T18:00" in the browser's local time — the format datetime-local inputs speak. */
@@ -29,8 +30,8 @@ function nextWeekday(base: Date, weekday: number, hour: number) {
  * one-tap presets for the deadlines people actually set.
  */
 export function DuePicker({ value, onChange, id }: { value: string; onChange: (v: string) => void; id?: string }) {
-  const [now, setNow] = React.useState<Date | null>(null);
-  React.useEffect(() => setNow(new Date()), []);
+  // Presets are relative to "now" in the browser's own time zone; null until hydrated.
+  const now = useNow(60_000);
 
   const presets = React.useMemo(() => {
     if (!now) return [];

@@ -155,7 +155,7 @@ function Card({ task, tz, dragging }: { task: ClientTaskRow; tz: string; draggin
       <div className="mt-3 flex items-center justify-between gap-2">
         <DuePill dueAt={task.dueAt} status={task.status} tz={tz} />
         <div className="flex items-center gap-2 text-fg-subtle">
-          {task.awaitingUpdate && <MessageCircleQuestion className="size-3.5 text-violet-500" />}
+          {task.awaitingUpdate && <MessageCircleQuestion className="size-3.5 text-info" aria-label="Update requested" />}
           {task.attachments > 0 && <Paperclip className="size-3.5" />}
           {task.comments > 0 && <MessageSquare className="size-3.5" />}
           <AvatarStack people={task.assignees} max={2} size="xs" />

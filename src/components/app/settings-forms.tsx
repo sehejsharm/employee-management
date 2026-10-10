@@ -71,9 +71,9 @@ export function ProfileForm({
 export function AppearanceForm() {
   const { preference, setPreference } = useTheme();
   const options: { value: ThemePreference; label: string; icon: React.ReactNode; preview: string }[] = [
-    { value: "light", label: "Light", icon: <Sun />, preview: "bg-[#f5f7fb]" },
-    { value: "dark", label: "Dark", icon: <Moon />, preview: "bg-[#060a13]" },
-    { value: "system", label: "System", icon: <Monitor />, preview: "bg-[linear-gradient(90deg,#f5f7fb_50%,#060a13_50%)]" },
+    { value: "light", label: "Light", icon: <Sun />, preview: "bg-canvas-light" },
+    { value: "dark", label: "Dark", icon: <Moon />, preview: "bg-canvas-dark" },
+    { value: "system", label: "System", icon: <Monitor />, preview: "bg-[linear-gradient(90deg,var(--color-canvas-light)_50%,var(--color-canvas-dark)_50%)]" },
   ];
   return (
     <div className="grid grid-cols-3 gap-3">
@@ -89,8 +89,8 @@ export function AppearanceForm() {
         >
           <div className={cn("relative h-20 border-b border-line", o.preview)}>
             <div className="absolute left-3 top-3 h-2 w-10 rounded-full bg-brand" />
-            <div className="absolute left-3 top-7 h-1.5 w-16 rounded-full bg-slate-400/50" />
-            <div className="absolute left-3 top-10 h-1.5 w-12 rounded-full bg-slate-400/30" />
+            <div className="absolute left-3 top-7 h-1.5 w-16 rounded-full bg-brand-200/60" />
+            <div className="absolute left-3 top-10 h-1.5 w-12 rounded-full bg-brand-200/35" />
           </div>
           <div className="flex items-center gap-2 px-3 py-2.5 text-[13px] font-medium [&_svg]:size-4 [&_svg]:text-fg-subtle">
             {o.icon} {o.label}

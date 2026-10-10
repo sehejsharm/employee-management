@@ -48,23 +48,22 @@ export function CommandPalette({ nav, canCreate, children }: { nav: NavItem[]; c
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  React.useEffect(() => {
-    if (!open) {
+  // Closing clears the search, so the palette always opens fresh.
+  const changeOpen = React.useCallback((next: boolean) => {
+    setOpen(next);
+    if (!next) {
       setQuery("");
       setResults({ tasks: [], people: [] });
-      return;
+      setLoading(false);
     }
-  }, [open]);
+  }, []);
 
   React.useEffect(() => {
     const q = query.trim();
-    if (!q) {
-      setResults({ tasks: [], people: [] });
-      return;
-    }
-    setLoading(true);
+    if (!q) return;
     const controller = new AbortController();
     const t = window.setTimeout(async () => {
+      setLoading(true);
       try {
         const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: controller.signal });
         if (res.ok) setResults(await res.json());
@@ -78,9 +77,11 @@ export function CommandPalette({ nav, canCreate, children }: { nav: NavItem[]; c
   }, [query]);
 
   const go = (href: string) => {
-    setOpen(false);
+    changeOpen(false);
     router.push(href);
   };
+
+  const shown = query.trim() ? results : { tasks: [], people: [] };
 
   const itemClass =
     "flex h-11 cursor-pointer select-none items-center gap-3 rounded-xl px-3 text-[13.5px] text-fg outline-none data-[selected=true]:bg-surface-hover [&_svg]:size-4 [&_svg]:text-fg-subtle";
@@ -88,9 +89,9 @@ export function CommandPalette({ nav, canCreate, children }: { nav: NavItem[]; c
   return (
     <PaletteContext.Provider value={{ open: () => setOpen(true) }}>
       {children}
-      <D.Root open={open} onOpenChange={setOpen}>
+      <D.Root open={open} onOpenChange={changeOpen}>
         <D.Portal>
-          <D.Overlay className="fixed inset-0 z-50 bg-[#050a14]/40 backdrop-blur-[3px] data-[state=open]:animate-[fade-in_160ms_ease-out]" />
+          <D.Overlay className="fixed inset-0 z-50 bg-scrim backdrop-blur-[3px] data-[state=open]:animate-[fade-in_160ms_ease-out]" />
           <D.Content className="fixed left-1/2 top-[12dvh] z-50 w-[calc(100vw-1.5rem)] max-w-[640px] -translate-x-1/2 overflow-hidden rounded-2xl border border-line bg-surface-2 shadow-lg outline-none data-[state=open]:animate-[pop-in_200ms_cubic-bezier(0.16,1,0.3,1)]">
             <D.Title className="sr-only">Command palette</D.Title>
             <D.Description className="sr-only">Search tasks and people, or jump anywhere.</D.Description>
@@ -103,7 +104,7 @@ export function CommandPalette({ nav, canCreate, children }: { nav: NavItem[]; c
                   placeholder="Search tasks, people, or jump to…"
                   className="h-14 flex-1 bg-transparent text-[15px] text-fg outline-none placeholder:text-fg-subtle"
                 />
-                {loading && <span className="h-4 w-4 animate-spin rounded-full border-2 border-line border-t-brand" />}
+                {loading && query.trim() && <span className="h-4 w-4 animate-spin rounded-full border-2 border-line border-t-brand" />}
                 <Kbd>esc</Kbd>
               </div>
               <Command.List className="max-h-[min(440px,60dvh)] overflow-y-auto p-2">
@@ -111,9 +112,9 @@ export function CommandPalette({ nav, canCreate, children }: { nav: NavItem[]; c
                   {query ? "No matches." : "Start typing to search."}
                 </Command.Empty>
 
-                {results.tasks.length > 0 && (
+                {shown.tasks.length > 0 && (
                   <Command.Group heading="Tasks" className="[&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pb-1.5 [&_[cmdk-group-heading]]:pt-2 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-fg-subtle">
-                    {results.tasks.map((t) => {
+                    {shown.tasks.map((t) => {
                       const meta = STATUS_META[t.status];
                       return (
                         <Command.Item key={t.id} value={`task-${t.id}`} onSelect={() => go(`/tasks/${t.id}`)} className={itemClass}>
@@ -126,9 +127,9 @@ export function CommandPalette({ nav, canCreate, children }: { nav: NavItem[]; c
                   </Command.Group>
                 )}
 
-                {results.people.length > 0 && (
+                {shown.people.length > 0 && (
                   <Command.Group heading="People" className="[&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pb-1.5 [&_[cmdk-group-heading]]:pt-2 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-fg-subtle">
-                    {results.people.map((p) => (
+                    {shown.people.map((p) => (
                       <Command.Item key={p.id} value={`person-${p.id}`} onSelect={() => go(`/people/${p.id}`)} className={itemClass}>
                         <Avatar person={p} size="sm" />
                         <span className="truncate">
@@ -152,7 +153,7 @@ export function CommandPalette({ nav, canCreate, children }: { nav: NavItem[]; c
                         value="theme"
                         onSelect={() => {
                           setPreference(resolved === "dark" ? "light" : "dark");
-                          setOpen(false);
+                          changeOpen(false);
                         }}
                         className={itemClass}
                       >

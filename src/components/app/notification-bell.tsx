@@ -83,7 +83,7 @@ export function NotificationsProvider({ initialUnread, children }: { initialUnre
   }, [router]);
 
   React.useEffect(() => {
-    refresh();
+    const first = window.setTimeout(refresh, 0);
     const id = window.setInterval(() => {
       if (document.visibilityState === "visible") refresh();
     }, POLL_MS);
@@ -91,6 +91,7 @@ export function NotificationsProvider({ initialUnread, children }: { initialUnre
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", refresh);
     return () => {
+      window.clearTimeout(first);
       window.clearInterval(id);
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", refresh);

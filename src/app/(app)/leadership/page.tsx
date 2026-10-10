@@ -160,10 +160,7 @@ function LeaderCard({ board, detailed, tz, isMe }: { board: Board; detailed: boo
   return (
     <article className="flex h-full flex-col overflow-hidden rounded-3xl border border-line bg-surface shadow-sm">
       <div className="relative overflow-hidden border-b border-line p-5">
-        <div
-          className="pointer-events-none absolute inset-0 opacity-[0.14]"
-          style={{ background: `radial-gradient(120% 120% at 0% 0%, hsl(${leader.avatarHue} 85% 60%), transparent 60%)` }}
-        />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_120%_at_0%_0%,var(--brand-soft),transparent_60%)]" />
         <div className="relative flex items-start gap-4">
           <Avatar person={leader} size="lg" />
           <div className="min-w-0 flex-1">

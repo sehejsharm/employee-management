@@ -87,7 +87,7 @@ export function Tooltip({
         <T.Content
           side={side}
           sideOffset={6}
-          className="z-[60] rounded-lg bg-[#0b1426] px-2.5 py-1.5 text-xs font-medium text-white shadow-md data-[state=delayed-open]:animate-[pop-in_120ms_ease-out] dark:bg-[#e8eef8] dark:text-[#0b1426]"
+          className="z-[60] rounded-lg bg-fg px-2.5 py-1.5 text-xs font-medium text-bg shadow-md data-[state=delayed-open]:animate-[pop-in_120ms_ease-out]"
         >
           {content}
         </T.Content>

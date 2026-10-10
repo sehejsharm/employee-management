@@ -51,6 +51,7 @@ import {
   uploadFile,
 } from "@/actions/tasks";
 import { dueState, formatCountdown, formatDue, formatLongDate, formatTime } from "@/lib/time";
+import { useSyncedState } from "@/lib/hooks";
 import { cn, formatBytes, hostOf } from "@/lib/utils";
 import { useNow } from "./badges";
 import { FileComposer, LinkComposer, NoteComposer } from "./task-form";
@@ -257,10 +258,9 @@ export function ChecklistPanel({
   items: { id: string; text: string; done: boolean }[];
   canContribute: boolean;
 }) {
-  const [items, setItems] = React.useState(initial);
+  const [items, setItems] = useSyncedState(initial);
   const [text, setText] = React.useState("");
   const [adding, setAdding] = React.useState(false);
-  React.useEffect(() => setItems(initial), [initial]);
 
   const done = items.filter((i) => i.done).length;
 
@@ -468,7 +468,7 @@ function AttachmentCard({ a }: { a: ClientAttachment }) {
   const icon =
     a.kind === "LINK" ? <Link2 /> : a.kind === "NOTE" ? <StickyNote /> : <FileText />;
   const tone =
-    a.kind === "LINK" ? "bg-brand-soft text-brand-soft-fg" : a.kind === "NOTE" ? "bg-warning-soft text-warning" : "bg-violet-500/10 text-violet-600 dark:text-violet-300";
+    a.kind === "LINK" ? "bg-brand-soft text-brand-soft-fg" : a.kind === "NOTE" ? "bg-surface-sunken text-fg-muted" : "bg-brand text-brand-fg";
 
   const remove = async () => {
     if (!window.confirm(`Remove "${a.title}"?`)) return;
@@ -556,12 +556,10 @@ export function ActivityComposer({
 }) {
   const [mode, setMode] = React.useState<"comment" | "update">(focusUpdate && canUpdate ? "update" : "comment");
   const [text, setText] = React.useState("");
-  const [progress, setProgress] = React.useState(currentProgress);
+  const [progress, setProgress] = useSyncedState(currentProgress);
   const [status, setStatus] = React.useState<TaskStatusKey | "">("");
   const [pending, start] = React.useTransition();
   const ref = React.useRef<HTMLTextAreaElement>(null);
-
-  React.useEffect(() => setProgress(currentProgress), [currentProgress]);
 
   React.useEffect(() => {
     const onHash = () => {

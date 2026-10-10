@@ -74,7 +74,8 @@ export function CountUp({ value, className, duration = 1.1 }: { value: number; c
   const ref = React.useRef<HTMLSpanElement>(null);
   const inView = useInView(ref, { once: true });
   const reduce = useReducedMotion();
-  const mv = useMotionValue(reduce ? value : 0);
+  // Start at zero on the server and the client alike (hydration-safe); reduced motion jumps straight to the value.
+  const mv = useMotionValue(0);
   const rounded = useTransform(mv, (v) => Math.round(v).toLocaleString());
 
   React.useEffect(() => {

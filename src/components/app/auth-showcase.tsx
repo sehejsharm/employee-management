@@ -9,10 +9,10 @@ const EASE = [0.16, 1, 0.3, 1] as const;
 /** The left half of the sign-in screen: the brand, in motion. Hidden on small screens. */
 export function AuthShowcase() {
   return (
-    <aside className="relative hidden overflow-hidden bg-[#071630] text-white lg:flex lg:flex-col">
+    <aside className="relative hidden overflow-hidden bg-brand-ink text-white lg:flex lg:flex-col">
       {/* Layered blue light */}
-      <div className="absolute inset-0 bg-[radial-gradient(120%_90%_at_10%_0%,#1a6ae0_0%,#0d3a85_38%,#071630_75%)]" />
-      <div className="absolute inset-0 opacity-[0.16] [background-image:linear-gradient(to_right,rgba(255,255,255,.5)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,.5)_1px,transparent_1px)] [background-size:44px_44px] [mask-image:radial-gradient(80%_70%_at_30%_30%,#000,transparent)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(120%_90%_at_10%_0%,var(--color-brand-600)_0%,var(--color-brand-800)_38%,var(--color-brand-ink)_75%)]" />
+      <div className="absolute inset-0 opacity-[0.16] [background-image:linear-gradient(to_right,color-mix(in_srgb,white_50%,transparent)_1px,transparent_1px),linear-gradient(to_bottom,color-mix(in_srgb,white_50%,transparent)_1px,transparent_1px)] [background-size:44px_44px] [mask-image:radial-gradient(80%_70%_at_30%_30%,var(--brand),transparent)]" />
 
       {/* Focus rings */}
       <div className="pointer-events-none absolute -right-40 top-1/2 h-[760px] w-[760px] -translate-y-1/2">
@@ -27,7 +27,7 @@ export function AuthShowcase() {
           />
         ))}
         <motion.div
-          className="absolute inset-[38%] rounded-full bg-[radial-gradient(circle,#5aa7f8_0%,rgba(90,167,248,0)_70%)] blur-2xl"
+          className="absolute inset-[38%] rounded-full bg-[radial-gradient(circle,var(--color-brand-400)_0%,transparent_70%)] blur-2xl"
           animate={{ opacity: [0.55, 0.9, 0.55], scale: [0.95, 1.05, 0.95] }}
           transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
         />
@@ -36,14 +36,14 @@ export function AuthShowcase() {
           animate={{ rotate: 360 }}
           transition={{ duration: 40, repeat: Infinity, ease: "linear" }}
         >
-          <span className="absolute left-1/2 top-0 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-300 shadow-[0_0_24px_6px_rgba(146,197,253,0.6)]" />
+          <span className="absolute left-1/2 top-0 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-300 shadow-[0_0_20px_4px_color-mix(in_srgb,var(--color-brand-300)_55%,transparent)]" />
         </motion.div>
         <motion.div
           className="absolute inset-[20%]"
           animate={{ rotate: -360 }}
           transition={{ duration: 28, repeat: Infinity, ease: "linear" }}
         >
-          <span className="absolute bottom-0 left-1/2 h-2 w-2 -translate-x-1/2 translate-y-1/2 rounded-full bg-white shadow-[0_0_18px_4px_rgba(255,255,255,0.5)]" />
+          <span className="absolute bottom-0 left-1/2 h-2 w-2 -translate-x-1/2 translate-y-1/2 rounded-full bg-white shadow-[0_0_14px_3px_color-mix(in_srgb,white_45%,transparent)]" />
         </motion.div>
       </div>
 
@@ -90,7 +90,7 @@ export function AuthShowcase() {
               icon={<CalendarClock className="size-4" />}
               title="T-128 · Investor update deck"
               meta="Due today, 6:00 PM · in 3h 20m"
-              accent="from-amber-300 to-amber-500"
+              accent="bg-warning"
             />
             <FloatingCard
               delay={0.55}
@@ -98,7 +98,7 @@ export function AuthShowcase() {
               icon={<MessageSquareMore className="size-4" />}
               title="Update requested"
               meta="“Where are we on the vendor list?”"
-              accent="from-brand-300 to-brand-500"
+              accent="bg-brand-500"
             />
             <FloatingCard
               delay={0.7}
@@ -106,7 +106,7 @@ export function AuthShowcase() {
               icon={<CheckCircle2 className="size-4" />}
               title="Market research brief — done"
               meta="Marked complete by Riya · 2m ago"
-              accent="from-emerald-300 to-emerald-500"
+              accent="bg-success"
             />
           </div>
         </div>
@@ -153,9 +153,9 @@ function FloatingCard({
       <motion.div
         animate={{ y: [0, -6, 0] }}
         transition={{ duration: 6 + delay * 4, repeat: Infinity, ease: "easeInOut", delay: delay * 2 }}
-        className="flex w-[330px] items-center gap-3 rounded-2xl border border-white/12 bg-white/[0.07] p-3.5 shadow-[0_20px_50px_-20px_rgba(0,0,0,0.6)] backdrop-blur-xl"
+        className="flex w-[330px] items-center gap-3 rounded-2xl border border-white/12 bg-white/[0.07] p-3.5 shadow-lg backdrop-blur-xl"
       >
-        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${accent} text-[#071630]`}>
+        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${accent} text-white`}>
           {icon}
         </span>
         <div className="min-w-0">

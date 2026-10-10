@@ -7,7 +7,7 @@ export default function NotFound() {
   return (
     <main className="relative flex min-h-dvh flex-col items-center justify-center overflow-hidden px-6 py-16 text-center">
       <div className="pointer-events-none absolute inset-0 bg-[var(--glow)]" />
-      <div className="pointer-events-none absolute inset-0 bg-grid opacity-50 [mask-image:radial-gradient(60%_50%_at_50%_45%,#000,transparent)]" />
+      <div className="pointer-events-none absolute inset-0 bg-grid opacity-50 [mask-image:radial-gradient(60%_50%_at_50%_45%,var(--brand),transparent)]" />
       <Link href="/dashboard" className="absolute left-6 top-6 flex items-center gap-2.5">
         <BrandMark size={32} variant="tile" />
         <span className="text-[15px] font-semibold tracking-tight">Focus Realm</span>

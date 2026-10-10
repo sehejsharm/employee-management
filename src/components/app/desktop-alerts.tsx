@@ -7,11 +7,14 @@ import { Button } from "@/components/ui/button";
 
 /** Lets someone opt in to system notifications for deadlines and requests while the tab is in the background. */
 export function DesktopAlerts({ compact }: { compact?: boolean }) {
-  const [permission, setPermission] = React.useState<NotificationPermission | "unsupported" | null>(null);
-
-  React.useEffect(() => {
-    setPermission(typeof Notification === "undefined" ? "unsupported" : Notification.permission);
-  }, []);
+  // The browser owns this value; null while rendering on the server.
+  const browserPermission = React.useSyncExternalStore<NotificationPermission | "unsupported" | null>(
+    () => () => {},
+    () => (typeof Notification === "undefined" ? "unsupported" : Notification.permission),
+    () => null,
+  );
+  const [chosen, setPermission] = React.useState<NotificationPermission | null>(null);
+  const permission = chosen ?? browserPermission;
 
   if (permission === null || permission === "unsupported") return null;
   if (compact && permission === "granted") return null;

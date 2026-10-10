@@ -22,9 +22,9 @@ export const STATUS_META: Record<
   TaskStatusKey,
   { label: string; icon: LucideIcon; iconClass: string; tone: BadgeTone; column: string }
 > = {
-  TODO: { label: "To do", icon: Circle, iconClass: "text-fg-subtle", tone: "neutral", column: "bg-slate-400" },
+  TODO: { label: "To do", icon: Circle, iconClass: "text-fg-subtle", tone: "neutral", column: "bg-fg-subtle" },
   IN_PROGRESS: { label: "In progress", icon: CircleDashed, iconClass: "text-brand", tone: "brand", column: "bg-brand" },
-  IN_REVIEW: { label: "In review", icon: CircleDot, iconClass: "text-violet-500", tone: "violet", column: "bg-violet-500" },
+  IN_REVIEW: { label: "In review", icon: CircleDot, iconClass: "text-info", tone: "info", column: "bg-info" },
   BLOCKED: { label: "Blocked", icon: OctagonAlert, iconClass: "text-danger", tone: "danger", column: "bg-danger" },
   DONE: { label: "Done", icon: CheckCircle2, iconClass: "text-success", tone: "success", column: "bg-success" },
 };

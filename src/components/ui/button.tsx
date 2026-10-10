@@ -5,7 +5,7 @@ import { Spinner } from "./spinner";
 
 const VARIANTS = {
   primary:
-    "bg-brand text-brand-fg shadow-[0_1px_0_0_rgba(255,255,255,0.18)_inset,0_1px_2px_rgba(10,20,38,0.12)] hover:bg-brand-hover hover:shadow-brand",
+    "bg-brand text-brand-fg shadow-press hover:bg-brand-hover hover:shadow-brand",
   secondary:
     "bg-surface text-fg border border-line shadow-xs hover:bg-surface-hover hover:border-line-strong",
   ghost: "text-fg-muted hover:text-fg hover:bg-surface-hover",

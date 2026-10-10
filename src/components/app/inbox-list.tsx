@@ -8,31 +8,34 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Segmented } from "@/components/ui/segmented";
 import { markAllNotificationsRead, markNotificationRead } from "@/actions/notifications";
 import type { FeedItem } from "@/lib/notification-feed";
+import { useSyncedState } from "@/lib/hooks";
+import { dayKey } from "@/lib/time";
 import { FeedRow } from "./notification-bell";
 
 const URGENT = ["TASK_DUE_SOON", "TASK_OVERDUE", "UPDATE_REQUESTED"];
 
-export function InboxList({ items: initial }: { items: FeedItem[] }) {
+export function InboxList({ items: initial, tz, now: nowIso }: { items: FeedItem[]; tz: string; now: string }) {
   const router = useRouter();
-  const [items, setItems] = React.useState(initial);
+  const [items, setItems] = useSyncedState(initial);
   const [filter, setFilter] = React.useState<"all" | "unread" | "urgent">("all");
-  React.useEffect(() => setItems(initial), [initial]);
 
   const shown = items.filter((n) => (filter === "unread" ? !n.readAt : filter === "urgent" ? URGENT.includes(n.kind) : true));
   const unread = items.filter((n) => !n.readAt).length;
 
-  // Group by day for a calmer list.
+  // Group by calendar day in the viewer's time zone — computed from server-given values, so it hydrates cleanly.
+  const now = new Date(nowIso);
+  const today = dayKey(now, tz);
+  const yesterday = dayKey(new Date(now.getTime() - 86_400_000), tz);
   const groups = new Map<string, FeedItem[]>();
   for (const n of shown) {
     const d = new Date(n.createdAt);
-    const today = new Date();
-    const yesterday = new Date(Date.now() - 86400000);
+    const k = dayKey(d, tz);
     const key =
-      d.toDateString() === today.toDateString()
+      k === today
         ? "Today"
-        : d.toDateString() === yesterday.toDateString()
+        : k === yesterday
           ? "Yesterday"
-          : d.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
+          : new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "long", month: "short", day: "numeric" }).format(d);
     groups.set(key, [...(groups.get(key) ?? []), n]);
   }
 

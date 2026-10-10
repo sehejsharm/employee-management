@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import { createTask, updateTask, uploadFile } from "@/actions/tasks";
+import { useMounted } from "@/lib/hooks";
 import { cn, formatBytes, hostOf, safeHttpUrl } from "@/lib/utils";
 import { AssigneePicker, type PickablePerson } from "./assignee-picker";
 import { DuePicker, toLocalInput } from "./due-picker";
@@ -46,7 +47,11 @@ export function TaskForm({
   const [title, setTitle] = React.useState(initial?.title ?? "");
   const [description, setDescription] = React.useState(initial?.description ?? "");
   const [priority, setPriority] = React.useState<TaskPriorityKey>(initial?.priority ?? "MEDIUM");
-  const [due, setDue] = React.useState("");
+  // datetime-local speaks local time, which only the browser knows: until the
+  // user edits it, an existing deadline is shown converted after hydration.
+  const mounted = useMounted();
+  const [editedDue, setDue] = React.useState<string | null>(null);
+  const due = editedDue ?? (initial && mounted ? toLocalInput(new Date(initial.dueAt)) : "");
   const [assignees, setAssignees] = React.useState<string[]>(
     initial?.assigneeIds ?? (presetAssignee ? [presetAssignee] : canAssignOthers ? [] : [selfId]),
   );
@@ -57,10 +62,6 @@ export function TaskForm({
   const [tab, setTab] = React.useState<AttachTab>("link");
   const [pending, setPending] = React.useState(false);
 
-  // datetime-local speaks local time, which only the browser knows.
-  React.useEffect(() => {
-    if (initial) setDue(toLocalInput(new Date(initial.dueAt)));
-  }, [initial]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();

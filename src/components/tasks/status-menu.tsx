@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/menu";
 import { setTaskStatus } from "@/actions/tasks";
+import { useSyncedState } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import { STATUS_META, STATUS_ORDER, type TaskStatusKey } from "./meta";
 
@@ -31,10 +32,8 @@ export function StatusMenu({
   children: (status: TaskStatusKey, pending: boolean) => React.ReactNode;
   onChange?: (status: TaskStatusKey) => void;
 }) {
-  const [optimistic, setOptimistic] = React.useState(status);
+  const [optimistic, setOptimistic] = useSyncedState(status);
   const [pending, start] = React.useTransition();
-
-  React.useEffect(() => setOptimistic(status), [status]);
 
   const choose = (next: TaskStatusKey) => {
     if (next === optimistic) return;

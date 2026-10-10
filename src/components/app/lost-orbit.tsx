@@ -25,7 +25,7 @@ export function LostOrbit() {
             transition={{ duration: 14 + i * 6, repeat: Infinity, ease: "linear" }}
           >
             <span
-              className="absolute left-1/2 top-0 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-400 shadow-[0_0_16px_4px_rgba(90,167,248,0.55)]"
+              className="absolute left-1/2 top-0 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-400 shadow-[0_0_14px_3px_color-mix(in_srgb,var(--color-brand-400)_50%,transparent)]"
               style={{ opacity: 1 - i * 0.25 }}
             />
           </motion.div>

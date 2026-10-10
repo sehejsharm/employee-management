@@ -3,74 +3,70 @@
 import Link from "next/link";
 import { motion } from "motion/react";
 import { MessageCircleQuestion } from "lucide-react";
+import { AvatarStack } from "@/components/ui/avatar";
+import { PRIORITY_META } from "@/components/tasks/meta";
 import type { ClientTaskRow } from "@/lib/tasks/queries";
 import { cn } from "@/lib/utils";
-import { EASE, tMinus } from "./hud";
+import { EASE, SOON_MS, tMinus } from "./hud";
 
-const PRIORITY_COLOR: Record<string, string> = { URGENT: "#f87171", HIGH: "#fbbf24", MEDIUM: "#5aa7f8", LOW: "#64748b" };
+/** Deadline state drives every colour on a row: overdue, due within a day, or on track. */
+function stateOf(ms: number | null) {
+  if (ms === null) return { edge: "bg-line-strong", text: "text-fg-subtle", bar: "bg-brand", row: "border-line bg-surface hover:bg-surface-hover" };
+  if (ms < 0) return { edge: "bg-danger", text: "text-danger", bar: "bg-danger", row: "border-danger/25 bg-danger-soft/60 hover:bg-danger-soft" };
+  if (ms <= SOON_MS) return { edge: "bg-warning", text: "text-warning", bar: "bg-brand", row: "border-line bg-surface hover:bg-surface-hover" };
+  return { edge: "bg-brand", text: "text-brand", bar: "bg-brand", row: "border-line bg-surface hover:bg-surface-hover" };
+}
 
-/** The launch schedule: every open deadline, counting down to the second. */
+/** Every open deadline in order, counting down to the second. */
 export function TMinusBoard({ tasks, now }: { tasks: ClientTaskRow[]; now: Date | null }) {
   if (tasks.length === 0) {
-    return <p className="py-10 text-center font-mono text-[11px] tracking-widest text-[var(--mc-muted)]">NO MISSIONS SCHEDULED</p>;
+    return <p className="py-10 text-center text-[13px] text-fg-subtle">No open deadlines. Everything is done.</p>;
   }
   return (
-    <ul className="space-y-1.5">
+    <ul className="space-y-2">
       {tasks.map((t, i) => {
         const tm = now ? tMinus(new Date(t.dueAt), now) : null;
-        const urgent = tm && !tm.late && new Date(t.dueAt).getTime() - now!.getTime() < 2 * 3600_000;
+        const st = stateOf(tm ? tm.ms : null);
+        const p = PRIORITY_META[t.priority];
         return (
           <motion.li
             key={t.id}
-            initial={{ opacity: 0, x: 14 }}
+            initial={{ opacity: 0, x: 12 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5, ease: EASE, delay: 0.6 + i * 0.06 }}
+            transition={{ duration: 0.5, ease: EASE, delay: 0.3 + i * 0.05 }}
           >
             <Link
               href={`/tasks/${t.id}`}
-              className={cn(
-                "group relative block overflow-hidden rounded-xl border px-3 py-2.5 transition-colors",
-                tm?.late ? "border-[var(--mc-red)]/35 bg-[var(--mc-red)]/[0.07]" : "border-[var(--mc-line)] bg-white/[0.02] hover:border-[var(--mc-line-strong)] hover:bg-white/[0.04]",
-              )}
+              className={cn("group relative block overflow-hidden rounded-xl border py-2.5 pl-4 pr-3 transition-colors hover:border-line-strong", st.row)}
             >
-              <span className="absolute inset-y-0 left-0 w-[3px]" style={{ background: PRIORITY_COLOR[t.priority] }} />
-              <div className="flex items-center gap-3">
-                <span className="font-mono text-[10.5px] text-[var(--mc-dim)]">T-{t.number}</span>
-                <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-[var(--mc-text)] group-hover:text-white">{t.title}</span>
-                {t.awaitingUpdate && <MessageCircleQuestion className="size-3.5 shrink-0 text-violet-300" />}
-                <span
-                  className={cn(
-                    "shrink-0 font-mono text-[12px] font-semibold tabular-nums",
-                    tm?.late ? "mc-glow-red text-[var(--mc-red)]" : urgent ? "text-[var(--mc-amber)]" : "text-[var(--mc-cyan)]",
-                  )}
-                  suppressHydrationWarning
-                >
-                  {tm ? `${tm.sign} ${tm.text}` : "--:--:--"}
-                </span>
+              <span className={cn("absolute inset-y-0 left-0 w-[3px]", st.edge)} aria-hidden />
+              <div className="flex items-center gap-2">
+                <p.icon className={cn("size-3.5 shrink-0", p.className)} aria-label={`${p.label} priority`} />
+                <span className="shrink-0 font-mono text-[11px] text-fg-subtle">T-{t.number}</span>
+                <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-fg group-hover:text-brand">{t.title}</span>
+                {t.awaitingUpdate && <MessageCircleQuestion className="size-3.5 shrink-0 text-info" aria-label="Waiting on an update" />}
               </div>
               <div className="mt-2 flex items-center gap-2.5">
-                <div className="h-1 flex-1 overflow-hidden rounded-full bg-white/[0.06]">
+                <div className="h-1.5 min-w-8 flex-1 overflow-hidden rounded-full bg-surface-sunken">
                   <motion.div
-                    className={cn("mc-shimmer h-full rounded-full", tm?.late ? "bg-[var(--mc-red)]" : "bg-gradient-to-r from-[#2f86f0] to-[#67e8f9]")}
-                    initial={{ width: 0 }}
-                    animate={{ width: `${Math.max(t.progress, 3)}%` }}
-                    transition={{ duration: 1.2, ease: EASE, delay: 0.8 + i * 0.06 }}
+                    className={cn("h-full w-full origin-left rounded-full", st.bar, tm && !tm.late && "mc-shimmer")}
+                    initial={{ scaleX: 0 }}
+                    animate={{ scaleX: Math.max(t.progress, 3) / 100 }}
+                    transition={{ duration: 1.1, ease: EASE, delay: 0.5 + i * 0.05 }}
                   />
                 </div>
-                <span className="w-8 text-right font-mono text-[10px] text-[var(--mc-muted)]">{t.progress}%</span>
-                <span className="flex -space-x-1">
-                  {t.assignees.slice(0, 3).map((a) => (
-                    <span
-                      key={a.id}
-                      title={`${a.firstName} ${a.lastName}`}
-                      className="flex h-5 w-5 items-center justify-center rounded-full text-[8px] font-bold text-white ring-2 ring-[#050c1a]"
-                      style={{ backgroundImage: `linear-gradient(140deg, hsl(${a.avatarHue} 85% 62%), hsl(${(a.avatarHue + 18) % 360} 72% 42%))` }}
-                    >
-                      {a.firstName[0]}
-                      {a.lastName[0] ?? ""}
-                    </span>
-                  ))}
+                <span className="w-8 shrink-0 text-right text-[11px] text-fg-subtle tabular">{t.progress}%</span>
+                <span className={cn("shrink-0 whitespace-nowrap text-[12px] font-semibold", st.text)} suppressHydrationWarning>
+                  {tm ? (
+                    <>
+                      {tm.late ? "Overdue " : <span className="font-mono">T– </span>}
+                      <span className="font-mono tabular">{tm.text}</span>
+                    </>
+                  ) : (
+                    <span className="font-mono">--:--:--</span>
+                  )}
                 </span>
+                <AvatarStack people={t.assignees} max={2} size="xs" className="hidden shrink-0 sm:flex" />
               </div>
             </Link>
           </motion.li>

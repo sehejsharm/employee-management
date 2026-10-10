@@ -6,13 +6,12 @@ import { motion } from "motion/react";
 import { ArrowDownRight, ArrowUpRight, Pencil, Target } from "lucide-react";
 import { toast } from "sonner";
 import { CountUp } from "@/components/motion";
-import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { setFocus } from "@/actions/profile";
 import { dueState, formatCountdown, formatDue } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { useNow } from "@/components/tasks/badges";
-import { STATUS_META, type TaskStatusKey } from "@/components/tasks/meta";
+import type { TaskStatusKey } from "@/components/tasks/meta";
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 
@@ -79,115 +78,6 @@ export function StatCard({
     </Link>
   ) : (
     inner
-  );
-}
-
-/** Open work by status, as an animated ring. */
-export function StatusDonut({ data }: { data: Record<TaskStatusKey, number> }) {
-  const order: TaskStatusKey[] = ["TODO", "IN_PROGRESS", "IN_REVIEW", "BLOCKED", "DONE"];
-  const colors: Record<TaskStatusKey, string> = {
-    TODO: "#94a3b8",
-    IN_PROGRESS: "var(--brand)",
-    IN_REVIEW: "#8b5cf6",
-    BLOCKED: "var(--danger)",
-    DONE: "var(--success)",
-  };
-  const total = order.reduce((s, k) => s + data[k], 0);
-  const r = 52;
-  const c = 2 * Math.PI * r;
-  let offset = 0;
-
-  return (
-    <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-center">
-      <div className="relative h-[140px] w-[140px] shrink-0">
-        <svg viewBox="0 0 140 140" className="-rotate-90">
-          <circle cx="70" cy="70" r={r} fill="none" stroke="var(--surface-sunken)" strokeWidth="14" />
-          {total > 0 &&
-            order.map((k, i) => {
-              const len = (data[k] / total) * c;
-              const gap = data[k] > 0 && len > 4 ? 2.5 : 0;
-              const el = (
-                <motion.circle
-                  key={k}
-                  cx="70"
-                  cy="70"
-                  r={r}
-                  fill="none"
-                  stroke={colors[k]}
-                  strokeWidth="14"
-                  strokeDasharray={`${Math.max(0, len - gap)} ${c}`}
-                  initial={{ strokeDashoffset: c, opacity: 0 }}
-                  animate={{ strokeDashoffset: -offset, opacity: 1 }}
-                  transition={{ duration: 1.1, ease: EASE, delay: 0.15 + i * 0.08 }}
-                />
-              );
-              offset += len;
-              return el;
-            })}
-        </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <CountUp value={total} className="text-[26px] font-semibold tracking-tight tabular" />
-          <span className="text-[11px] text-fg-subtle">tasks</span>
-        </div>
-      </div>
-      <ul className="w-full space-y-2">
-        {order.map((k) => {
-          const m = STATUS_META[k];
-          return (
-            <li key={k} className="flex items-center gap-2.5 text-[13px]">
-              <span className="h-2.5 w-2.5 rounded-full" style={{ background: colors[k] }} />
-              <span className="flex-1 text-fg-muted">{k === "DONE" ? "Done this week" : m.label}</span>
-              <span className="font-semibold tabular">{data[k]}</span>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
-}
-
-export function WorkloadBars({
-  rows,
-}: {
-  rows: { person: { id: string; firstName: string; lastName: string; avatarHue: number; title: string | null; status: string }; open: number; overdue: number; soon: number }[];
-}) {
-  const max = Math.max(1, ...rows.map((r) => r.open));
-  return (
-    <ul className="space-y-3.5">
-      {rows.map((r, i) => (
-        <li key={r.person.id}>
-          <Link href={`/people/${r.person.id}`} className="group flex items-center gap-3">
-            <Avatar person={r.person} size="sm" />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between gap-2 text-[13px]">
-                <span className="truncate font-medium group-hover:text-brand">
-                  {r.person.firstName} {r.person.lastName}
-                  {r.person.status === "ON_LEAVE" && <span className="ml-1.5 text-[11px] font-normal text-warning">On leave</span>}
-                </span>
-                <span className="shrink-0 text-xs text-fg-subtle tabular">
-                  {r.open} open{r.overdue > 0 && <span className="text-danger"> · {r.overdue} late</span>}
-                </span>
-              </div>
-              <div className="mt-1.5 flex h-1.5 overflow-hidden rounded-full bg-surface-sunken">
-                {(["overdue", "soon", "rest"] as const).map((seg, j) => {
-                  const value = seg === "overdue" ? r.overdue : seg === "soon" ? r.soon : r.open - r.overdue - r.soon;
-                  const color = seg === "overdue" ? "bg-danger" : seg === "soon" ? "bg-warning" : "bg-brand";
-                  return (
-                    <motion.div
-                      key={seg}
-                      className={cn("h-full", color, j > 0 && "ml-px")}
-                      initial={{ width: 0 }}
-                      animate={{ width: `${(value / max) * 100}%` }}
-                      transition={{ duration: 0.9, ease: EASE, delay: 0.2 + i * 0.05 }}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-          </Link>
-        </li>
-      ))}
-    </ul>
   );
 }
 
@@ -275,7 +165,7 @@ export function NextDeadline({
         transition={{ duration: 0.6, ease: EASE }}
         className={cn(
           "relative overflow-hidden rounded-2xl p-6 text-white shadow-lg transition-transform group-hover:-translate-y-0.5",
-          urgent ? "bg-[linear-gradient(135deg,#e2465a,#a3142b)]" : "bg-[linear-gradient(135deg,#2f86f0,#1655c0_55%,#12264a)]",
+          urgent ? "bg-danger" : "bg-brand-gradient",
         )}
       >
         <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full border border-white/15" />

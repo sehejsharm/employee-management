@@ -11,6 +11,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { Switch } from "@/components/ui/switch";
 import type { ClientTaskRow } from "@/lib/tasks/queries";
 import { DUE_BUCKET_LABEL, dueBucket, type DueBucket } from "@/lib/time";
+import { useSyncedState } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import { PRIORITY_META, PRIORITY_ORDER, STATUS_META, STATUS_ORDER, type TaskPriorityKey, type TaskStatusKey } from "./meta";
 import { TaskRow } from "./task-row";
@@ -47,7 +48,7 @@ export function TasksView({
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
-  const [tasks, setTasks] = React.useState(initial);
+  const [tasks, setTasks] = useSyncedState(initial);
   const [view, setView] = React.useState<View>(initialView);
   const [query, setQuery] = React.useState("");
   const [statuses, setStatuses] = React.useState<Set<TaskStatusKey>>(new Set());
@@ -55,7 +56,6 @@ export function TasksView({
   const [showDone, setShowDone] = React.useState(false);
   const [filtersOpen, setFiltersOpen] = React.useState(false);
 
-  React.useEffect(() => setTasks(initial), [initial]);
 
   const changeView = (v: View) => {
     setView(v);
@@ -71,7 +71,7 @@ export function TasksView({
 
   const updateLocal = React.useCallback((id: string, status: TaskStatusKey) => {
     setTasks((list) => list.map((t) => (t.id === id ? { ...t, status } : t)));
-  }, []);
+  }, [setTasks]);
 
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();

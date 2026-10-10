@@ -24,44 +24,61 @@ function readPreference(): ThemePreference {
 }
 
 function systemDark() {
-  return typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches;
+}
+
+/** Puts the right class on <html>. Transitions are suppressed for the instant of the switch. */
+function applyTheme(p: ThemePreference) {
+  const dark = p === "dark" || (p === "system" && systemDark());
+  const root = document.documentElement;
+  if (root.classList.contains("dark") === dark) return;
+  root.classList.add("theme-switching");
+  root.classList.toggle("dark", dark);
+  requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove("theme-switching")));
+}
+
+/*
+ * The theme lives in the browser (localStorage + the class the boot script
+ * set on <html>), so React reads it as an external store: no effects, no
+ * flash, and other tabs stay in sync through the storage event.
+ */
+const themeListeners = new Set<() => void>();
+
+function subscribeTheme(onChange: () => void) {
+  themeListeners.add(onChange);
+  const mq = window.matchMedia("(prefers-color-scheme: dark)");
+  const onSystem = () => {
+    if (readPreference() === "system") applyTheme("system");
+    onChange();
+  };
+  const onStorage = (e: StorageEvent) => {
+    if (e.key !== "fr-theme") return;
+    applyTheme(readPreference());
+    onChange();
+  };
+  mq.addEventListener("change", onSystem);
+  window.addEventListener("storage", onStorage);
+  return () => {
+    themeListeners.delete(onChange);
+    mq.removeEventListener("change", onSystem);
+    window.removeEventListener("storage", onStorage);
+  };
+}
+
+function themeSnapshot() {
+  return `${readPreference()}:${document.documentElement.classList.contains("dark") ? "dark" : "light"}`;
 }
 
 export function Providers({ children }: { children: React.ReactNode }) {
-  const [preference, setPref] = React.useState<ThemePreference>("light");
-  const [resolved, setResolved] = React.useState<"light" | "dark">("light");
-
-  // The boot script already applied the class; sync React state to it after mount.
-  React.useEffect(() => {
-    const p = readPreference();
-    setPref(p);
-    setResolved(document.documentElement.classList.contains("dark") ? "dark" : "light");
-  }, []);
-
-  React.useEffect(() => {
-    if (preference !== "system") return;
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const onChange = () => apply("system");
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, [preference]);
-
-  function apply(p: ThemePreference) {
-    const dark = p === "dark" || (p === "system" && systemDark());
-    const root = document.documentElement;
-    // Suppress transitions for the instant of the switch so nothing animates through odd colours.
-    root.classList.add("theme-switching");
-    root.classList.toggle("dark", dark);
-    setResolved(dark ? "dark" : "light");
-    requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove("theme-switching")));
-  }
+  const snapshot = React.useSyncExternalStore(subscribeTheme, themeSnapshot, () => "light:light");
+  const [preference, resolved] = snapshot.split(":") as [ThemePreference, "light" | "dark"];
 
   const setPreference = React.useCallback((p: ThemePreference) => {
     try {
       localStorage.setItem("fr-theme", p);
     } catch {}
-    setPref(p);
-    apply(p);
+    applyTheme(p);
+    themeListeners.forEach((l) => l());
   }, []);
 
   return (

@@ -14,11 +14,13 @@ const EASE = [0.16, 1, 0.3, 1] as const;
 export function LoginForm({ next }: { next: string }) {
   const [state, action, pending] = useActionState<AuthFormState, FormData>(login, {});
   const [show, setShow] = React.useState(false);
+  // Every new error replays the shake: count them as each result arrives.
   const [attempt, setAttempt] = React.useState(0);
-
-  React.useEffect(() => {
+  const [lastState, setLastState] = React.useState(state);
+  if (state !== lastState) {
+    setLastState(state);
     if (state.error) setAttempt((a) => a + 1);
-  }, [state]);
+  }
 
   return (
     <div className="relative flex flex-1 items-center justify-center px-6 py-12 sm:px-10">

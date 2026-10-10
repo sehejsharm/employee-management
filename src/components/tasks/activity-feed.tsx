@@ -59,7 +59,7 @@ export function ActivityFeed({ entries, tz }: { entries: FeedEntry[]; tz: string
                 className={cn(
                   "min-w-0 flex-1 rounded-2xl border p-3.5",
                   isUpdate && "border-success/25 bg-success-soft/50",
-                  isRequest && "border-violet-500/20 bg-violet-500/[0.06]",
+                  isRequest && "border-info/25 bg-info-soft/60",
                   !isUpdate && !isRequest && "border-line bg-surface",
                 )}
               >
@@ -71,7 +71,7 @@ export function ActivityFeed({ entries, tz }: { entries: FeedEntry[]; tz: string
                     </span>
                   )}
                   {isRequest && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/15 px-2 py-0.5 text-[11px] font-semibold text-violet-600 dark:text-violet-300">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-info-soft px-2 py-0.5 text-[11px] font-semibold text-info">
                       <MessageCircleQuestion className="size-3" /> Requested an update
                     </span>
                   )}

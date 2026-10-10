@@ -400,8 +400,15 @@ export function AttachmentsPanel({
 
   const run = async (fn: () => Promise<{ ok: boolean; error?: string; message?: string }>) => {
     setBusy(true);
-    const res = await fn();
-    setBusy(false);
+    let res: { ok: boolean; error?: string; message?: string };
+    try {
+      res = await fn();
+    } catch {
+      // Network failures and bodies over the host's limit (4.5 MB on Vercel) reject instead of returning.
+      res = { ok: false, error: "That didn't go through. Check your connection, or try a smaller file or a link." };
+    } finally {
+      setBusy(false);
+    }
     if (!res.ok) return void toast.error(res.error);
     toast.success(res.message ?? "Added.");
     setOpen(false);

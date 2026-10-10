@@ -37,7 +37,7 @@ Prisma 7 and PostgreSQL, in the blue-and-white Focus Realm brand
 - **Mission Control** — the founders' live dashboard: a radar of every
   person's deadline health, every deadline counting down to the second,
   14-day throughput, on-time rate, workload per person, live activity and
-  unanswered update requests. Re-syncs every 45 seconds.
+  unanswered update requests. Re-syncs every minute.
 - **Assign work** to anyone (founders always; management when granted).
 - **Request an update** on any task — assignees are notified, the request
   stays visible until they post a progress update, which answers it.
@@ -83,7 +83,7 @@ Test it locally: `npm run hr:simulate -- create "Priya Menon" priya@focusrealm.c
 
 ## Run it locally
 
-Requirements: Node.js 20.19+ and PostgreSQL 14+.
+Requirements: Node.js 22 and PostgreSQL 14+.
 
 ```bash
 cp .env.example .env            # set DATABASE_URL at minimum
@@ -114,24 +114,69 @@ Demo accounts after seeding — password `FocusRealm@2026` for all:
 
 ## Deploy
 
-**Vercel + managed Postgres (recommended).**
+### Vercel (recommended)
 
-1. Create a Postgres database (Supabase, Neon or Vercel Postgres). In India,
-   pick the Mumbai region (`ap-south-1`).
-2. Import the repo in Vercel. Set the variables from `.env.example`:
-   `DATABASE_URL` (pooled), `DIRECT_URL` (direct), `APP_URL`,
-   `APP_TIMEZONE`, `HR_WEBHOOK_SECRET`, `CRON_SECRET`.
-3. Run migrations against production once: `DATABASE_URL=… npx prisma migrate deploy`
-   (or add it to the build command).
-4. Create the first founder: `DATABASE_URL=… npm run create-founder -- --email you@focusrealm.com --first You`.
-5. `vercel.json` schedules the deadline sweep daily on the Hobby plan; on Pro,
-   change it to every 15 minutes (`*/15 * * * *`). People who are signed in
-   get reminders within a minute regardless.
+1. **Import the repo** in Vercel. `vercel.json` already sets the build command,
+   the function region (Mumbai, `bom1`) and the daily deadline sweep. The first
+   build succeeds even with no database — the app just says it isn't set up yet.
+2. **Add a database:** project → **Storage** → **Create Database** → **Neon** or
+   **Supabase**, region **Mumbai (ap-south-1)**, connected to **Production**,
+   with the env-var prefix left empty. Its variables are read automatically.
+   (A database elsewhere? Change `regions` in `vercel.json` to the Vercel region
+   nearest to it — every page makes several round trips.)
+3. **Settings → Environment Variables** (Production):
+   - `SETUP_TOKEN` — `openssl rand -hex 24`; lets you create the first founder.
+   - `CRON_SECRET` — `openssl rand -hex 32`; protects the daily reminder sweep.
+   - `HR_WEBHOOK_SECRET` — `openssl rand -hex 32`, the same value as
+     `FOCUS_REALM_WORKSPACE_SECRET` in the HR console (empty keeps HR sync off).
+   - Optional: `APP_TIMEZONE` (IANA, e.g. `Asia/Kolkata`), `APP_URL` (only for
+     a custom domain), `MAX_UPLOAD_MB` (≤ 4), `EMPLOYEE_CODE_PREFIX`.
+4. **Deployments → ⋯ → Redeploy.** Production builds apply database migrations
+   before building; a failed migration stops the deploy and the previous one
+   keeps serving. Preview builds skip migrations.
+5. **Check:** `https://<your-app>/api/health` →
+   `{ "ok": true, "database": "up", "schema": "ready", "setup": "needs-founder" }`.
+   Other answers say what's wrong: `"not-configured"` (no database variables —
+   redeploy after adding them), `"down"` (unreachable — see Vercel → Logs),
+   `"not-migrated"` (redeploy).
+6. **Create the first founder:** open `https://<your-app>/setup`, enter the
+   setup token, your details and a password. You're signed straight in, and
+   `/setup` switches itself off for good. Remove `SETUP_TOKEN` afterwards.
+   Everyone else comes from the HR console (see above) or **People → Add**.
 
-**Self-hosted:** `docker compose up --build` runs Postgres and the app;
-migrations apply on start.
+Supabase notes: free projects pause after a week without use (the app shows
+"can't reach its database" — restore it in Supabase). Connections are
+encrypted; to also verify Supabase's certificate set `DATABASE_CA_CERT`. A
+migration closes Supabase's public Data API for these tables — the app never
+uses it. If a production deploy stops at migrations with a connection error,
+set `DIRECT_URL` to the **Session pooler** string (port 5432).
 
-**Health check:** `GET /api/health` → `{ ok: true, database: "up" }`.
+**Reminders.** People with the Workspace open get deadline reminders within a
+minute. `vercel.json` also sweeps once a day (02:30 UTC — the Hobby plan's
+limit) so nobody misses one; on Pro, change it to `*/5 * * * *`. Test it with
+`curl -H "Authorization: Bearer $CRON_SECRET" https://<your-app>/api/cron/deadlines`.
+
+**Custom domain:** Settings → Domains, then set `APP_URL` here and
+`FOCUS_REALM_WORKSPACE_URL` in the HR console, and redeploy both. The HR
+console must always use the production domain — per-deployment URLs sit
+behind Vercel's login wall.
+
+**Files** are stored in the database (4 MB each at most on Vercel). A free
+Neon or Supabase plan holds about 0.5 GB, so share large files as links.
+
+**Without the setup page:** from a clone, `DIRECT_URL= DATABASE_URL='<production
+pooled URL>' npm run create-founder -- --email you@focusrealm.com --first You`
+prints a one-time temporary password.
+
+### Self-hosted
+
+`docker compose up --build` runs Postgres and the app; migrations apply on
+start. Create the first founder with `SETUP_TOKEN` and `/setup`, or
+`npm run create-founder`.
+
+**Never run `npm run db:seed` against a real database** — it wipes every table
+and creates demo founders with a published password. It refuses any database
+that isn't on your machine.
 
 ## Security notes
 

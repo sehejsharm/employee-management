@@ -6,17 +6,39 @@
  */
 import "dotenv/config";
 import bcrypt from "bcryptjs";
-import { db } from "../src/lib/db";
+import { databaseUrl, db } from "../src/lib/db";
 import type { Role, TaskPriority, TaskStatus, EmploymentStatus } from "../src/generated/prisma/enums";
 
 const DEMO_PASSWORD = "FocusRealm@2026";
 const HOUR = 3600_000;
 const DAY = 24 * HOUR;
 
-async function main() {
-  if (process.env.NODE_ENV === "production" && process.env.ALLOW_SEED !== "true") {
-    throw new Error("Refusing to seed a production database. Set ALLOW_SEED=true if you really mean it.");
+/**
+ * The seed wipes every table and creates founders with a published password,
+ * so it only runs against a database on this machine (or the docker-compose
+ * "db" service). NODE_ENV alone can't tell: it is unset when someone runs the
+ * seed from a laptop with a production URL loaded.
+ */
+function assertSafeTarget() {
+  const raw = databaseUrl(); // the connection the seed actually writes through
+  let host = "";
+  try {
+    host = new URL(raw).hostname;
+  } catch {
+    // Unparseable or empty: treated as unknown below.
   }
+  const local = ["localhost", "127.0.0.1", "::1", "[::1]", "db"].includes(host);
+  const override = process.env.ALLOW_SEED === `wipe ${host}`;
+  if ((!local || process.env.VERCEL || process.env.NODE_ENV === "production") && !override) {
+    throw new Error(
+      `Refusing to seed ${host || "an unknown database"}: the demo seed deletes every table and creates founders with a published password. ` +
+        `If you really mean it, set ALLOW_SEED="wipe ${host}".`,
+    );
+  }
+}
+
+async function main() {
+  assertSafeTarget();
 
   console.log("Clearing tables…");
   await db.$transaction([

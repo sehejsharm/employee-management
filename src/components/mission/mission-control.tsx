@@ -32,7 +32,7 @@ import { ThroughputChart } from "./throughput-chart";
 import { ActivityLog, OnTimeGauge, StatusMatrix, Workload } from "./telemetry";
 import "./mission.css";
 
-const REFRESH_MS = 45_000;
+const REFRESH_MS = 60_000;
 
 function waited(since: string, now: Date) {
   const h = Math.max(1, Math.round((now.getTime() - new Date(since).getTime()) / 3_600_000));
@@ -42,7 +42,7 @@ function waited(since: string, now: Date) {
 /**
  * Mission Control — the founders' live view of everything their team is
  * working on. Clocks and countdowns tick every second; the data re-syncs every
- * 45 seconds while the screen is visible. Built entirely from the brand tokens
+ * minute while the screen is visible. Built entirely from the brand tokens
  * and the shared Card spec (docs/BRAND.md), so it is blue-and-white in light
  * mode and navy-and-blue in dark mode, like the rest of the Workspace.
  */

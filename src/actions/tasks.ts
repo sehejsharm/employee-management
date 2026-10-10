@@ -473,7 +473,8 @@ export async function uploadFile(taskId: string, formData: FormData): Promise<Ac
     await tx.taskActivity.create({
       data: { taskId, actorId: r.user.id, kind: "ATTACHMENT_ADDED", meta: { kind: "FILE", title } },
     });
-  });
+    // A few MB over a cross-region link can outlast Prisma's 5-second default.
+  }, { timeout: 20_000, maxWait: 5_000 });
 
   refresh();
   return { ok: true, message: "File uploaded." };

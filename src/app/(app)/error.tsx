@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { RotateCcw, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export default function AppError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+export default function AppError({ error, retry }: { error: Error & { digest?: string }; retry: () => void }) {
   useEffect(() => {
     console.error(error);
   }, [error]);
@@ -19,7 +19,7 @@ export default function AppError({ error, reset }: { error: Error & { digest?: s
         The page couldn&apos;t load. Nothing you did caused this — try again, and if it keeps happening, let a founder know.
         {error.digest && <span className="mt-2 block font-mono text-xs text-fg-subtle">Reference: {error.digest}</span>}
       </p>
-      <Button className="mt-6" onClick={reset}>
+      <Button className="mt-6" onClick={() => retry()}>
         <RotateCcw /> Try again
       </Button>
     </div>

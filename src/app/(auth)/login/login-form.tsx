@@ -14,6 +14,8 @@ const EASE = [0.16, 1, 0.3, 1] as const;
 export function LoginForm({ next }: { next: string }) {
   const [state, action, pending] = useActionState<AuthFormState, FormData>(login, {});
   const [show, setShow] = React.useState(false);
+  // Controlled so a wrong password doesn't also wipe the ID (React resets uncontrolled fields after each submission).
+  const [identifier, setIdentifier] = React.useState("");
   // Every new error replays the shake: count them as each result arrives.
   const [attempt, setAttempt] = React.useState(0);
   const [lastState, setLastState] = React.useState(state);
@@ -59,6 +61,8 @@ export function LoginForm({ next }: { next: string }) {
               <Input
                 id="identifier"
                 name="identifier"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
                 autoComplete="username"
                 autoCapitalize="none"
                 spellCheck={false}

@@ -1,7 +1,7 @@
 "use client";
 
 /** Last-resort boundary if the root layout itself fails. Self-contained: no app styles are guaranteed here. */
-export default function GlobalError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+export default function GlobalError({ error, retry }: { error: Error & { digest?: string }; retry: () => void }) {
   return (
     <html lang="en">
       <body
@@ -24,7 +24,7 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
             Please try again. If it keeps happening, let a founder know{error.digest ? ` and mention reference ${error.digest}` : ""}.
           </p>
           <button
-            onClick={reset}
+            onClick={() => retry()}
             style={{
               marginTop: 24,
               height: 44,

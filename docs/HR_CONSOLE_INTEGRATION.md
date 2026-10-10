@@ -48,15 +48,22 @@ openssl rand -hex 32
 |---|---|---|
 | Workspace | `HR_WEBHOOK_SECRET` | the secret |
 | HR console | `FOCUS_REALM_WORKSPACE_SECRET` | the same secret |
-| HR console | `FOCUS_REALM_WORKSPACE_URL` | e.g. `https://workspace.focusrealm.com` |
+| HR console | `FOCUS_REALM_WORKSPACE_URL` | the Workspace's **production domain**, e.g. `https://employee-management.vercel.app` or your custom domain |
 
-Both are server-only. Never prefix them with `NEXT_PUBLIC_`.
+Both are server-only. Never prefix them with `NEXT_PUBLIC_`. On Vercel, add
+them under **Settings → Environment Variables (Production)** and **redeploy** —
+variables only reach new deployments. Never use a per-deployment URL
+(`…-git-…vercel.app` or a hashed one): those sit behind Vercel's login wall and
+the HR console would get a 401 HTML page back.
 
-Check the connection from the Workspace repo:
+Check the connection from the Workspace repo once it is deployed (with the
+database migrated):
 
 ```bash
-npm run hr:simulate -- ping
+APP_URL=https://<your-workspace-domain> HR_WEBHOOK_SECRET=<the secret> npm run hr:simulate -- ping
 # 200 OK { "ok": true, "action": "pong" }
+# 503 → the secret isn't set on that deployment (redeploy after adding it)
+# 401 with an HTML body → you used a protected deployment URL, not the production domain
 ```
 
 The **Workspace admin → HR console** screen shows every delivery, its result
@@ -224,7 +231,7 @@ Sign in at    https://workspace.focusrealm.com/login
 | `200` | Applied (update, offboard, restore, reset), or `duplicate: true` if that event id was already applied. |
 | `400` / `422` | The event or payload is malformed — fix it, don't retry. |
 | `401` | Bad or missing signature, or timestamp more than 5 minutes off. |
-| `403` | Tried to create or change a founder account. |
+| `403` | Tried to create, link to or change a founder account. |
 | `404` | Offboard/restore/reset for an `externalId` that was never linked. |
 | `409` | Email or employee ID already belongs to someone else. |
 | `503` | `HR_WEBHOOK_SECRET` isn't set on the Workspace. |

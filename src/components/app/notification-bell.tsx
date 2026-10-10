@@ -14,7 +14,7 @@ import { timeAgo } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { NotificationIcon } from "./notification-icon";
 
-const POLL_MS = 30_000;
+const POLL_MS = 60_000;
 const URGENT = new Set(["TASK_DUE_SOON", "TASK_OVERDUE", "UPDATE_REQUESTED"]);
 
 interface FeedState {
@@ -36,7 +36,7 @@ export function useNotifications() {
 }
 
 /**
- * Keeps the inbox fresh: polls every 30 seconds while the tab is visible and
+ * Keeps the inbox fresh: polls every minute while the tab is visible and
  * immediately on focus. New arrivals become a toast, and — when the person has
  * allowed it and is in another tab — a system notification.
  */

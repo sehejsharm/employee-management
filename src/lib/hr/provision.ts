@@ -102,9 +102,20 @@ function namesOf(e: HrEmployee) {
  * Founder accounts cannot be minted or changed through the webhook unless the
  * deployment opts in. A leaked HR secret should never yield the keys to everything.
  */
+function founderProvisioningLocked() {
+  return process.env.HR_ALLOW_FOUNDER_PROVISIONING !== "true";
+}
+
 function guardRole(role: HrEmployee["role"]) {
-  if (role === "FOUNDER" && process.env.HR_ALLOW_FOUNDER_PROVISIONING !== "true") {
+  if (role === "FOUNDER" && founderProvisioningLocked()) {
     throw new HrEventError("Founder accounts cannot be provisioned through the HR integration.", 403);
+  }
+}
+
+/** The same lock for accounts that already exist: an HR event may never link to, rename or re-key a founder. */
+function guardExistingFounder(user: { role: string }) {
+  if (user.role === "FOUNDER" && founderProvisioningLocked()) {
+    throw new HrEventError("Founder accounts cannot be linked or changed through the HR integration.", 403);
   }
 }
 
@@ -151,6 +162,7 @@ async function upsertEmployee(e: HrEmployee): Promise<HrResult> {
     // Someone a founder already added by hand: link rather than duplicate.
     const byEmail = await db.user.findUnique({ where: { email: e.email.toLowerCase() } });
     if (byEmail) {
+      guardExistingFounder(byEmail);
       if (byEmail.externalId && byEmail.externalId !== e.externalId) {
         throw new HrEventError(`${e.email} is already linked to a different HR record.`, 409);
       }
@@ -217,6 +229,7 @@ async function updateExisting(
   e: HrEmployee,
   action: "updated" | "linked",
 ): Promise<HrResult> {
+  guardExistingFounder(existing);
   if (existing.role === "FOUNDER" && e.role && e.role !== "FOUNDER") {
     throw new HrEventError("Founder accounts cannot be changed through the HR integration.", 403);
   }

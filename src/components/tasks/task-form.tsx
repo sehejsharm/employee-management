@@ -83,7 +83,8 @@ export function TaskForm({
       for (const f of files) {
         const fd = new FormData();
         fd.set("file", f);
-        const up = await uploadFile(id, fd);
+        // A body over the host's limit (4.5 MB on Vercel) is rejected before the action runs, so it throws.
+        const up = await uploadFile(id, fd).catch(() => ({ ok: false as const, error: "couldn't be uploaded. Try a smaller file or attach a link." }));
         if (!up.ok) toast.error(`${f.name}: ${up.error}`);
       }
       toast.success("Task created", {

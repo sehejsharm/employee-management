@@ -8,7 +8,7 @@ import { NextResponse, type NextRequest } from "next/server";
  */
 const SESSION_COOKIES = ["__Host-fr_session", "fr_session"];
 
-const PUBLIC_PREFIXES = ["/login", "/api/integrations/", "/api/cron/", "/api/health"];
+const PUBLIC_PREFIXES = ["/login", "/setup"];
 
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
@@ -17,10 +17,6 @@ export function proxy(request: NextRequest) {
   const hasSession = SESSION_COOKIES.some((name) => request.cookies.has(name));
   if (hasSession) return NextResponse.next();
 
-  if (pathname.startsWith("/api/")) {
-    return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-  }
-
   const url = request.nextUrl.clone();
   url.pathname = "/login";
   url.search = pathname === "/" ? "" : `?next=${encodeURIComponent(pathname + search)}`;
@@ -28,6 +24,8 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Skip static assets and Next internals.
-  matcher: ["/((?!_next/static|_next/image|brand/|icon.svg|apple-icon|favicon.ico|robots.txt).*)"],
+  // Skip static assets, Next internals and /api: every API route authenticates
+  // itself (or is public by design: health, cron, HR webhook), and skipping
+  // them halves the function invocations that notification polling costs on Vercel.
+  matcher: ["/((?!api/|_next/static|_next/image|brand/|icon.svg|apple-icon|favicon.ico|robots.txt).*)"],
 };

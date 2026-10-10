@@ -56,7 +56,9 @@ the style of lib/onboarding/*.server.ts, and the existing mailbox-password flow)
    Process them one at a time, collect per-person results, and return
    { synced, alreadyLinked, failed: [{ id, name, error }] }. It must be safe to run again:
    the client derives the event id from the candidate id, so re-running never creates
-   duplicates or a second password. Add a "Sync everyone to the Workspace" button on
+   duplicates or a second password. The Workspace refuses founder accounts (HTTP 403) —
+   founders already sign in with their own Workspace login — so list those under
+   "skipped" rather than "failed". Add a "Sync everyone to the Workspace" button on
    /hr/admin that calls it and shows the summary.
 
 6. Showing the credentials once: on the founders' candidate page (/hr/admin/[id]) add a
@@ -69,7 +71,8 @@ the style of lib/onboarding/*.server.ts, and the existing mailbox-password flow)
    that calls resetWorkspacePassword(id) and stores the new sealed password the same way.
 
 7. Configuration: add to .env.example (server-only, never NEXT_PUBLIC_):
-     FOCUS_REALM_WORKSPACE_URL=      # e.g. https://workspace.focusrealm.com
+     FOCUS_REALM_WORKSPACE_URL=      # the Workspace's production domain, e.g. https://employee-management.vercel.app
+                                     # (never a per-deployment *.vercel.app URL — those are behind Vercel's login wall)
      FOCUS_REALM_WORKSPACE_SECRET=   # same value as HR_WEBHOOK_SECRET on the Workspace
    Document them in README.md. With them unset, every Workspace call is a silent no-op.
 

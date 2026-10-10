@@ -57,7 +57,8 @@ export async function endSession() {
   if (token) {
     await db.session.deleteMany({ where: { tokenHash: hashToken(token) } });
   }
-  jar.delete(SESSION_COOKIE);
+  // Browsers ignore a `__Host-` Set-Cookie without Secure — even one that deletes it — so repeat the attributes.
+  jar.delete({ name: SESSION_COOKIE, path: "/", secure: process.env.NODE_ENV === "production", httpOnly: true, sameSite: "lax" });
 }
 
 export async function currentSessionTokenHash() {

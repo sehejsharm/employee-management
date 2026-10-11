@@ -3,7 +3,7 @@ import { PageHeader } from "@/components/app/page-header";
 import { OrgChart } from "@/components/org/org-chart";
 import { requireUser } from "@/lib/auth/current-user";
 import { db } from "@/lib/db";
-import { ROLE_LABEL, canManageOrg } from "@/lib/permissions";
+import { ROLE_LABEL, canManageOrg, isFounder } from "@/lib/permissions";
 
 export const metadata: Metadata = { title: "Org chart" };
 
@@ -45,6 +45,7 @@ export default async function OrgPage() {
         departments={departments}
         canEdit={editable}
         meId={user.id}
+        viewerIsFounder={isFounder(user)}
       />
     </>
   );

@@ -9,10 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ManageMember } from "@/components/people/manage-member";
+import { SharedWithMe, WorkVisibilityManager, type GrantPerson } from "@/components/people/work-visibility";
 import { TaskRow } from "@/components/tasks/task-row";
-import { getSubordinateIds, requireUser } from "@/lib/auth/current-user";
+import { getGrantedOwnerIds, requireUser } from "@/lib/auth/current-user";
 import { db } from "@/lib/db";
-import { ROLE_LABEL, STATUS_LABEL, canAssignTasks, canManagePeople, isFounder } from "@/lib/permissions";
+import { ROLE_LABEL, STATUS_LABEL, canAssignTasks, canManagePeople, canManageVisibilityGrants, isFounder } from "@/lib/permissions";
 import { taskRowSelect, taskVisibilityWhere, toClientRow } from "@/lib/tasks/queries";
 import { formatDate, timeAgo } from "@/lib/time";
 import { getTimeZone } from "@/lib/tz.server";
@@ -64,13 +65,15 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
   if (!person) notFound();
 
   const isSelf = viewer.id === person.id;
-  const subs = await getSubordinateIds(viewer.id);
+  const granted = await getGrantedOwnerIds(viewer);
   const admin = canManagePeople(viewer);
+  // Founders choose whose work a non-founder may see; a founder's own work is never shared this way.
+  const manageGrants = canManageVisibilityGrants(viewer) && person.role !== "FOUNDER";
 
   // Only the tasks the viewer is already allowed to see.
   const tasks = await db.task.findMany({
     where: {
-      AND: [taskVisibilityWhere(viewer, subs), { archivedAt: null, status: { not: "DONE" }, assignees: { some: { userId: person.id } } }],
+      AND: [taskVisibilityWhere(viewer, granted), { archivedAt: null, status: { not: "DONE" }, assignees: { some: { userId: person.id } } }],
     },
     select: taskRowSelect,
     orderBy: { dueAt: "asc" },
@@ -85,6 +88,25 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
     : [[], []];
 
   const former = person.status === "INACTIVE";
+
+  const [canSee, seenBy, candidates] = manageGrants
+    ? await Promise.all([
+        db.workVisibilityGrant.findMany({ where: { viewerId: person.id }, orderBy: { createdAt: "asc" }, select: { owner: { select: grantPersonSelect } } }),
+        db.workVisibilityGrant.findMany({ where: { ownerId: person.id }, orderBy: { createdAt: "asc" }, select: { viewer: { select: grantPersonSelect } } }),
+        former
+          ? Promise.resolve([])
+          : db.user.findMany({
+              where: { role: { not: "FOUNDER" }, status: { not: "INACTIVE" }, NOT: { id: person.id } },
+              orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
+              select: grantPersonSelect,
+            }),
+      ])
+    : [[], [], []];
+  // A person's own read-only list: the grants in force for them right now.
+  const sharedWithMe =
+    isSelf && !isFounder(viewer) && granted.size
+      ? await db.user.findMany({ where: { id: { in: [...granted] } }, orderBy: [{ firstName: "asc" }, { lastName: "asc" }], select: grantPersonSelect })
+      : [];
 
   return (
     <FadeIn>
@@ -111,7 +133,7 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
             {person.department && <DepartmentTag name={person.department.name} color={person.department.color} className="mt-1.5" />}
           </div>
           <div className="flex gap-2">
-            {!isSelf && !former && canAssignTasks(viewer) && (
+            {!isSelf && !former && canAssignTasks(viewer) && (isFounder(viewer) || person.role !== "FOUNDER") && (
               <Button asChild>
                 <Link href={`/tasks/new?for=${person.id}`}>
                   <Send /> Assign a task
@@ -202,7 +224,7 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
             <CardHeader
               icon={<ClipboardList />}
               title={isSelf ? "Your open work" : `${person.firstName}'s open work`}
-              description={isSelf || isFounder(viewer) ? undefined : "Only tasks you're involved in or oversee are shown."}
+              description={isSelf || isFounder(viewer) ? undefined : "Only tasks you're on, you created, or a founder has let you see."}
             />
             <CardBody className="px-2 sm:px-3">
               {tasks.length === 0 ? (
@@ -216,6 +238,18 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
               )}
             </CardBody>
           </Card>
+
+          {manageGrants && (
+            <WorkVisibilityManager
+              person={{ id: person.id, firstName: person.firstName }}
+              canSee={canSee.map((g) => toGrantPerson(g.owner))}
+              seenBy={seenBy.map((g) => toGrantPerson(g.viewer))}
+              candidates={candidates.map(toGrantPerson)}
+              canAdd={!former}
+            />
+          )}
+
+          {isSelf && !isFounder(viewer) && <SharedWithMe people={sharedWithMe.map(toGrantPerson)} />}
 
           {admin && (
             <ManageMember
@@ -244,6 +278,20 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
       </div>
     </FadeIn>
   );
+}
+
+const grantPersonSelect = { id: true, firstName: true, lastName: true, title: true, avatarHue: true, role: true, status: true } as const;
+
+function toGrantPerson(p: { id: string; firstName: string; lastName: string; title: string | null; avatarHue: number; role: string; status: string }): GrantPerson {
+  return {
+    id: p.id,
+    firstName: p.firstName,
+    lastName: p.lastName,
+    title: p.title,
+    avatarHue: p.avatarHue,
+    // Grants only count between current, non-founder people; say why one doesn't.
+    inactiveReason: p.role === "FOUNDER" ? "Now a founder" : p.status === "INACTIVE" ? "Former" : null,
+  };
 }
 
 function Detail({ icon, label, value }: { icon: React.ReactNode; label: string; value: React.ReactNode }) {

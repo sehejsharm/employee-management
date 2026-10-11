@@ -118,8 +118,12 @@ export async function updateMember(userId: string, input: z.input<typeof accessS
   // Founders always hold every grant.
   const grants = d.role === "FOUNDER" ? defaultGrants("FOUNDER") : { canAssignTasks: d.canAssignTasks, canManageOrg: d.canManageOrg, canManagePeople: d.canManagePeople };
 
-  await db.$transaction([
-    db.user.update({
+  // Founders see all work and their own is never shared, so a new founder's
+  // visibility grants (either way round) no longer mean anything.
+  const becomesFounder = d.role === "FOUNDER" && target.role !== "FOUNDER";
+
+  const cleared = await db.$transaction(async (tx) => {
+    await tx.user.update({
       where: { id: userId },
       data: {
         role: d.role,
@@ -129,9 +133,12 @@ export async function updateMember(userId: string, input: z.input<typeof accessS
         status: d.status,
         ...grants,
       },
-    }),
-    ...(d.status === "INACTIVE" ? [db.session.deleteMany({ where: { userId } })] : []),
-  ]);
+    });
+    if (d.status === "INACTIVE") await tx.session.deleteMany({ where: { userId } });
+    if (!becomesFounder) return 0;
+    const { count } = await tx.workVisibilityGrant.deleteMany({ where: { OR: [{ viewerId: userId }, { ownerId: userId }] } });
+    return count;
+  });
 
   const changes: string[] = [];
   if (d.role !== target.role) changes.push(`role ${ROLE_LABEL[target.role]} → ${ROLE_LABEL[d.role]}`);
@@ -139,6 +146,7 @@ export async function updateMember(userId: string, input: z.input<typeof accessS
   for (const key of ["canAssignTasks", "canManageOrg", "canManagePeople"] as const) {
     if (grants[key] !== target[key]) changes.push(`${key} ${grants[key] ? "granted" : "revoked"}`);
   }
+  if (cleared) changes.push(`${cleared} work-visibility grant${cleared === 1 ? "" : "s"} cleared`);
   await audit({
     actorId: actor.id,
     action: "account.updated",
@@ -150,12 +158,16 @@ export async function updateMember(userId: string, input: z.input<typeof accessS
   return { ok: true, message: "Account updated." };
 }
 
+/**
+ * Founders only. Whoever resets a password receives a working login for that
+ * account, and so could sign in as the person and see all their work, which
+ * only founders may do.
+ */
 export async function resetMemberPassword(userId: string): Promise<ActionResult<{ temporaryPassword: string; employeeCode: string }>> {
   const actor = await requireUser();
-  if (!canManagePeople(actor)) return { ok: false, error: "You don't have permission to reset passwords." };
+  if (!isFounder(actor)) return { ok: false, error: "Only founders can reset passwords. People added through the HR console can also be reset there." };
   const target = await db.user.findUnique({ where: { id: userId }, select: { id: true, role: true, firstName: true, lastName: true, employeeCode: true } });
   if (!target) return { ok: false, error: "That person no longer exists." };
-  if (target.role === "FOUNDER" && !isFounder(actor)) return { ok: false, error: "Only founders can reset a founder's password." };
   if (target.id === actor.id) return { ok: false, error: "Change your own password from Settings." };
 
   const { generatedPassword } = await setPassword(userId);

@@ -157,6 +157,11 @@ model User {
   notificationsSent  Notification[]   @relation("NotificationActor")
   announcements      Announcement[]
   auditEntries       AuditLog[]
+  /// Whose work this person may see: founder-granted, view only.
+  workVisibleTo      WorkVisibilityGrant[] @relation("GrantViewer")
+  /// Who may see this person's work.
+  workSharedWith     WorkVisibilityGrant[] @relation("GrantOwner")
+  workGrantsMade     WorkVisibilityGrant[] @relation("GrantGrantor")
 
   @@index([managerId])
   @@index([departmentId])
@@ -330,6 +335,26 @@ model Announcement {
   updatedAt DateTime @updatedAt
 
   @@index([pinned, createdAt])
+}
+
+/// A founder's decision that `viewer` may see `owner`'s work: the tasks the
+/// owner is assigned to, except any task a founder is on. View only: it never
+/// lets the viewer edit, comment, attach, post progress or ask for updates.
+/// Neither side may be a founder. That is checked when the grant is made and
+/// again on every read, so a later promotion to founder voids the grant.
+model WorkVisibilityGrant {
+  id          String   @id @default(cuid())
+  viewerId    String
+  viewer      User     @relation("GrantViewer", fields: [viewerId], references: [id], onDelete: Cascade)
+  ownerId     String
+  owner       User     @relation("GrantOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  /// The founder who made the decision. Kept if they are later removed.
+  grantedById String?
+  grantedBy   User?    @relation("GrantGrantor", fields: [grantedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+
+  @@unique([viewerId, ownerId])
+  @@index([ownerId])
 }
 
 /// Every call the HR console makes, minus any credentials. Lets founders see

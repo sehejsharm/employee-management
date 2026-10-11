@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { db } from "@/lib/db";
-import { getCurrentUser, getSubordinateIds } from "@/lib/auth/current-user";
-import { canViewTask } from "@/lib/permissions";
+import { getCurrentUser, getGrantedOwnerIds } from "@/lib/auth/current-user";
+import { canViewTask, taskAccess } from "@/lib/permissions";
+import { taskAccessSelect } from "@/lib/tasks/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -20,20 +21,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       fileName: true,
       mimeType: true,
       blob: { select: { data: true } },
-      task: { select: { createdById: true, archivedAt: true, assignees: { select: { userId: true } } } },
+      task: { select: { archivedAt: true, ...taskAccessSelect } },
     },
   });
   if (!attachment || attachment.kind !== "FILE" || !attachment.blob || attachment.task.archivedAt) {
     return NextResponse.json({ error: "Not found." }, { status: 404 });
   }
 
-  const subs = await getSubordinateIds(user.id);
-  const allowed = canViewTask(
-    user,
-    { createdById: attachment.task.createdById, assigneeIds: attachment.task.assignees.map((a) => a.userId) },
-    subs,
-  );
-  if (!allowed) return NextResponse.json({ error: "Not found." }, { status: 404 });
+  // Downloading is viewing: anyone who can see the task may, including through a founder's grant.
+  if (!canViewTask(user, taskAccess(attachment.task), await getGrantedOwnerIds(user))) {
+    return NextResponse.json({ error: "Not found." }, { status: 404 });
+  }
 
   const mime = attachment.mimeType || "application/octet-stream";
   const inline = INLINE.test(mime) && request.nextUrl.searchParams.get("download") !== "1";

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowUpRight, Lock, Send, Target } from "lucide-react";
+import { ArrowUpRight, Send, Target } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { Stagger, StaggerItem } from "@/components/motion";
 import { Avatar, AvatarStack } from "@/components/ui/avatar";
@@ -12,7 +12,7 @@ import { DueLabel } from "@/components/tasks/badges";
 import { STATUS_META } from "@/components/tasks/meta";
 import { requireUser } from "@/lib/auth/current-user";
 import { db } from "@/lib/db";
-import { isFounder, isLeader } from "@/lib/permissions";
+import { isFounder } from "@/lib/permissions";
 import { timeAgo } from "@/lib/time";
 import { getTimeZone } from "@/lib/tz.server";
 import { cn } from "@/lib/utils";
@@ -32,14 +32,14 @@ const taskSelect = {
 } as const;
 
 /**
- * Who in leadership is carrying what. Founders see every task; management
- * sees the shape of the work (focus and counts) without the task details.
+ * Who in leadership is carrying what: each founder's and lead's own work,
+ * what they've delegated, and their counts. That is other people's work
+ * (founders' included), so the board is for founders only.
  */
 export default async function LeadershipPage() {
   const user = await requireUser();
-  if (!isLeader(user)) notFound();
+  if (!isFounder(user)) notFound();
   const tz = await getTimeZone();
-  const detailed = isFounder(user);
   const now = new Date();
 
   const leaders = await db.user.findMany({
@@ -97,14 +97,8 @@ export default async function LeadershipPage() {
         title="Who's carrying what"
         description="Each founder's and lead's own work, what they've delegated, and what they're focused on — so nobody has to ask."
       />
-      {!detailed && (
-        <div className="mb-6 flex items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3 text-[13px] text-fg-muted">
-          <Lock className="size-4 text-fg-subtle" /> Task details on this board are visible to founders. You&apos;re seeing focus and workload.
-        </div>
-      )}
-
-      <Section title="Founders" boards={founders} detailed={detailed} tz={tz} meId={user.id} />
-      {managers.length > 0 && <Section title="Management" boards={managers} detailed={detailed} tz={tz} meId={user.id} />}
+      <Section title="Founders" boards={founders} tz={tz} meId={user.id} />
+      {managers.length > 0 && <Section title="Management" boards={managers} tz={tz} meId={user.id} />}
     </>
   );
 }
@@ -140,14 +134,14 @@ interface TaskLite {
   assignees: { user: { id: string; firstName: string; lastName: string; avatarHue: number } }[];
 }
 
-function Section({ title, boards, detailed, tz, meId }: { title: string; boards: Board[]; detailed: boolean; tz: string; meId: string }) {
+function Section({ title, boards, tz, meId }: { title: string; boards: Board[]; tz: string; meId: string }) {
   return (
     <section className="mb-10">
       <h2 className="mb-4 text-[12.5px] font-semibold uppercase tracking-[0.14em] text-fg-subtle">{title}</h2>
       <Stagger className="grid gap-5 lg:grid-cols-2 2xl:grid-cols-3">
         {boards.map((b) => (
           <StaggerItem key={b.leader.id}>
-            <LeaderCard board={b} detailed={detailed} tz={tz} isMe={b.leader.id === meId} />
+            <LeaderCard board={b} tz={tz} isMe={b.leader.id === meId} />
           </StaggerItem>
         ))}
       </Stagger>
@@ -155,7 +149,7 @@ function Section({ title, boards, detailed, tz, meId }: { title: string; boards:
   );
 }
 
-function LeaderCard({ board, detailed, tz, isMe }: { board: Board; detailed: boolean; tz: string; isMe: boolean }) {
+function LeaderCard({ board, tz, isMe }: { board: Board; tz: string; isMe: boolean }) {
   const { leader } = board;
   return (
     <article className="flex h-full flex-col overflow-hidden rounded-3xl border border-line bg-surface shadow-sm">
@@ -207,14 +201,10 @@ function LeaderCard({ board, detailed, tz, isMe }: { board: Board; detailed: boo
         ))}
       </div>
 
-      {detailed ? (
-        <div className="flex-1 space-y-5 p-5">
-          <TaskList title="Working on" tasks={board.own} tz={tz} empty="No open tasks of their own." />
-          <TaskList title="Delegated" tasks={board.delegated} tz={tz} empty="Nothing delegated right now." showAssignees />
-        </div>
-      ) : (
-        <div className="flex-1 p-5 text-[13px] text-fg-subtle">Task details are visible to founders.</div>
-      )}
+      <div className="flex-1 space-y-5 p-5">
+        <TaskList title="Working on" tasks={board.own} tz={tz} empty="No open tasks of their own." />
+        <TaskList title="Delegated" tasks={board.delegated} tz={tz} empty="Nothing delegated right now." showAssignees />
+      </div>
     </article>
   );
 }

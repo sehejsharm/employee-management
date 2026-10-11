@@ -4,7 +4,8 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { SESSION_COOKIE, hashToken } from "./tokens";
-import type { Actor } from "@/lib/permissions";
+import { NO_GRANTS, isFounder, type Actor, type GrantedOwnerIds } from "@/lib/permissions";
+import { grantedOwnersByViewer } from "@/lib/visibility";
 
 /**
  * The Data Access Layer's entry point. Reads the session cookie, looks the
@@ -59,23 +60,17 @@ export async function requireUser(): Promise<CurrentUser & Actor> {
   return user;
 }
 
-/** Ids of everyone below a person in the reporting line. */
-export const getSubordinateIds = cache(async (userId: string) => {
-  const edges = await db.user.findMany({ select: { id: true, managerId: true } });
-  const children = new Map<string, string[]>();
-  for (const e of edges) {
-    if (!e.managerId) continue;
-    const list = children.get(e.managerId) ?? [];
-    list.push(e.id);
-    children.set(e.managerId, list);
-  }
-  const result = new Set<string>();
-  const stack = [...(children.get(userId) ?? [])];
-  while (stack.length) {
-    const id = stack.pop()!;
-    if (result.has(id)) continue;
-    result.add(id);
-    stack.push(...(children.get(id) ?? []));
-  }
-  return result;
+const grantsOf = cache(async (viewerId: string): Promise<GrantedOwnerIds> => {
+  const map = await grantedOwnersByViewer([viewerId]);
+  return map.get(viewerId) ?? NO_GRANTS;
 });
+
+/**
+ * Whose work the signed-in person has been allowed to see by a founder, the
+ * only route to anyone else's work for a non-founder. Read fresh on every
+ * request (memoised only within it), so revoking a grant takes effect at once.
+ * Founders see everything and have no grants.
+ */
+export function getGrantedOwnerIds(user: Pick<Actor, "id" | "role">): Promise<GrantedOwnerIds> {
+  return isFounder(user) ? Promise.resolve(NO_GRANTS) : grantsOf(user.id);
+}

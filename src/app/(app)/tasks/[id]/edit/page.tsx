@@ -29,8 +29,8 @@ export default async function EditTaskPage({ params }: { params: Promise<{ id: s
   });
   if (!task) notFound();
   const assigneeIds = task.assignees.map((a) => a.userId);
-  if (!canEditTask(user, { createdById: task.createdById, assigneeIds })) notFound();
-  const people = await pickablePeople();
+  if (!canEditTask(user, task)) notFound();
+  const people = await pickablePeople(user, assigneeIds);
 
   return (
     <>

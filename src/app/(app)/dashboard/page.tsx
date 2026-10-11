@@ -22,10 +22,10 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { RichText } from "@/components/ui/rich-text";
 import { FocusEditor, NextDeadline, StatCard, WelcomeToast } from "@/components/dashboard/widgets";
 import { TaskRow } from "@/components/tasks/task-row";
-import { getSubordinateIds, requireUser } from "@/lib/auth/current-user";
+import { requireUser } from "@/lib/auth/current-user";
 import { founderPulse, memberDashboard, missionControl } from "@/lib/dashboard";
 import { MissionControl } from "@/components/mission/mission-control";
-import { isFounder, isLeader } from "@/lib/permissions";
+import { isFounder } from "@/lib/permissions";
 import { DUE_BUCKET_LABEL, dueBucket, formatLongDate, greeting, timeAgo, type DueBucket } from "@/lib/time";
 import { getTimeZone } from "@/lib/tz.server";
 import { cn } from "@/lib/utils";
@@ -36,8 +36,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const user = await requireUser();
   const tz = await getTimeZone();
   const params = await searchParams;
-  const leader = isLeader(user);
-  const view = leader && params.view !== "me" ? "team" : "me";
+  // Mission Control shows everyone's work, so only founders get it. Everyone else sees their own.
+  const founder = isFounder(user);
+  const view = founder && params.view !== "me" ? "team" : "me";
   const now = new Date();
 
   return (
@@ -52,17 +53,15 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         }
         description={
           view === "team"
-            ? isFounder(user)
-              ? "Here's the whole company's work — what's late, what's next, and who's carrying what."
-              : "Here's your team's work — what's late, what's next, and who's carrying what."
+            ? "Here's the whole company's work — what's late, what's next, and who's carrying what."
             : "Here's what's on your plate. Deadlines are in your local time."
         }
         actions={
-          leader ? (
+          founder ? (
             <div className="inline-flex rounded-xl border border-line bg-surface-sunken p-0.5">
               {(
                 [
-                  ["team", isFounder(user) ? "Mission Control" : "My team", UsersRound],
+                  ["team", "Mission Control", UsersRound],
                   ["me", "My work", ClipboardList],
                 ] as const
               ).map(([key, label, Icon]) => (
@@ -221,17 +220,17 @@ async function MemberView({ tz }: { tz: string }) {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Founders / management view — Mission Control                               */
+/* Founders' view — Mission Control                                          */
 /* -------------------------------------------------------------------------- */
 
 async function LeaderView({ tz }: { tz: string }) {
   const user = await requireUser();
-  const subs = await getSubordinateIds(user.id);
-  const [data, pulse] = await Promise.all([missionControl(user, subs, tz), isFounder(user) ? founderPulse() : Promise.resolve([])]);
+  if (!isFounder(user)) return <MemberView tz={tz} />;
+  const [data, pulse] = await Promise.all([missionControl(user, tz), founderPulse()]);
 
   return (
     <div className="space-y-6">
-      <MissionControl data={data} tz={tz} scopeLabel={isFounder(user) ? "Everything Focus Realm is working on, live" : "Everything your team is working on, live"} />
+      <MissionControl data={data} tz={tz} scopeLabel="Everything Focus Realm is working on, live" />
 
       {pulse.length > 0 && (
         <Card>

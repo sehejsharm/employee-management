@@ -12,7 +12,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { requireUser } from "@/lib/auth/current-user";
 import { db } from "@/lib/db";
 import { config } from "@/lib/env";
-import { canAdminister } from "@/lib/permissions";
+import { canAdminister, isFounder } from "@/lib/permissions";
 import { formatDateTime, timeAgo } from "@/lib/time";
 import { getTimeZone } from "@/lib/tz.server";
 import { cn } from "@/lib/utils";
@@ -70,7 +70,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
 
       {tab === "integration" && <Integration tz={tz} />}
       {tab === "departments" && <Departments />}
-      {tab === "audit" && <Audit tz={tz} />}
+      {tab === "audit" && <Audit tz={tz} founder={isFounder(user)} />}
     </>
   );
 }
@@ -212,8 +212,10 @@ async function Departments() {
   );
 }
 
-async function Audit({ tz }: { tz: string }) {
+async function Audit({ tz, founder }: { tz: string; founder: boolean }) {
   const entries = await db.auditLog.findMany({
+    // Who may see whose work is founders' business.
+    where: founder ? {} : { NOT: { action: { startsWith: "visibility." } } },
     orderBy: { createdAt: "desc" },
     take: 60,
     include: { actor: { select: { firstName: true, lastName: true, avatarHue: true } } },

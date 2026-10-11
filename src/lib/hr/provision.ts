@@ -250,6 +250,10 @@ async function updateExisting(
     data,
     select: { id: true, employeeCode: true, email: true },
   });
+  // A new founder's work-visibility grants, either way round, no longer apply.
+  if (e.role === "FOUNDER" && existing.role !== "FOUNDER") {
+    await db.workVisibilityGrant.deleteMany({ where: { OR: [{ viewerId: existing.id }, { ownerId: existing.id }] } });
+  }
 
   // Credentials are only replaced when the HR console explicitly sends them.
   let generated: string | null = null;

@@ -23,7 +23,7 @@ export interface ShellUser {
 }
 
 export interface ShellFlags {
-  isLeader: boolean;
+  isFounder: boolean;
   canAssign: boolean;
   canAdminister: boolean;
   canManagePeople: boolean;
@@ -46,7 +46,8 @@ export function navItems(flags: ShellFlags): NavItem[] {
     { href: "/people", label: "People", icon: Users, section: "company", match: (p) => p.startsWith("/people") },
     { href: "/announcements", label: "Announcements", icon: Megaphone, section: "company" },
   ];
-  if (flags.isLeader) {
+  // The leadership board shows founders' and leads' workloads, so it is founders-only.
+  if (flags.isFounder) {
     items.push({ href: "/leadership", label: "Leadership", icon: Telescope, section: "leadership" });
   }
   if (flags.canAdminister) {

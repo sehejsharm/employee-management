@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth/current-user";
+import { getCurrentUser, getGrantedOwnerIds } from "@/lib/auth/current-user";
 import { syncDeadlineAlertsFor } from "@/lib/notifications";
 import { notificationFeed } from "@/lib/notification-feed";
 
@@ -10,7 +10,7 @@ const lastSweep = new Map<string, number>();
 
 export async function GET() {
   const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+  if (!user || user.mustChangePassword) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
 
   const now = Date.now();
   if ((lastSweep.get(user.id) ?? 0) < now - 60_000) {
@@ -18,6 +18,6 @@ export async function GET() {
     await syncDeadlineAlertsFor(user.id).catch((e) => console.error("deadline sweep failed", e));
   }
 
-  const feed = await notificationFeed(user.id);
+  const feed = await notificationFeed(user, await getGrantedOwnerIds(user));
   return NextResponse.json(feed, { headers: { "Cache-Control": "no-store" } });
 }

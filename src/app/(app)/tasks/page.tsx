@@ -5,21 +5,21 @@ import type { Prisma } from "@/generated/prisma/client";
 import { PageHeader } from "@/components/app/page-header";
 import { Button } from "@/components/ui/button";
 import { TasksView, type Scope } from "@/components/tasks/tasks-view";
-import { getSubordinateIds, requireUser } from "@/lib/auth/current-user";
+import { getGrantedOwnerIds, requireUser } from "@/lib/auth/current-user";
 import { db } from "@/lib/db";
 import { canAssignTasks, isFounder } from "@/lib/permissions";
-import { taskRowSelect, toClientRow } from "@/lib/tasks/queries";
+import { grantedWorkWhere, taskRowSelect, taskVisibilityWhere, toClientRow } from "@/lib/tasks/queries";
 import { getTimeZone } from "@/lib/tz.server";
 
 export const metadata: Metadata = { title: "Tasks" };
 
-type ScopeKey = "mine" | "delegated" | "team" | "all";
+type ScopeKey = "mine" | "delegated" | "shared" | "all";
 
 export default async function TasksPage({ searchParams }: { searchParams: Promise<{ scope?: string; view?: string }> }) {
   const user = await requireUser();
   const tz = await getTimeZone();
   const params = await searchParams;
-  const subs = await getSubordinateIds(user.id);
+  const granted = await getGrantedOwnerIds(user);
 
   const filters: Partial<Record<ScopeKey, Prisma.TaskWhereInput>> = {
     mine: { assignees: { some: { userId: user.id } } },
@@ -27,15 +27,14 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   if (canAssignTasks(user)) {
     filters.delegated = { createdById: user.id, assignees: { some: { userId: { not: user.id } } } };
   }
-  if (!isFounder(user) && subs.size) {
-    filters.team = { assignees: { some: { userId: { in: [...subs] } } } };
-  }
+  // The work of people a founder has allowed this person to see.
+  if (!isFounder(user) && granted.size) filters.shared = grantedWorkWhere(granted);
   if (isFounder(user)) filters.all = {};
 
   const labels: Record<ScopeKey, string> = {
     mine: "Assigned to me",
     delegated: "Assigned by me",
-    team: "My team",
+    shared: "Shared with me",
     all: "Everyone",
   };
 
@@ -43,15 +42,16 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   const scope: ScopeKey = keys.includes(params.scope as ScopeKey) ? (params.scope as ScopeKey) : "mine";
   const view = params.view === "board" || params.view === "calendar" ? params.view : "list";
 
-  const base: Prisma.TaskWhereInput = { archivedAt: null };
+  // Every scope is narrowed to what this person may see, so no tab can widen it.
+  const base: Prisma.TaskWhereInput = { AND: [{ archivedAt: null }, taskVisibilityWhere(user, granted)] };
   const [rows, ...counts] = await Promise.all([
     db.task.findMany({
-      where: { ...base, ...filters[scope] },
+      where: { AND: [base, filters[scope]!] },
       select: taskRowSelect,
       orderBy: { dueAt: "asc" },
       take: 600,
     }),
-    ...keys.map((k) => db.task.count({ where: { ...base, ...filters[k], status: { not: "DONE" } } })),
+    ...keys.map((k) => db.task.count({ where: { AND: [base, filters[k]!, { status: { not: "DONE" } }] } })),
   ]);
 
   const scopes: Scope[] = keys.map((k, i) => ({ key: k, label: labels[k], count: counts[i] }));

@@ -15,9 +15,10 @@ export async function setManager(userId: string, managerId: string | null): Prom
   const actor = await requireUser();
   if (!canManageOrg(actor)) return { ok: false, error: "Only founders, or people they've allowed, can edit the org chart." };
 
-  const edges = await db.user.findMany({ select: { id: true, managerId: true, firstName: true, lastName: true, status: true } });
+  const edges = await db.user.findMany({ select: { id: true, managerId: true, firstName: true, lastName: true, status: true, role: true } });
   const person = edges.find((e) => e.id === userId);
   if (!person) return { ok: false, error: "That person no longer exists." };
+  if (person.role === "FOUNDER" && !isFounder(actor)) return { ok: false, error: "Only founders can move a founder on the org chart." };
   if (managerId) {
     const manager = edges.find((e) => e.id === managerId);
     if (!manager) return { ok: false, error: "That manager no longer exists." };

@@ -10,7 +10,7 @@ export const metadata: Metadata = { title: "New task" };
 
 export default async function NewTaskPage({ searchParams }: { searchParams: Promise<{ for?: string }> }) {
   const user = await requireUser();
-  const people = await pickablePeople();
+  const people = await pickablePeople(user);
   const { for: presetFor } = await searchParams;
   const canAssign = canAssignTasks(user);
   const preset = canAssign && people.some((p) => p.id === presetFor) ? presetFor : undefined;

@@ -55,41 +55,108 @@ export function defaultGrants(role: Role) {
   };
 }
 
+/**
+ * What the task rules need to know about a task. Build it with `taskAccess`
+ * from the assignees' CURRENT roles, so a promotion to founder takes effect at
+ * once.
+ */
 export interface TaskAccessContext {
   createdById: string;
   assigneeIds: string[];
+  /** A founder is on the task, which makes it founders' work. */
+  founderAssigned: boolean;
+}
+
+/** The ids of the people whose work a viewer has been allowed to see. Empty for founders. */
+export type GrantedOwnerIds = ReadonlySet<string>;
+
+export const NO_GRANTS: GrantedOwnerIds = new Set<string>();
+
+type Who = Pick<Actor, "id" | "role">;
+
+/** Builds the access context from a task's creator and its assignees with their roles. */
+export function taskAccess(task: { createdById: string; assignees: { userId: string; user: { role: Role } }[] }): TaskAccessContext {
+  return {
+    createdById: task.createdById,
+    assigneeIds: task.assignees.map((a) => a.userId),
+    founderAssigned: task.assignees.some((a) => a.user.role === "FOUNDER"),
+  };
+}
+
+/** The creator and the assignees: the people a task belongs to. */
+function isParticipant(a: Who, task: Pick<TaskAccessContext, "createdById" | "assigneeIds">) {
+  return task.createdById === a.id || task.assigneeIds.includes(a.id);
 }
 
 /**
- * Who can see a task: founders see everything; everyone else sees what they
- * created or are assigned, and leaders also see their reporting line's work.
+ * Who can see a task, and everything on it. Founders see everything. Anyone
+ * else sees a task they created or are assigned to, plus the tasks of people a
+ * founder has allowed them to see, unless a founder is on the task: founders'
+ * work stays with founders and the people on it. Reporting lines, departments
+ * and permission flags grant nothing.
+ *
+ * `taskVisibilityWhere` in src/lib/tasks/queries.ts is the same rule as a
+ * database filter; the two must always agree.
  */
-export function canViewTask(a: Actor, task: TaskAccessContext, subordinateIds?: Set<string>) {
+export function canViewTask(a: Who, task: TaskAccessContext, grantedOwnerIds: GrantedOwnerIds) {
   if (isFounder(a)) return true;
-  if (task.createdById === a.id || task.assigneeIds.includes(a.id)) return true;
-  if (subordinateIds && task.assigneeIds.some((id) => subordinateIds.has(id))) return true;
-  return false;
+  if (isParticipant(a, task)) return true;
+  return !task.founderAssigned && task.assigneeIds.some((id) => grantedOwnerIds.has(id));
 }
 
 /** Title, description, deadline, assignees, priority. */
-export function canEditTask(a: Actor, task: TaskAccessContext) {
+export function canEditTask(a: Who, task: Pick<TaskAccessContext, "createdById">) {
   return isFounder(a) || task.createdById === a.id;
 }
 
 /** Moving a task through its statuses. */
-export function canChangeStatus(a: Actor, task: TaskAccessContext) {
+export function canChangeStatus(a: Who, task: Pick<TaskAccessContext, "createdById" | "assigneeIds">) {
   return canEditTask(a, task) || task.assigneeIds.includes(a.id);
 }
 
-/** Asking assignees for a progress update. */
-export function canRequestUpdate(a: Actor, task: TaskAccessContext, subordinateIds?: Set<string>) {
+/** Asking assignees for a progress update: founders and whoever created the task. */
+export function canRequestUpdate(a: Who, task: Pick<TaskAccessContext, "createdById" | "assigneeIds">) {
   if (task.assigneeIds.length === 0) return false;
   if (task.assigneeIds.length === 1 && task.assigneeIds[0] === a.id) return false;
-  if (isFounder(a) || task.createdById === a.id) return true;
-  return isLeader(a) && !!subordinateIds && task.assigneeIds.some((id) => subordinateIds.has(id));
+  return isFounder(a) || task.createdById === a.id;
 }
 
-/** Anyone involved can comment, attach and post progress. */
-export function canContribute(a: Actor, task: TaskAccessContext, subordinateIds?: Set<string>) {
-  return canViewTask(a, task, subordinateIds);
+/**
+ * Commenting, attaching, posting progress and editing the checklist: founders,
+ * the creator and the assignees. Being allowed to see someone's work is view
+ * only, so this deliberately takes no grants.
+ */
+export function canContribute(a: Who, task: Pick<TaskAccessContext, "createdById" | "assigneeIds">) {
+  return isFounder(a) || isParticipant(a, task);
+}
+
+/**
+ * Why `actor` may not newly put these people on a task, or null when they may.
+ * Only founders add founders: a founder on a task makes it founders' work.
+ */
+export function assigneeProblem(actor: Actor, added: { id: string; role: Role }[]) {
+  if (!canAssignTasks(actor) && added.some((p) => p.id !== actor.id)) {
+    return "You can create tasks for yourself. Ask a founder to give you assigning rights for others.";
+  }
+  if (!isFounder(actor) && added.some((p) => p.role === "FOUNDER")) {
+    return "Only founders can put a founder on a task.";
+  }
+  return null;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Work visibility grants                                                     */
+/* -------------------------------------------------------------------------- */
+
+/** Only founders decide who may see whose work. */
+export const canManageVisibilityGrants = (a: Pick<Actor, "role">) => isFounder(a);
+
+type GrantParty = { id: string; role: Role; status: EmploymentStatus };
+
+/** Why `viewer` may not be allowed to see `owner`'s work, or null when they may. */
+export function visibilityGrantProblem(viewer: GrantParty, owner: GrantParty) {
+  if (viewer.id === owner.id) return "Everyone already sees their own work.";
+  if (viewer.role === "FOUNDER" || owner.role === "FOUNDER") return "Founders see all work, and their own work is never shared this way.";
+  if (viewer.status === "INACTIVE" || owner.status === "INACTIVE") return "That person has left the company.";
+  return null;
 }

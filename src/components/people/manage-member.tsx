@@ -9,6 +9,7 @@ import { Dialog, DialogClose, DialogContent, DialogFooter } from "@/components/u
 import { Field, Input, NativeSelect } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { resetMemberPassword, revokeMemberSessions, updateMember } from "@/actions/people";
+import { cn } from "@/lib/utils";
 import { CredentialReveal } from "./credential-reveal";
 
 type Role = "FOUNDER" | "MANAGER" | "EMPLOYEE" | "INTERN";
@@ -161,10 +162,13 @@ export function ManageMember({ member, departments, managers, actorIsFounder, is
             </Button>
 
             {!isSelf && (
-              <div className="grid gap-2 border-t border-line pt-4 sm:grid-cols-2">
-                <Button variant="secondary" onClick={reset} disabled={pending}>
-                  <KeyRound /> Reset password
-                </Button>
+              <div className={cn("grid gap-2 border-t border-line pt-4", actorIsFounder && "sm:grid-cols-2")}>
+                {/* Only founders: a reset hands over a working login for the account. */}
+                {actorIsFounder && (
+                  <Button variant="secondary" onClick={reset} disabled={pending}>
+                    <KeyRound /> Reset password
+                  </Button>
+                )}
                 <Button variant="secondary" onClick={signOut} disabled={pending}>
                   <LogOut /> Sign out everywhere
                 </Button>

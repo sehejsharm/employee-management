@@ -55,25 +55,15 @@ export async function memberDashboard(userId: string) {
   };
 }
 
-/** Who a leader looks after: everyone for founders, the reporting line for managers. */
-async function teamIds(user: Actor, subordinateIds: Set<string>) {
-  if (isFounder(user)) {
-    const all = await db.user.findMany({ where: { status: { not: "INACTIVE" } }, select: { id: true } });
-    return all.map((u) => u.id);
-  }
-  return [user.id, ...subordinateIds];
-}
-
 /**
- * Mission control: the whole team's work as live telemetry. Founders see the
- * company; managers see their reporting line and the work they've handed out.
+ * Mission Control: the whole company's work as live telemetry, with every
+ * person's workload and deadline health. Founders only: nobody else may see
+ * other people's work in aggregate, so this refuses anyone else outright.
  */
-export async function missionControl(user: Actor, subordinateIds: Set<string>, tz: string) {
+export async function missionControl(user: Actor, tz: string) {
+  if (!isFounder(user)) throw new Error("Mission Control is for founders only.");
   const now = new Date();
-  const ids = await teamIds(user, subordinateIds);
-  const scope: Prisma.TaskWhereInput = isFounder(user)
-    ? { archivedAt: null }
-    : { archivedAt: null, OR: [{ createdById: user.id }, { assignees: { some: { userId: { in: ids } } } }] };
+  const scope: Prisma.TaskWhereInput = { archivedAt: null };
 
   const weekAgo = new Date(now.getTime() - 7 * DAY);
   const twoWeeksAgo = new Date(now.getTime() - 14 * DAY);
@@ -91,7 +81,7 @@ export async function missionControl(user: Actor, subordinateIds: Set<string>, t
       db.task.groupBy({ by: ["status"], where: { AND: [scope, open] }, _count: { _all: true } }),
       db.task.findMany({ where: { AND: [scope, open] }, select: taskRowSelect, orderBy: { dueAt: "asc" }, take: 8 }),
       db.updateRequest.findMany({
-        where: { resolvedAt: null, task: { AND: [scope, open] }, ...(isFounder(user) ? {} : { requestedById: user.id }) },
+        where: { resolvedAt: null, task: { AND: [scope, open] } },
         orderBy: { createdAt: "asc" },
         take: 6,
         select: {
@@ -124,7 +114,7 @@ export async function missionControl(user: Actor, subordinateIds: Set<string>, t
         },
       }),
       db.user.findMany({
-        where: { id: { in: ids }, status: { not: "INACTIVE" } },
+        where: { status: { not: "INACTIVE" } },
         orderBy: { orgOrder: "asc" },
         select: {
           id: true,

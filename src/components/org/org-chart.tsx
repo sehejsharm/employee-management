@@ -65,11 +65,14 @@ export function OrgChart({
   departments,
   canEdit,
   meId,
+  viewerIsFounder,
 }: {
   people: OrgPerson[];
   departments: { id: string; name: string; color: string }[];
   canEdit: boolean;
   meId: string;
+  /** Only founders may give a founder work. */
+  viewerIsFounder: boolean;
 }) {
   const [showFormer, setShowFormer] = React.useState(false);
   const [editMode, setEditMode] = React.useState(false);
@@ -367,6 +370,7 @@ export function OrgChart({
         people={local}
         departments={departments}
         canEdit={canEdit}
+        canAssign={viewerIsFounder || selected?.role !== "FOUNDER"}
         onClose={() => setSelected(null)}
         onSaved={(p) => setLocal((list) => list.map((x) => (x.id === p.id ? p : x)))}
       />
@@ -592,6 +596,7 @@ function PersonSheet({
   people,
   departments,
   canEdit,
+  canAssign,
   onClose,
   onSaved,
 }: {
@@ -599,6 +604,7 @@ function PersonSheet({
   people: OrgPerson[];
   departments: { id: string; name: string; color: string }[];
   canEdit: boolean;
+  canAssign: boolean;
   onClose: () => void;
   onSaved: (p: OrgPerson) => void;
 }) {
@@ -661,9 +667,11 @@ function PersonSheet({
           <Button asChild variant="secondary" size="sm" className="flex-1">
             <Link href={`/people/${person.id}`}>View profile</Link>
           </Button>
-          <Button asChild variant="soft" size="sm" className="flex-1">
-            <Link href={`/tasks/new?for=${person.id}`}>Assign a task</Link>
-          </Button>
+          {canAssign && (
+            <Button asChild variant="soft" size="sm" className="flex-1">
+              <Link href={`/tasks/new?for=${person.id}`}>Assign a task</Link>
+            </Button>
+          )}
         </div>
 
         {canEdit && (

@@ -32,6 +32,7 @@ async function main() {
     db.integrationEvent.deleteMany(),
     db.auditLog.deleteMany(),
     db.session.deleteMany(),
+    db.workVisibilityGrant.deleteMany(),
     db.user.updateMany({ data: { managerId: null } }),
     db.user.deleteMany(),
     db.department.deleteMany(),
@@ -370,6 +371,19 @@ async function main() {
         createdAt: new Date(now - 5 * DAY),
       },
     ],
+  });
+
+  // One founder decision to show the feature: Arjun may see Rohan's work (view only).
+  await db.workVisibilityGrant.create({ data: { viewerId: users.arjun.id, ownerId: users.rohan.id, grantedById: users.aarav.id } });
+  await db.auditLog.create({
+    data: {
+      actorId: users.aarav.id,
+      action: "visibility.granted",
+      targetType: "user",
+      targetId: users.arjun.id,
+      summary: "Let Arjun Rao see Rohan Gupta's work (view only)",
+      meta: { viewerId: users.arjun.id, ownerId: users.rohan.id },
+    },
   });
 
   console.log(`Seeded ${people.length} people, ${tasks.length} tasks.`);

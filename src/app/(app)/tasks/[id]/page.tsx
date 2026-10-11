@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeft, ListChecks, MessageCircleQuestion, MessagesSquare, Paperclip } from "lucide-react";
+import { cache } from "react";
+import { ChevronLeft, Eye, ListChecks, MessageCircleQuestion, MessagesSquare, Paperclip } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { RichText } from "@/components/ui/rich-text";
@@ -16,22 +17,23 @@ import {
   HeaderStatus,
   TaskActions,
 } from "@/components/tasks/task-detail-client";
-import { getSubordinateIds, requireUser } from "@/lib/auth/current-user";
+import { getCurrentUser, getGrantedOwnerIds, requireUser } from "@/lib/auth/current-user";
 import { db } from "@/lib/db";
 import { config } from "@/lib/env";
-import { canChangeStatus, canContribute, canEditTask, canRequestUpdate, canViewTask } from "@/lib/permissions";
+import { canChangeStatus, canContribute, canEditTask, canRequestUpdate, canViewTask, taskAccess, type Actor } from "@/lib/permissions";
 import { formatDateTime, timeAgo } from "@/lib/time";
 import { getTimeZone } from "@/lib/tz.server";
 import { taskRef } from "@/lib/utils";
 
 const person = { id: true, firstName: true, lastName: true, avatarHue: true, title: true } as const;
 
-async function load(id: string) {
+/** Shared by the page and its metadata, so the task is read once per request. */
+const load = cache(async (id: string) => {
   return db.task.findFirst({
     where: { id, archivedAt: null },
     include: {
       createdBy: { select: person },
-      assignees: { select: { user: { select: person } }, orderBy: { assignedAt: "asc" } },
+      assignees: { select: { userId: true, user: { select: { ...person, role: true } } }, orderBy: { assignedAt: "asc" } },
       checklist: { orderBy: { position: "asc" }, select: { id: true, text: true, done: true } },
       attachments: {
         orderBy: { createdAt: "asc" },
@@ -67,11 +69,19 @@ async function load(id: string) {
       },
     },
   });
+});
+
+/** The task, if it exists and this person may see it. A task you can't see doesn't exist, as far as you can tell. */
+async function loadVisible(user: Pick<Actor, "id" | "role">, id: string) {
+  const task = await load(id);
+  if (!task || !canViewTask(user, taskAccess(task), await getGrantedOwnerIds(user))) return null;
+  return task;
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
-  const task = await db.task.findUnique({ where: { id }, select: { number: true } });
+  const user = await getCurrentUser();
+  const task = user ? await loadVisible(user, id) : null;
   return { title: task ? taskRef(task.number) : "Task" };
 }
 
@@ -79,17 +89,14 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
   const user = await requireUser();
   const tz = await getTimeZone();
   const { id } = await params;
-  const task = await load(id);
+  const task = await loadVisible(user, id);
   if (!task) notFound();
 
-  const subs = await getSubordinateIds(user.id);
-  const access = { createdById: task.createdById, assigneeIds: task.assignees.map((a) => a.user.id) };
-  // A task you can't see doesn't exist, as far as you can tell.
-  if (!canViewTask(user, access, subs)) notFound();
-
+  const access = taskAccess(task);
   const isAssignee = access.assigneeIds.includes(user.id);
   const editable = canEditTask(user, access);
-  const contribute = canContribute(user, access, subs);
+  // Seeing a task through a founder's grant is view only: no composer, uploads, checklist or requests.
+  const contribute = canContribute(user, access);
   const ref = taskRef(task.number);
   const openRequests = task.updateRequests;
 
@@ -118,7 +125,7 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
           taskId={task.id}
           taskRef={ref}
           canEdit={editable}
-          canRequest={canRequestUpdate(user, access, subs)}
+          canRequest={canRequestUpdate(user, access)}
           assigneeNames={task.assignees.map((a) => a.user.firstName).join(", ")}
         />
       </div>
@@ -189,7 +196,7 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
                   size: a.size,
                   createdAt: a.createdAt.toISOString(),
                   createdBy: a.createdBy,
-                  canRemove: a.createdById === user.id || editable,
+                  canRemove: contribute && (a.createdById === user.id || editable),
                 }))}
               />
             </CardBody>
@@ -211,6 +218,11 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
               tz={tz}
               entries={task.activities.map((a) => ({ ...a, meta: (a.meta as Record<string, unknown> | null) ?? null }))}
             />
+            {!contribute && (
+              <p className="mt-5 flex items-center gap-2 rounded-xl border border-line bg-surface-sunken/60 px-4 py-3 text-[13px] text-fg-muted">
+                <Eye className="size-4 shrink-0 text-fg-subtle" /> A founder has let you see this work. It&apos;s view only: you can read everything, but not change or add to it.
+              </p>
+            )}
             {contribute && (
               <div className="mt-5">
                 <ActivityComposer

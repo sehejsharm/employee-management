@@ -3,15 +3,17 @@
 import { refresh } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { getSubordinateIds, requireUser, type CurrentUser } from "@/lib/auth/current-user";
+import { requireUser, type CurrentUser } from "@/lib/auth/current-user";
 import {
-  canAssignTasks,
+  assigneeProblem,
   canChangeStatus,
   canContribute,
   canEditTask,
   canRequestUpdate,
+  taskAccess,
   type Actor,
 } from "@/lib/permissions";
+import { taskAccessSelect } from "@/lib/tasks/queries";
 import { notify } from "@/lib/notifications";
 import { config } from "@/lib/env";
 import { formatBytes, fullName, safeHttpUrl, taskRef, type ActionResult } from "@/lib/utils";
@@ -46,48 +48,49 @@ async function loadTask(taskId: string) {
       title: true,
       status: true,
       dueAt: true,
-      createdById: true,
-      assignees: { select: { userId: true } },
+      ...taskAccessSelect,
     },
   });
 }
 
 type LoadedTask = NonNullable<Awaited<ReturnType<typeof loadTask>>>;
 
-function ctx(task: LoadedTask) {
-  return { createdById: task.createdById, assigneeIds: task.assignees.map((a) => a.userId) };
-}
+const ctx = (task: LoadedTask) => taskAccess(task);
 
 /** Everyone with a stake in a task: its creator and its assignees. */
 function participants(task: LoadedTask) {
   return [task.createdById, ...task.assignees.map((a) => a.userId)];
 }
 
-async function withTask(
-  taskId: string,
-  check: (user: CurrentUser & Actor, task: LoadedTask, subs: Set<string>) => boolean,
-) {
+/**
+ * Loads a task and runs a permission check on it. Every action that touches
+ * one goes through here. A missing task and a forbidden one get the same
+ * answer, so an action can't be used to probe which tasks exist.
+ */
+async function withTask(taskId: string, check: (user: CurrentUser & Actor, task: LoadedTask) => boolean) {
   const user = await requireUser();
   const task = await loadTask(taskId);
-  if (!task) return { error: "That task no longer exists." } as const;
-  const subs = await getSubordinateIds(user.id);
-  if (!check(user, task, subs)) return { error: "You don't have permission to do that on this task." } as const;
-  return { user, task, subs } as const;
+  if (!task || !check(user, task)) return { error: "That task doesn't exist, or you don't have permission to do that on it." } as const;
+  return { user, task } as const;
 }
 
-/** Assignees must be real, current people. Former employees can't be given work. */
-async function validateAssignees(user: Actor, ids: string[]) {
+/**
+ * Assignees must be real, current people. Only founders may put a founder on
+ * a task. `existing` are the people already on it: they are checked for being
+ * active, but the rules about who may be added apply only to newcomers, so the
+ * creator can still edit a task a founder has joined.
+ */
+async function validateAssignees(user: Actor, ids: string[], existing: string[] = []) {
   const unique = [...new Set(ids)];
   if (unique.length === 0) return { error: "Assign the task to at least one person." } as const;
   if (unique.length > 25) return { error: "A task can have at most 25 assignees." } as const;
-  if (!canAssignTasks(user) && unique.some((id) => id !== user.id)) {
-    return { error: "You can create tasks for yourself. Ask a founder to give you assigning rights for others." } as const;
-  }
   const found = await db.user.findMany({
     where: { id: { in: unique }, status: { not: "INACTIVE" } },
-    select: { id: true },
+    select: { id: true, role: true },
   });
   if (found.length !== unique.length) return { error: "One of the selected people is no longer active." } as const;
+  const problem = assigneeProblem(user, found.filter((p) => !existing.includes(p.id)));
+  if (problem) return { error: problem } as const;
   return { ids: unique } as const;
 }
 
@@ -180,7 +183,7 @@ export async function updateTask(taskId: string, input: z.input<typeof editSchem
   if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
   const data = parsed.data;
 
-  const assignees = await validateAssignees(user, data.assigneeIds);
+  const assignees = await validateAssignees(user, data.assigneeIds, ctx(task).assigneeIds);
   if ("error" in assignees) return { ok: false, error: assignees.error! };
 
   const current = await db.task.findUniqueOrThrow({
@@ -300,7 +303,7 @@ const updateSchema = z.object({
  * task, and tells whoever asked.
  */
 export async function postProgressUpdate(taskId: string, input: z.input<typeof updateSchema>): Promise<ActionResult> {
-  const r = await withTask(taskId, (u, t) => ctx(t).assigneeIds.includes(u.id) || canEditTask(u, ctx(t)));
+  const r = await withTask(taskId, (u, t) => canContribute(u, ctx(t)));
   if ("error" in r) return { ok: false, error: r.error! };
   const { user, task } = r;
 
@@ -346,7 +349,7 @@ export async function postProgressUpdate(taskId: string, input: z.input<typeof u
 const requestSchema = z.object({ message: z.string().trim().max(1000).optional().default("") });
 
 export async function requestUpdate(taskId: string, input: z.input<typeof requestSchema>): Promise<ActionResult> {
-  const r = await withTask(taskId, (u, t, subs) => canRequestUpdate(u, ctx(t), subs));
+  const r = await withTask(taskId, (u, t) => canRequestUpdate(u, ctx(t)));
   if ("error" in r) return { ok: false, error: r.error! };
   const { user, task } = r;
   const { message } = requestSchema.parse(input);
@@ -382,7 +385,7 @@ export async function requestUpdate(taskId: string, input: z.input<typeof reques
 /* -------------------------------------------------------------------------- */
 
 export async function postComment(taskId: string, body: string): Promise<ActionResult> {
-  const r = await withTask(taskId, (u, t, subs) => canContribute(u, ctx(t), subs));
+  const r = await withTask(taskId, (u, t) => canContribute(u, ctx(t)));
   if ("error" in r) return { ok: false, error: r.error! };
   const { user, task } = r;
   const text = body.trim();
@@ -408,7 +411,7 @@ export async function postComment(taskId: string, body: string): Promise<ActionR
 /* -------------------------------------------------------------------------- */
 
 export async function addLink(taskId: string, input: z.input<typeof linkSchema>): Promise<ActionResult> {
-  const r = await withTask(taskId, (u, t, subs) => canContribute(u, ctx(t), subs));
+  const r = await withTask(taskId, (u, t) => canContribute(u, ctx(t)));
   if ("error" in r) return { ok: false, error: r.error! };
   const parsed = linkSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
@@ -425,7 +428,7 @@ export async function addLink(taskId: string, input: z.input<typeof linkSchema>)
 }
 
 export async function addNote(taskId: string, input: z.input<typeof noteSchema>): Promise<ActionResult> {
-  const r = await withTask(taskId, (u, t, subs) => canContribute(u, ctx(t), subs));
+  const r = await withTask(taskId, (u, t) => canContribute(u, ctx(t)));
   if ("error" in r) return { ok: false, error: r.error! };
   const parsed = noteSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
@@ -444,7 +447,7 @@ export async function addNote(taskId: string, input: z.input<typeof noteSchema>)
 const BLOCKED_EXTENSIONS = /\.(exe|bat|cmd|com|msi|sh|ps1|scr|js|vbs|jar|html?|svg|xhtml)$/i;
 
 export async function uploadFile(taskId: string, formData: FormData): Promise<ActionResult> {
-  const r = await withTask(taskId, (u, t, subs) => canContribute(u, ctx(t), subs));
+  const r = await withTask(taskId, (u, t) => canContribute(u, ctx(t)));
   if ("error" in r) return { ok: false, error: r.error! };
 
   const file = formData.get("file");
@@ -485,11 +488,10 @@ export async function removeAttachment(attachmentId: string): Promise<ActionResu
     where: { id: attachmentId },
     select: { id: true, taskId: true, title: true, kind: true, createdById: true, blobId: true },
   });
-  if (!attachment) return { ok: false, error: "That attachment is already gone." };
-  const task = await loadTask(attachment.taskId);
-  if (!task) return { ok: false, error: "That task no longer exists." };
-  if (attachment.createdById !== user.id && !canEditTask(user, ctx(task))) {
-    return { ok: false, error: "Only whoever added it, or the task's owner, can remove this." };
+  const task = attachment ? await loadTask(attachment.taskId) : null;
+  // Only someone still working on the task: whoever added it, or the task's owner.
+  if (!attachment || !task || !canContribute(user, ctx(task)) || (attachment.createdById !== user.id && !canEditTask(user, ctx(task)))) {
+    return { ok: false, error: "That attachment is gone, or you can't remove it." };
   }
 
   await db.$transaction([
@@ -508,7 +510,7 @@ export async function removeAttachment(attachmentId: string): Promise<ActionResu
 /* -------------------------------------------------------------------------- */
 
 export async function addChecklistItem(taskId: string, text: string): Promise<ActionResult> {
-  const r = await withTask(taskId, (u, t, subs) => canContribute(u, ctx(t), subs));
+  const r = await withTask(taskId, (u, t) => canContribute(u, ctx(t)));
   if ("error" in r) return { ok: false, error: r.error! };
   const clean = text.trim().slice(0, 300);
   if (!clean) return { ok: false, error: "Write the item first." };
@@ -520,8 +522,8 @@ export async function addChecklistItem(taskId: string, text: string): Promise<Ac
 
 async function checklistAccess(itemId: string) {
   const item = await db.checklistItem.findUnique({ where: { id: itemId }, select: { taskId: true } });
-  if (!item) return { error: "That item is gone." } as const;
-  return withTask(item.taskId, (u, t, subs) => canContribute(u, ctx(t), subs));
+  if (!item) return { error: "That task doesn't exist, or you don't have permission to do that on it." } as const;
+  return withTask(item.taskId, (u, t) => canContribute(u, ctx(t)));
 }
 
 export async function toggleChecklistItem(itemId: string, done: boolean): Promise<ActionResult> {

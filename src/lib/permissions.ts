@@ -97,12 +97,11 @@ export function canChangeStatus(a: Actor, task: TaskAccessContext) {
   return canEditTask(a, task) || task.assigneeIds.includes(a.id);
 }
 
-/** Asking assignees for a progress update: founders, whoever assigned it, or a leader cleared to see it. */
-export function canRequestUpdate(a: Actor, task: TaskAccessContext, clearedIds?: Set<string>) {
+/** Asking assignees for a progress update: founders and whoever assigned it. Clearance is look-only, so it doesn't count. */
+export function canRequestUpdate(a: Actor, task: TaskAccessContext) {
   if (task.assigneeIds.length === 0) return false;
   if (task.assigneeIds.length === 1 && task.assigneeIds[0] === a.id) return false;
-  if (isFounder(a) || task.createdById === a.id) return true;
-  return isLeader(a) && !task.involvesFounder && !!clearedIds && task.assigneeIds.some((id) => clearedIds.has(id));
+  return isFounder(a) || task.createdById === a.id;
 }
 
 /** Commenting, attaching and checking things off: the people doing the work, whoever assigned it, and founders. Clearance is look-only. */

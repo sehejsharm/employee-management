@@ -8,6 +8,8 @@ import { activeClearanceWhere } from "@/lib/clearance";
 import { notify } from "@/lib/notifications";
 import { audit } from "@/lib/audit";
 import { isFounder } from "@/lib/permissions";
+import { config } from "@/lib/env";
+import { formatDate, isValidTimeZone } from "@/lib/time";
 import { fullName, type ActionResult } from "@/lib/utils";
 
 /**
@@ -17,6 +19,12 @@ import { fullName, type ActionResult } from "@/lib/utils";
  */
 
 const NO_FOUNDER_WORK = "No clearance given — founders' work is visible only to other founders.";
+
+/** Notifications are written once for their reader, so dates use the company's time zone. */
+function companyTimeZone() {
+  const tz = config.timeZone();
+  return isValidTimeZone(tz) ? tz : "Asia/Kolkata";
+}
 
 async function activeFounderIds() {
   const founders = await db.user.findMany({ where: { role: "FOUNDER", status: { not: "INACTIVE" } }, select: { id: true } });
@@ -90,8 +98,15 @@ export async function withdrawClearanceRequest(requestId: string): Promise<Actio
 /* Answering: the colleague, then a founder                                   */
 /* -------------------------------------------------------------------------- */
 
-/** Creates the clearance once both the colleague and a founder have said yes. */
-async function settle(requestId: string) {
+type Settled = "PENDING" | "APPROVED" | "DECLINED" | "WITHDRAWN";
+
+/**
+ * Settles a request once its answers are in: declined if either side said no
+ * (or the colleague has since become a founder), cleared once both said yes.
+ * Each outcome is claimed with a conditional update, so two answers landing at
+ * the same moment can't both act on it. Returns where the request ends up.
+ */
+async function settle(requestId: string): Promise<Settled | null> {
   const r = await db.clearanceRequest.findUnique({
     where: { id: requestId },
     select: {
@@ -106,51 +121,77 @@ async function settle(requestId: string) {
       subject: { select: { firstName: true, lastName: true, role: true } },
     },
   });
-  if (!r || r.status !== "PENDING") return;
+  if (!r) return null;
+  if (r.status !== "PENDING") return r.status;
+  const current = async () => (await db.clearanceRequest.findUnique({ where: { id: r.id }, select: { status: true } }))?.status ?? null;
 
-  if (r.subjectConsent === false || r.founderApproved === false) {
-    await db.clearanceRequest.update({ where: { id: r.id }, data: { status: "DECLINED" } });
+  const founderSubject = r.subject.role === "FOUNDER";
+  if (founderSubject || r.subjectConsent === false || r.founderApproved === false) {
+    const { count } = await db.clearanceRequest.updateMany({ where: { id: r.id, status: "PENDING" }, data: { status: "DECLINED" } });
+    if (!count) return current();
     await notify([r.requesterId], {
       kind: "CLEARANCE",
       href: "/clearance",
       title: `No clearance given to see ${fullName(r.subject)}'s work`,
-      body: r.subjectConsent === false ? `${r.subject.firstName} declined.` : "A founder declined the request.",
+      body: founderSubject ? NO_FOUNDER_WORK : r.subjectConsent === false ? `${r.subject.firstName} declined.` : "A founder declined the request.",
     });
-    return;
+    return "DECLINED";
   }
 
-  if (r.subjectConsent && r.founderApproved && r.decidedById && r.subject.role !== "FOUNDER") {
-    await db.$transaction(async (tx) => {
-      await tx.clearance.updateMany({ where: { viewerId: r.requesterId, subjectId: r.subjectId, revokedAt: null }, data: { revokedAt: new Date(), revokedById: r.decidedById } });
-      const clearance = await tx.clearance.create({
-        data: { viewerId: r.requesterId, subjectId: r.subjectId, grantedById: r.decidedById!, note: "Granted on request" },
-        select: { id: true },
-      });
-      await tx.clearanceRequest.update({ where: { id: r.id }, data: { status: "APPROVED", clearanceId: clearance.id } });
+  if (!r.subjectConsent || !r.founderApproved || !r.decidedById) return "PENDING";
+  const grantedById = r.decidedById;
+  const clearance = await db.$transaction(async (tx) => {
+    const { count } = await tx.clearanceRequest.updateMany({
+      where: { id: r.id, status: "PENDING", subjectConsent: true, founderApproved: true },
+      data: { status: "APPROVED" },
     });
-    await notify([r.requesterId], {
-      kind: "CLEARANCE",
-      href: `/people/${r.subjectId}`,
-      title: `Clearance given: you can now see ${fullName(r.subject)}'s work`,
+    if (!count) return null;
+    await tx.clearance.updateMany({ where: { viewerId: r.requesterId, subjectId: r.subjectId, revokedAt: null }, data: { revokedAt: new Date(), revokedById: grantedById } });
+    const created = await tx.clearance.create({
+      data: { viewerId: r.requesterId, subjectId: r.subjectId, grantedById, note: "Granted on request" },
+      select: { id: true },
     });
-    await notify([r.subjectId], {
-      kind: "CLEARANCE",
-      href: "/clearance",
-      title: `${fullName(r.requester)} can now see your work`,
-    });
-  }
+    await tx.clearanceRequest.update({ where: { id: r.id }, data: { clearanceId: created.id } });
+    return created;
+  });
+  if (!clearance) return current();
+
+  await notify([r.requesterId], {
+    kind: "CLEARANCE",
+    href: `/people/${r.subjectId}`,
+    title: `Clearance given: you can now see ${fullName(r.subject)}'s work`,
+  });
+  await notify([r.subjectId], {
+    kind: "CLEARANCE",
+    href: "/clearance",
+    title: `${fullName(r.requester)} can now see your work`,
+  });
+  return "APPROVED";
 }
+
+const ALREADY_SETTLED = "That request has already been settled.";
 
 export async function answerClearanceRequest(requestId: string, allow: boolean): Promise<ActionResult> {
   const user = await requireUser();
-  const r = await db.clearanceRequest.findUnique({ where: { id: requestId }, select: { id: true, subjectId: true, status: true, subjectConsent: true } });
+  const r = await db.clearanceRequest.findUnique({
+    where: { id: requestId },
+    select: { id: true, subjectId: true, status: true, requester: { select: { firstName: true } } },
+  });
   if (!r || r.subjectId !== user.id) return { ok: false, error: "That request isn't yours to answer." };
-  if (r.status !== "PENDING") return { ok: false, error: "That request has already been settled." };
+  if (r.status !== "PENDING") return { ok: false, error: ALREADY_SETTLED };
 
-  await db.clearanceRequest.update({ where: { id: r.id }, data: { subjectConsent: allow, subjectAnsweredAt: new Date() } });
-  await settle(r.id);
+  // Answered once, and only while the request is still open.
+  const { count } = await db.clearanceRequest.updateMany({
+    where: { id: r.id, status: "PENDING", subjectConsent: null },
+    data: { subjectConsent: allow, subjectAnsweredAt: new Date() },
+  });
+  if (!count) return { ok: false, error: ALREADY_SETTLED };
+  const outcome = await settle(r.id);
   refresh();
-  return { ok: true, message: allow ? "Thanks — a founder makes the final call." : "Declined. No clearance will be given." };
+  if (!allow) return { ok: true, message: "Declined. No clearance will be given." };
+  if (outcome === "APPROVED") return { ok: true, message: `Thanks — ${r.requester.firstName} can now see your work.` };
+  if (outcome === "DECLINED") return { ok: true, message: "Thanks. It had already been declined, so no clearance was given." };
+  return { ok: true, message: "Thanks — a founder makes the final call." };
 }
 
 const decisionSchema = z.object({ approve: z.boolean() });
@@ -159,19 +200,25 @@ export async function decideClearanceRequest(requestId: string, input: z.input<t
   const user = await requireUser();
   if (!isFounder(user)) return { ok: false, error: "Only founders give clearance." };
   const { approve } = decisionSchema.parse(input);
-  const r = await db.clearanceRequest.findUnique({ where: { id: requestId }, select: { id: true, status: true, subjectConsent: true, subject: { select: { firstName: true } } } });
+  const r = await db.clearanceRequest.findUnique({ where: { id: requestId }, select: { id: true, status: true, subject: { select: { firstName: true, role: true } } } });
   if (!r) return { ok: false, error: "That request no longer exists." };
-  if (r.status !== "PENDING") return { ok: false, error: "That request has already been settled." };
+  if (r.status !== "PENDING") return { ok: false, error: ALREADY_SETTLED };
 
-  await db.clearanceRequest.update({ where: { id: r.id }, data: { founderApproved: approve, decidedById: user.id, decidedAt: new Date() } });
+  // One founder decides; a second founder clicking at the same moment is told it's already done.
+  const { count } = await db.clearanceRequest.updateMany({
+    where: { id: r.id, status: "PENDING", founderApproved: null },
+    data: { founderApproved: approve, decidedById: user.id, decidedAt: new Date() },
+  });
+  if (!count) return { ok: false, error: "Another founder has already decided this request." };
   await audit({ actorId: user.id, action: approve ? "clearance.approved" : "clearance.declined", targetType: "clearance_request", targetId: r.id, summary: `${approve ? "Approved" : "Declined"} a clearance request` });
-  await settle(r.id);
+  const outcome = await settle(r.id);
   refresh();
   if (!approve) return { ok: true, message: "Declined. No clearance given." };
-  return {
-    ok: true,
-    message: r.subjectConsent ? "Approved — clearance is active." : `Approved. It becomes active once ${r.subject.firstName} agrees.`,
-  };
+  if (outcome === "APPROVED") return { ok: true, message: "Approved — clearance is active." };
+  if (outcome === "DECLINED") {
+    return { ok: true, message: r.subject.role === "FOUNDER" ? NO_FOUNDER_WORK : `${r.subject.firstName} had already declined, so no clearance was given.` };
+  }
+  return { ok: true, message: `Approved. It becomes active once ${r.subject.firstName} agrees.` };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -216,6 +263,11 @@ export async function grantClearance(input: z.input<typeof grantSchema>): Promis
   await db.$transaction([
     db.clearance.updateMany({ where: { viewerId, subjectId: { in: subjectIds }, revokedAt: null }, data: { revokedAt: now, revokedById: user.id } }),
     db.clearance.createMany({ data: subjectIds.map((subjectId) => ({ viewerId, subjectId, grantedById: user.id, note: note || null, expiresAt })) }),
+    // The grant answers any open request for the same thing, so it can't be declined or re-approved later.
+    db.clearanceRequest.updateMany({
+      where: { requesterId: viewerId, subjectId: { in: subjectIds }, status: "PENDING" },
+      data: { status: "APPROVED", founderApproved: true, decidedById: user.id, decidedAt: now },
+    }),
   ]);
 
   const names = subjects.map((s) => s.firstName).join(", ");
@@ -224,7 +276,7 @@ export async function grantClearance(input: z.input<typeof grantSchema>): Promis
     actorId: user.id,
     href: "/clearance",
     title: `${user.firstName} gave you clearance to see ${subjects.length === 1 ? `${fullName(subjects[0])}'s` : `${subjects.length} people's`} work`,
-    body: expiresAt ? `Until ${expiresAt.toDateString()}. ${names}` : names,
+    body: expiresAt ? `Until ${formatDate(expiresAt, companyTimeZone(), { year: true })}. ${names}` : names,
   });
   await notify(subjectIds, { kind: "CLEARANCE", actorId: user.id, href: "/clearance", title: `${fullName(viewer)} can now see your work`, body: note || null });
   await audit({ actorId: user.id, action: "clearance.granted", targetType: "user", targetId: viewerId, summary: `Gave ${fullName(viewer)} clearance over ${names}`, meta: { subjectIds, expiresAt } });

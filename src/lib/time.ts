@@ -83,11 +83,13 @@ export function formatCountdown(date: Date, now = new Date()) {
   const ms = date.getTime() - now.getTime();
   const abs = Math.abs(ms);
   let label: string;
+  // Round to whole minutes once, so 5h 59m 40s reads "6h", never "5h 60m".
+  const mins = Math.round(abs / 60000);
   if (abs < 60 * 1000) label = "less than a minute";
-  else if (abs < HOUR) label = `${Math.round(abs / 60000)}m`;
+  else if (mins < 60) label = `${mins}m`;
   else if (abs < DAY) {
-    const h = Math.floor(abs / HOUR);
-    const m = Math.round((abs % HOUR) / 60000);
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
     label = m && h < 6 ? `${h}h ${m}m` : `${h}h`;
   } else {
     const d = Math.round(abs / DAY);

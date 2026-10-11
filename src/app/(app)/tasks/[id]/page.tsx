@@ -141,7 +141,8 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
   const reviewer = canReviewWork(user, access);
   const ref = taskRef(task.number);
   const openRequests = task.updateRequests;
-  const canSubmit = canSubmitWork(user, access) && task.status !== "IN_REVIEW" && task.status !== "DONE";
+  // Keyed on the pending submission, so a task left "In review" with nothing handed in can still be submitted.
+  const canSubmit = canSubmitWork(user, access) && task.status !== "DONE" && !task.submissions.some((s) => s.status === "SUBMITTED");
   const lastSentBack = task.submissions[0]?.status === "CHANGES_REQUESTED" ? task.submissions[0].reviewNote : null;
   const toClientAttachment = (a: (typeof task.attachments)[number], removable: boolean) => ({
     id: a.id,
@@ -182,7 +183,7 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
           taskId={task.id}
           taskRef={ref}
           canEdit={editable}
-          canRequest={task.status !== "IN_REVIEW" && task.status !== "DONE" && canRequestUpdate(user, access, cleared)}
+          canRequest={task.status !== "IN_REVIEW" && task.status !== "DONE" && canRequestUpdate(user, access)}
           assigneeNames={task.assignees.map((a) => a.user.firstName).join(", ")}
         />
       </div>

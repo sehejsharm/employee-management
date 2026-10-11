@@ -641,18 +641,22 @@ export function ActivityComposer({
                     />
                     <span className="w-10 text-right text-[13px] font-semibold tabular">{progress}%</span>
                   </div>
-                  <select
-                    value={status}
-                    onChange={(e) => setStatus(e.target.value as TaskStatusKey | "")}
-                    className="h-8 rounded-lg border border-line bg-surface px-2 text-xs outline-none"
-                  >
-                    <option value="">Keep status ({STATUS_META[currentStatus].label})</option>
-                    {STATUS_ORDER.filter((s) => s !== currentStatus && s !== "IN_REVIEW" && s !== "DONE").map((s) => (
-                      <option key={s} value={s}>
-                        Move to {STATUS_META[s].label}
-                      </option>
-                    ))}
-                  </select>
+                  {/* Work that's with the reviewer only moves when they accept it or send it back. */}
+                  {currentStatus !== "IN_REVIEW" && (
+                    <select
+                      value={status}
+                      onChange={(e) => setStatus(e.target.value as TaskStatusKey | "")}
+                      aria-label="Status"
+                      className="h-8 rounded-lg border border-line bg-surface px-2 text-xs outline-none"
+                    >
+                      <option value="">Keep status ({STATUS_META[currentStatus].label})</option>
+                      {STATUS_ORDER.filter((s) => s !== currentStatus && s !== "IN_REVIEW" && s !== "DONE").map((s) => (
+                        <option key={s} value={s}>
+                          Move to {STATUS_META[s].label}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
               </motion.div>
             )}

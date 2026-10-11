@@ -14,6 +14,9 @@ describe("time", () => {
 
   it("counts down and up", () => {
     expect(formatCountdown(new Date(now.getTime() + 3.5 * 3600_000), now)).toBe("in 3h 30m");
+    // Just under a rung never reads "5h 60m" or "60m".
+    expect(formatCountdown(new Date(now.getTime() + 6 * 3600_000 - 20_000), now)).toBe("in 6h");
+    expect(formatCountdown(new Date(now.getTime() + 3600_000 - 20_000), now)).toBe("in 1h");
     expect(formatCountdown(new Date(now.getTime() - 2 * 86400_000), now)).toBe("2 days overdue");
   });
 

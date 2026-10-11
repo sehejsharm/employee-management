@@ -13,6 +13,7 @@ import {
   canRequestUpdate,
   canReviewWork,
   canSubmitWork,
+  isInvolved,
   type Actor,
   type TaskAccessContext,
 } from "@/lib/permissions";
@@ -349,11 +350,18 @@ export async function postProgressUpdate(taskId: string, input: z.input<typeof u
   if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
   const { body, progress, status } = parsed.data;
   if (status === "DONE" || status === "IN_REVIEW") return { ok: false, error: SUBMIT_HINT };
+  // Submitted work only leaves review through the reviewer (accept, or send back with notes).
+  if (status && status !== task.status && task.status === "IN_REVIEW" && (await pendingSubmission(taskId))) {
+    return { ok: false, error: "This is with the reviewer now — they'll accept it or send it back." };
+  }
 
   const open = await db.updateRequest.findMany({
     where: { taskId, resolvedAt: null },
-    select: { id: true, requestedById: true },
+    select: { id: true, requestedById: true, requestedBy: { select: { role: true } } },
   });
+  // Whoever asked hears back only while they can still see the task (founders, or people on it).
+  const access = ctx(task);
+  const askers = open.filter((o) => o.requestedBy.role === "FOUNDER" || (!access.involvesFounder && isInvolved({ id: o.requestedById }, access)));
   // 100% is a progress report, not a hand-in: finishing still goes through Submit work.
   const nextStatus = status ?? (task.status === "TODO" && progress > 0 ? "IN_PROGRESS" : task.status);
 
@@ -364,6 +372,7 @@ export async function postProgressUpdate(taskId: string, input: z.input<typeof u
       data: {
         progress,
         status: nextStatus,
+        ...(nextStatus !== "DONE" && { completedAt: null }),
       },
     }),
     ...(nextStatus !== task.status
@@ -372,7 +381,7 @@ export async function postProgressUpdate(taskId: string, input: z.input<typeof u
     db.updateRequest.updateMany({ where: { taskId, resolvedAt: null }, data: { resolvedAt: new Date() } }),
   ]);
 
-  await notify([task.createdById, ...open.map((o) => o.requestedById), ...task.assignees.map((a) => a.userId)], {
+  await notify([task.createdById, ...askers.map((o) => o.requestedById), ...task.assignees.map((a) => a.userId)], {
     kind: "UPDATE_POSTED",
     actorId: user.id,
     taskId,
@@ -388,7 +397,7 @@ export async function postProgressUpdate(taskId: string, input: z.input<typeof u
 const requestSchema = z.object({ message: z.string().trim().max(1000).optional().default("") });
 
 export async function requestUpdate(taskId: string, input: z.input<typeof requestSchema>): Promise<ActionResult> {
-  const r = await withTask(taskId, (u, t, cleared) => canRequestUpdate(u, ctx(t), cleared));
+  const r = await withTask(taskId, (u, t) => canRequestUpdate(u, ctx(t)));
   if ("error" in r) return { ok: false, error: r.error! };
   const { user, task } = r;
   if (task.status === "IN_REVIEW") return { ok: false, error: "The work has been submitted — it's waiting for review, not an update." };
@@ -594,6 +603,17 @@ export async function removeChecklistItem(itemId: string): Promise<ActionResult>
 const PROOF_EXTENSIONS = /\.(pdf|docx?|odt|rtf|txt|md|pages|xlsx?|ods|csv|numbers|pptx?|odp|key|png|jpe?g|webp|heic|zip)$/i;
 const MIN_WRITEUP = 40;
 
+/** Someone else got there first; the transaction is rolled back and the message shown as is. */
+class Conflict extends Error {}
+
+/** Who is asked to review: whoever assigned the task, or every founder once that person has left. */
+async function reviewersOf(task: LoadedTask) {
+  const creator = await db.user.findUnique({ where: { id: task.createdById }, select: { status: true } });
+  if (creator && creator.status !== "INACTIVE") return [task.createdById];
+  const founders = await db.user.findMany({ where: { role: "FOUNDER", status: { not: "INACTIVE" } }, select: { id: true } });
+  return founders.map((f) => f.id);
+}
+
 async function pendingSubmission(taskId: string) {
   return db.submission.findFirst({ where: { taskId, status: "SUBMITTED" }, orderBy: { createdAt: "desc" }, select: { id: true, submittedById: true } });
 }
@@ -635,48 +655,61 @@ export async function submitWork(taskId: string, formData: FormData): Promise<Ac
   }
 
   const blobs = await Promise.all(files.map(async (f) => ({ file: f, bytes: new Uint8Array(await f.arrayBuffer()) })));
-  const submission = await db.$transaction(
-    async (tx) => {
-      const sub = await tx.submission.create({ data: { taskId, submittedById: user.id, summary: summary || null }, select: { id: true } });
-      for (const l of links) {
-        await tx.attachment.create({ data: { taskId, submissionId: sub.id, kind: "LINK", title: l.title, url: l.url, createdById: user.id } });
-      }
-      for (const { file, bytes } of blobs) {
-        const blob = await tx.fileBlob.create({ data: { data: bytes }, select: { id: true } });
-        const name = file.name.replace(/[\\/\0]/g, "_").slice(0, 200) || "document";
-        await tx.attachment.create({
+  try {
+    await db.$transaction(
+      async (tx) => {
+        // One hand-in at a time: lock the task, then check again that nothing is already with the reviewer.
+        await tx.$queryRaw`SELECT 1 FROM "Task" WHERE "id" = ${taskId} FOR UPDATE`;
+        const current = await tx.task.findUnique({ where: { id: taskId }, select: { status: true } });
+        if (current?.status === "DONE") throw new Conflict("This task is already done.");
+        if (await tx.submission.findFirst({ where: { taskId, status: "SUBMITTED" }, select: { id: true } })) {
+          throw new Conflict("Work is already with the reviewer. They'll accept it or send it back.");
+        }
+        const sub = await tx.submission.create({ data: { taskId, submittedById: user.id, summary: summary || null }, select: { id: true } });
+        for (const l of links) {
+          await tx.attachment.create({ data: { taskId, submissionId: sub.id, kind: "LINK", title: l.title, url: l.url, createdById: user.id } });
+        }
+        for (const { file, bytes } of blobs) {
+          const blob = await tx.fileBlob.create({ data: { data: bytes }, select: { id: true } });
+          const name = file.name.replace(/[\\/\0]/g, "_").slice(0, 200) || "document";
+          await tx.attachment.create({
+            data: {
+              taskId,
+              submissionId: sub.id,
+              kind: "FILE",
+              title: name,
+              fileName: name,
+              mimeType: file.type || "application/octet-stream",
+              size: file.size,
+              blobId: blob.id,
+              createdById: user.id,
+            },
+          });
+        }
+        await tx.task.update({ where: { id: taskId }, data: { status: "IN_REVIEW" } });
+        await tx.taskActivity.create({
           data: {
             taskId,
-            submissionId: sub.id,
-            kind: "FILE",
-            title: name,
-            fileName: name,
-            mimeType: file.type || "application/octet-stream",
-            size: file.size,
-            blobId: blob.id,
-            createdById: user.id,
+            actorId: user.id,
+            kind: "WORK_SUBMITTED",
+            body: summary ? (summary.length > 280 ? `${summary.slice(0, 277)}…` : summary) : null,
+            meta: { submissionId: sub.id, files: files.length, links: links.length },
           },
         });
-      }
-      await tx.task.update({ where: { id: taskId }, data: { status: "IN_REVIEW" } });
-      await tx.taskActivity.create({
-        data: {
-          taskId,
-          actorId: user.id,
-          kind: "WORK_SUBMITTED",
-          body: summary ? (summary.length > 280 ? `${summary.slice(0, 277)}…` : summary) : null,
-          meta: { submissionId: sub.id, files: files.length, links: links.length },
-        },
-      });
-      // Handing the work in answers any open request for an update.
-      await tx.updateRequest.updateMany({ where: { taskId, resolvedAt: null }, data: { resolvedAt: new Date() } });
-      return sub;
-    },
-    { timeout: 20_000, maxWait: 5_000 },
-  );
+        // Handing the work in answers any open request for an update.
+        await tx.updateRequest.updateMany({ where: { taskId, resolvedAt: null }, data: { resolvedAt: new Date() } });
+        return sub;
+      },
+      { timeout: 20_000, maxWait: 5_000 },
+    );
+  } catch (e) {
+    if (e instanceof Conflict) return { ok: false, error: e.message };
+    throw e;
+  }
 
   const ref = taskRef(task.number);
-  await notify([task.createdById], {
+  const reviewers = await reviewersOf(task);
+  await notify(reviewers, {
     kind: "WORK_SUBMITTED",
     actorId: user.id,
     taskId,
@@ -685,12 +718,12 @@ export async function submitWork(taskId: string, formData: FormData): Promise<Ac
     body: task.title,
   });
   await notify(
-    task.assignees.map((a) => a.userId).filter((id) => id !== task.createdById),
+    task.assignees.map((a) => a.userId).filter((id) => !reviewers.includes(id)),
     { kind: "WORK_SUBMITTED", actorId: user.id, taskId, href: `/tasks/${taskId}#submissions`, title: `${user.firstName} submitted the work on ${ref}`, body: task.title },
   );
 
   refresh();
-  return { ok: true, message: submission ? "Submitted for review. Reminders have stopped." : "Submitted." };
+  return { ok: true, message: "Submitted for review. Reminders have stopped." };
 }
 
 const reviewSchema = z.object({
@@ -706,7 +739,7 @@ export async function reviewSubmission(submissionId: string, input: z.input<type
   if (!sub) return { ok: false, error: "That submission no longer exists." };
   const r = await withTask(sub.taskId, (u, t) => canReviewWork(u, ctx(t)));
   if ("error" in r) return { ok: false, error: r.error === "You don't have permission to do that on this task." ? "Only whoever assigned this task, or a founder, can review its work." : r.error! };
-  if (sub.status !== "SUBMITTED") return { ok: false, error: "This submission has already been reviewed." };
+  if (sub.status !== "SUBMITTED") return { ok: false, error: ALREADY_REVIEWED };
 
   const { decision, note } = parsed.data;
   if (decision === "accept") return acceptSubmission(r.user, r.task, sub.id, note || null);
@@ -714,14 +747,23 @@ export async function reviewSubmission(submissionId: string, input: z.input<type
   return sendBack(r.user, r.task, sub.id, note, "IN_PROGRESS");
 }
 
+const ALREADY_REVIEWED = "This submission has already been reviewed.";
+
 async function acceptSubmission(user: CurrentUser, task: LoadedTask, submissionId: string, note: string | null): Promise<ActionResult> {
   const now = new Date();
-  await db.$transaction([
-    db.submission.update({ where: { id: submissionId }, data: { status: "ACCEPTED", reviewedById: user.id, reviewedAt: now, reviewNote: note } }),
-    db.task.update({ where: { id: task.id }, data: { status: "DONE", completedAt: now, progress: 100 } }),
-    db.taskActivity.create({ data: { taskId: task.id, actorId: user.id, kind: "WORK_ACCEPTED", body: note, meta: { submissionId } } }),
-    db.taskActivity.create({ data: { taskId: task.id, actorId: user.id, kind: "STATUS_CHANGED", meta: { from: task.status, to: "DONE" } } }),
-  ]);
+  const claimed = await db.$transaction(async (tx) => {
+    // Only one review wins: the submission is claimed while it's still waiting.
+    const { count } = await tx.submission.updateMany({
+      where: { id: submissionId, status: "SUBMITTED" },
+      data: { status: "ACCEPTED", reviewedById: user.id, reviewedAt: now, reviewNote: note },
+    });
+    if (!count) return false;
+    await tx.task.update({ where: { id: task.id }, data: { status: "DONE", completedAt: now, progress: 100 } });
+    await tx.taskActivity.create({ data: { taskId: task.id, actorId: user.id, kind: "WORK_ACCEPTED", body: note, meta: { submissionId } } });
+    await tx.taskActivity.create({ data: { taskId: task.id, actorId: user.id, kind: "STATUS_CHANGED", meta: { from: task.status, to: "DONE" } } });
+    return true;
+  });
+  if (!claimed) return { ok: false, error: ALREADY_REVIEWED };
   await notify(participants(task), {
     kind: "WORK_REVIEWED",
     actorId: user.id,
@@ -736,12 +778,18 @@ async function acceptSubmission(user: CurrentUser, task: LoadedTask, submissionI
 
 async function sendBack(user: CurrentUser, task: LoadedTask, submissionId: string, note: string, status: TaskStatus): Promise<ActionResult> {
   const now = new Date();
-  await db.$transaction([
-    db.submission.update({ where: { id: submissionId }, data: { status: "CHANGES_REQUESTED", reviewedById: user.id, reviewedAt: now, reviewNote: note } }),
-    db.task.update({ where: { id: task.id }, data: { status, completedAt: null } }),
-    db.taskActivity.create({ data: { taskId: task.id, actorId: user.id, kind: "CHANGES_REQUESTED", body: note, meta: { submissionId } } }),
-    db.taskActivity.create({ data: { taskId: task.id, actorId: user.id, kind: "STATUS_CHANGED", meta: { from: task.status, to: status } } }),
-  ]);
+  const claimed = await db.$transaction(async (tx) => {
+    const { count } = await tx.submission.updateMany({
+      where: { id: submissionId, status: "SUBMITTED" },
+      data: { status: "CHANGES_REQUESTED", reviewedById: user.id, reviewedAt: now, reviewNote: note },
+    });
+    if (!count) return false;
+    await tx.task.update({ where: { id: task.id }, data: { status, completedAt: null } });
+    await tx.taskActivity.create({ data: { taskId: task.id, actorId: user.id, kind: "CHANGES_REQUESTED", body: note, meta: { submissionId } } });
+    await tx.taskActivity.create({ data: { taskId: task.id, actorId: user.id, kind: "STATUS_CHANGED", meta: { from: task.status, to: status } } });
+    return true;
+  });
+  if (!claimed) return { ok: false, error: ALREADY_REVIEWED };
   await notify(participants(task), {
     kind: "WORK_REVIEWED",
     actorId: user.id,

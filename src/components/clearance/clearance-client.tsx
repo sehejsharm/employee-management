@@ -196,6 +196,7 @@ export function GrantForm({ people }: { people: PickPerson[] }) {
               <li key={p.id}>
                 <button
                   type="button"
+                  aria-pressed={on}
                   onClick={() => toggle(p.id)}
                   className={cn("flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-[13px] transition", on ? "bg-brand-soft" : "hover:bg-surface-hover")}
                 >

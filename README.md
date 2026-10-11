@@ -52,8 +52,8 @@ Prisma 7 and PostgreSQL, in the blue-and-white Focus Realm brand
 - **Assign work** to anyone (founders always; management when granted), with
   one person leading and the rest following.
 - **Review submitted work** — accept it or request changes.
-- **Request an update** on tasks you assigned or are cleared to see (founders:
-  any task) — assignees are notified, the request stays visible until they post a progress update,
+- **Request an update** on tasks you assigned (founders: any task) — assignees
+  are notified, the request stays visible until they post a progress update,
   which answers it.
 - **Clearance (founders)** — approve or decline requests, give someone
   clearance over several colleagues at once (with an optional end date), and

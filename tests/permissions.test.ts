@@ -43,7 +43,6 @@ describe("permissions", () => {
     const lead = actor("MANAGER", { id: "lead" });
     expect(canViewTask(lead, task)).toBe(false);
     expect(canViewTask(lead, task, new Set(["intern"]))).toBe(true);
-    expect(canRequestUpdate(lead, task, new Set(["intern"]))).toBe(true);
   });
 
   it("clearance is look-only", () => {
@@ -51,12 +50,13 @@ describe("permissions", () => {
     expect(canViewTask(peer, task, new Set(["intern"]))).toBe(true);
     expect(canContribute(peer, task)).toBe(false);
     expect(canSubmitWork(peer, task)).toBe(false);
+    // Not even a manager can chase work they're only cleared to see.
+    expect(canRequestUpdate(actor("MANAGER", { id: "lead" }), task)).toBe(false);
   });
 
   it("founders' work stays founders-only, whatever clearance someone holds", () => {
     const manager = actor("MANAGER", { id: "lead", canAssignTasks: true });
     expect(canViewTask(manager, foundersTask, new Set(["intern", "founder"]))).toBe(false);
-    expect(canRequestUpdate(manager, foundersTask, new Set(["intern"]))).toBe(false);
     // …but the intern working on it alongside the founder sees it.
     expect(canViewTask(actor("INTERN"), foundersTask)).toBe(true);
   });

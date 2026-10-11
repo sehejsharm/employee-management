@@ -151,8 +151,8 @@ Demo accounts after seeding — password `FocusRealm@2026` for all:
    - Optional: `APP_TIMEZONE` (IANA, e.g. `Asia/Kolkata`), `APP_URL` (only for
      a custom domain), `MAX_UPLOAD_MB` (≤ 4), `EMPLOYEE_CODE_PREFIX`.
 4. **Deployments → ⋯ → Redeploy.** Production builds apply database migrations
-   before building; a failed migration stops the deploy and the previous one
-   keeps serving. Preview builds skip migrations.
+   once the app has built; a failed migration stops the deploy and the
+   previous one keeps serving. Preview builds skip migrations.
 5. **Check:** `https://<your-app>/api/health` →
    `{ "ok": true, "database": "up", "schema": "ready", "setup": "needs-founder" }`.
    Other answers say what's wrong: `"not-configured"` (no database variables —

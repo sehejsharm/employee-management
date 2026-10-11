@@ -10,7 +10,7 @@ const COPY: Record<Exclude<WorkspaceStatus, "ready">, { icon: typeof Database; t
     title: "This workspace isn't connected to a database yet",
     body: "Nothing is broken — the app is deployed, it just has nowhere to keep its data. A founder finishes setup in Vercel:",
     steps: [
-      "Open the project in Vercel → Storage → Create Database → Neon or Supabase. Choose the Mumbai region and connect it to Production.",
+      "Open the project in Vercel → Storage → Create Database → Neon or Supabase. Choose the Singapore region and connect it to Production.",
       "Deployments → the latest one → ⋯ → Redeploy. The tables are created automatically during the deploy.",
       "Come back to this page.",
     ],

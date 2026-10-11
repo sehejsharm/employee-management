@@ -136,13 +136,14 @@ Demo accounts after seeding — password `FocusRealm@2026` for all:
 ### Vercel (recommended)
 
 1. **Import the repo** in Vercel. `vercel.json` already sets the build command,
-   the function region (Mumbai, `bom1`) and the daily deadline sweep. The first
+   the function region (Singapore, `sin1`) and the daily deadline sweep. The first
    build succeeds even with no database — the app just says it isn't set up yet.
-2. **Add a database:** project → **Storage** → **Create Database** → **Neon** or
-   **Supabase**, region **Mumbai (ap-south-1)**, connected to **Production**,
-   with the env-var prefix left empty. Its variables are read automatically.
-   (A database elsewhere? Change `regions` in `vercel.json` to the Vercel region
-   nearest to it — every page makes several round trips.)
+2. **Add a database:** project → **Storage** → **Create Database** → **Neon**
+   (or Supabase), region **Singapore (ap-southeast-1)**, connected to
+   **Production**, with the env-var prefix left empty. Its variables are read
+   automatically. Singapore is the closest region to India that both offer on
+   Vercel. (A database elsewhere? Change `regions` in `vercel.json` to the
+   Vercel region nearest to it — every page makes several round trips.)
 3. **Settings → Environment Variables** (Production):
    - `SETUP_TOKEN` — `openssl rand -hex 24`; lets you create the first founder.
    - `CRON_SECRET` — `openssl rand -hex 32`; protects the daily reminder sweep.

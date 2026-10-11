@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/app/page-header";
 import { AddMemberDialog } from "@/components/people/add-member-dialog";
 import { Directory } from "@/components/people/directory";
 import { requireUser } from "@/lib/auth/current-user";
+import { getClearedIds, redactFocus } from "@/lib/clearance";
 import { db } from "@/lib/db";
 import { ROLE_LABEL, canManagePeople, isFounder } from "@/lib/permissions";
 
@@ -10,7 +11,7 @@ export const metadata: Metadata = { title: "People" };
 
 export default async function PeoplePage() {
   const user = await requireUser();
-  const [people, departments] = await Promise.all([
+  const [everyone, departments, cleared] = await Promise.all([
     db.user.findMany({
       orderBy: [{ role: "asc" }, { firstName: "asc" }],
       select: {
@@ -29,7 +30,10 @@ export default async function PeoplePage() {
       },
     }),
     db.department.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, color: true } }),
+    getClearedIds(user),
   ]);
+  // What someone is focused on is their work: shown only with clearance, and founders' only to founders.
+  const people = redactFocus(user, everyone, cleared);
   const current = people.filter((p) => p.status !== "INACTIVE");
 
   return (

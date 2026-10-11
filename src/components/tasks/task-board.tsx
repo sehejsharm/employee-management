@@ -72,6 +72,11 @@ export function TaskBoard({
       toast.error("Only the task's owner or assignees can move it.");
       return;
     }
+    // Work reaches review by being submitted with proof, not by being dragged there.
+    if (to === "IN_REVIEW") {
+      toast.info(`Open T-${task.number} and use Submit work — it needs a document, a write-up or a link.`);
+      return;
+    }
     const from = task.status;
     onMove(id, to);
     const res = await setTaskStatus(id, to);
@@ -79,7 +84,7 @@ export function TaskBoard({
       onMove(id, from);
       toast.error(res.error);
     } else if (to === "DONE") {
-      toast.success(`T-${task.number} completed.`);
+      toast.success(`Work accepted — T-${task.number} is done.`);
     }
   };
 

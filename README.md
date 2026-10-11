@@ -21,12 +21,23 @@ Prisma 7 and PostgreSQL, in the blue-and-white Focus Realm brand
   *overdue / today / tomorrow / this week*, requests for updates waiting on
   you, and pinned announcements.
 - **Tasks** — every task has a deadline with **date and time**, a priority,
-  one or more assignees, a brief, **links, written notes and documents**, a
-  checklist, comments and **progress updates** (with a % complete). List,
-  **kanban board** (drag between columns) and **calendar** views.
-- **Reminders** — 24 hours before, 2 hours before, and when a task becomes
-  overdue: in the inbox, as a toast, and as a desktop notification if you turn
-  them on. Whoever assigned the work hears when it slips.
+  **one lead and any number of followers**, a brief, **links, written notes
+  and documents**, a checklist, comments and **progress updates** (with a %
+  complete). List, **kanban board** (drag between columns) and **calendar**
+  views.
+- **Submit work with proof** — a task is never just ticked off. Handing it in
+  needs at least one of: a write-up (40+ characters), a document (Word, PDF,
+  slides, a spreadsheet, a screenshot) or a link. The person who assigned it
+  (or a founder) accepts it — the task is done — or sends it back with notes.
+- **Reminders** — 1 day, 12 hours, 6 hours, 1 hour, 30 minutes, 15 minutes and
+  5 minutes before the deadline, then when it's overdue, for as long as the
+  work hasn't been submitted: in the inbox, as a toast, and as a desktop
+  notification if you turn them on. Whoever assigned the work hears when it
+  slips.
+- **Clearance** — you see your own tasks and the tasks you're on. Seeing
+  anyone else's work needs clearance: ask for it under *Clearance*, and it's
+  given only when **both** that colleague **and** a founder agree. Otherwise
+  the answer is *No clearance given*. Clearance lets you look, not edit.
 - **Org chart** — the whole company as a tree, with departments, who is on
   leave and who has left. Search, zoom, collapse branches.
 - **People** directory and profiles, **announcements**, a **⌘K command
@@ -38,12 +49,18 @@ Prisma 7 and PostgreSQL, in the blue-and-white Focus Realm brand
   person's deadline health, every deadline counting down to the second,
   14-day throughput, on-time rate, workload per person, live activity and
   unanswered update requests. Re-syncs every minute.
-- **Assign work** to anyone (founders always; management when granted).
-- **Request an update** on any task — assignees are notified, the request
-  stays visible until they post a progress update, which answers it.
-- **Leadership board** — what each founder and lead is working on, what
-  they've delegated, and their current focus. Founders see task detail;
-  management sees focus and workload.
+- **Assign work** to anyone (founders always; management when granted), with
+  one person leading and the rest following.
+- **Review submitted work** — accept it or request changes.
+- **Request an update** on tasks you assigned or are cleared to see (founders:
+  any task) — assignees are notified, the request stays visible until they post a progress update,
+  which answers it.
+- **Clearance (founders)** — approve or decline requests, give someone
+  clearance over several colleagues at once (with an optional end date), and
+  revoke it at any time. **Founders' work is visible only to founders** — no
+  one else can be cleared to see it.
+- **Leadership board (founders)** — what each founder and lead is working on,
+  what they've delegated, and their current focus.
 - **Edit the hierarchy** — drag people onto their new manager, change titles,
   departments and status (working / on leave / former). Loops are impossible.
 - **People admin** — add members (ID and temporary password generated and
@@ -60,9 +77,11 @@ screenshots or "last seen". The audit log records administrative changes
 
 | Role | Can |
 |---|---|
-| Founder | Everything. Sees every task. Always holds every permission. |
-| Management | Their own and their reporting line's work. Assign tasks, edit the org chart and manage people **when a founder grants it**. |
-| Employee / Intern | Their own tasks and tasks for themselves; comment, attach, post updates. |
+| Founder | Everything. Sees every task, including other founders'. Always holds every permission. Gives and revokes clearance. |
+| Management | Tasks they're on or assigned, plus anyone a founder has cleared them to see. Assign tasks, edit the org chart and manage people **when a founder grants it**. |
+| Employee / Intern | Tasks they're on, plus anyone they've been cleared to see; comment, attach, post updates, submit work. |
+
+Nobody but a founder can see a task that has a founder on it.
 
 ## Logins from the HR console
 
@@ -151,9 +170,12 @@ migration closes Supabase's public Data API for these tables — the app never
 uses it. If a production deploy stops at migrations with a connection error,
 set `DIRECT_URL` to the **Session pooler** string (port 5432).
 
-**Reminders.** People with the Workspace open get deadline reminders within a
-minute. `vercel.json` also sweeps once a day (02:30 UTC — the Hobby plan's
-limit) so nobody misses one; on Pro, change it to `*/5 * * * *`. Test it with
+**Reminders.** People with the Workspace open get each deadline reminder
+within a minute. For people who don't have it open, the server has to sweep
+often enough to catch the 5-, 15- and 30-minute reminders. `vercel.json` sweeps
+once a day (02:30 UTC — the Hobby plan's limit). On Pro, change it to
+`*/5 * * * *`. On Hobby, add a free external scheduler (for example
+cron-job.org) that calls the sweep every 5 minutes:
 `curl -H "Authorization: Bearer $CRON_SECRET" https://<your-app>/api/cron/deadlines`.
 
 **Custom domain:** Settings → Domains, then set `APP_URL` here and

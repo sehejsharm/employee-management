@@ -1,5 +1,5 @@
 import type { NotificationKind } from "@/generated/prisma/enums";
-import { DUE_URGENT_HOURS, formatCountdown } from "@/lib/time";
+import { formatCountdown } from "@/lib/time";
 import { taskRef } from "@/lib/utils";
 
 /**
@@ -7,7 +7,8 @@ import { taskRef } from "@/lib/utils";
  * now. The caller stores them; the dedupe keys make storing them idempotent.
  */
 
-const HOUR = 60 * 60 * 1000;
+const MINUTE = 60 * 1000;
+const HOUR = 60 * MINUTE;
 
 export interface AlertRow {
   userId: string;
@@ -19,13 +20,36 @@ export interface AlertRow {
   dedupeKey?: string | null;
 }
 
-type Stage = "due24" | "due2" | "overdue";
+/**
+ * The reminder ladder: a nudge a day out, then 12 hours, 6 hours, 1 hour,
+ * 30, 15 and 5 minutes before the deadline — for as long as the work hasn't
+ * been submitted. Someone who was away gets only the latest rung, not a backlog.
+ */
+export const REMINDER_LADDER = [
+  { key: "due24h", within: 24 * HOUR },
+  { key: "due12h", within: 12 * HOUR },
+  { key: "due6h", within: 6 * HOUR },
+  { key: "due1h", within: 1 * HOUR },
+  { key: "due30m", within: 30 * MINUTE },
+  { key: "due15m", within: 15 * MINUTE },
+  { key: "due5m", within: 5 * MINUTE },
+] as const;
 
-function stageFor(dueAt: Date, now: Date): Stage {
+/** How far ahead the ladder starts; queries only need tasks due within this window. */
+export const REMINDER_HORIZON_MS = REMINDER_LADDER[0].within;
+
+/** Work in these states has been handed in (or finished), so reminders stop. */
+export const SUBMITTED_STATUSES = ["IN_REVIEW", "DONE"] as const;
+
+type Stage = (typeof REMINDER_LADDER)[number]["key"] | "overdue";
+
+/** The rung a deadline is on right now, or null when it's still more than a day away. */
+export function reminderStage(dueAt: Date, now: Date): Stage | null {
   const ms = dueAt.getTime() - now.getTime();
   if (ms <= 0) return "overdue";
-  if (ms <= DUE_URGENT_HOURS * HOUR) return "due2";
-  return "due24";
+  let stage: Stage | null = null;
+  for (const rung of REMINDER_LADDER) if (ms <= rung.within) stage = rung.key;
+  return stage;
 }
 
 export interface OpenTask {
@@ -38,14 +62,16 @@ export interface OpenTask {
 }
 
 /**
- * Deadline reminders as idempotent rows: one per task, per person, per stage,
+ * Deadline reminders as idempotent rows: one per task, per person, per rung,
  * per deadline. The dedupe key carries the due timestamp, so moving a
  * deadline re-arms the reminders, and running this twice never doubles up.
+ * Callers pass only work that hasn't been submitted yet.
  */
 export function deadlineAlerts(tasks: OpenTask[], now: Date, onlyUserId?: string): AlertRow[] {
   const out: AlertRow[] = [];
   for (const task of tasks) {
-    const stage = stageFor(task.dueAt, now);
+    const stage = reminderStage(task.dueAt, now);
+    if (!stage) continue;
     const due = task.dueAt.getTime();
     const ref = taskRef(task.number);
     const href = `/tasks/${task.id}`;
@@ -57,13 +83,11 @@ export function deadlineAlerts(tasks: OpenTask[], now: Date, onlyUserId?: string
         taskId: task.id,
         href,
         kind: stage === "overdue" ? "TASK_OVERDUE" : "TASK_DUE_SOON",
-        title:
+        title: stage === "overdue" ? `${ref} is overdue` : `${ref} is due ${formatCountdown(task.dueAt, now)}`,
+        body:
           stage === "overdue"
-            ? `${ref} is overdue`
-            : stage === "due2"
-              ? `${ref} is due ${formatCountdown(task.dueAt, now)}`
-              : `${ref} is due within a day`,
-        body: task.title,
+            ? `${task.title} — submit your work as soon as you can.`
+            : `${task.title} — submit your work with proof before the deadline.`,
         dedupeKey: `${stage}:${task.id}:${due}`,
       });
     }
@@ -85,4 +109,3 @@ export function deadlineAlerts(tasks: OpenTask[], now: Date, onlyUserId?: string
   }
   return out;
 }
-

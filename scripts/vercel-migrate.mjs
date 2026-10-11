@@ -3,10 +3,11 @@
 // - No database configured yet: skipped, so the build still succeeds.
 // - Preview builds: skipped, because previews usually share the production
 //   database. Set MIGRATE_ON_PREVIEW=true if each preview has its own (e.g. Neon branches).
-// - A migration that fails fails the build, so the live deployment keeps
-//   serving instead of new code running against an old schema.
+// - Runs after `next build`, so a build that fails never touches the live
+//   database; a migration that fails still fails the deploy, so the previous
+//   deployment keeps serving instead of new code running against an old schema.
 //
-// Plain .mjs so it runs before `next build` without TypeScript.
+// Plain .mjs so it runs without TypeScript.
 import { spawnSync } from "node:child_process";
 
 const target = process.env.VERCEL_ENV; // production | preview | development | undefined (not on Vercel)

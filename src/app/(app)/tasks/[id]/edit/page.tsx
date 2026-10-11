@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { config } from "@/lib/env";
 import { canAssignTasks, canEditTask } from "@/lib/permissions";
 import { pickablePeople } from "@/lib/people";
+import { assigneeOrder } from "@/lib/tasks/queries";
 import { taskRef } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Edit task" };
@@ -24,17 +25,17 @@ export default async function EditTaskPage({ params }: { params: Promise<{ id: s
       priority: true,
       dueAt: true,
       createdById: true,
-      assignees: { select: { userId: true } },
+      assignees: { select: { userId: true, role: true }, orderBy: assigneeOrder },
     },
   });
   if (!task) notFound();
   const assigneeIds = task.assignees.map((a) => a.userId);
-  if (!canEditTask(user, { createdById: task.createdById, assigneeIds })) notFound();
+  if (!canEditTask(user, { createdById: task.createdById })) notFound();
   const people = await pickablePeople();
 
   return (
     <>
-      <PageHeader eyebrow={taskRef(task.number)} title="Edit task" description="Changes to the deadline or assignees notify the people involved." />
+      <PageHeader eyebrow={taskRef(task.number)} title="Edit task" description="Changes to the deadline, the lead or the followers notify the people involved." />
       <TaskForm
         people={people}
         selfId={user.id}
@@ -47,6 +48,7 @@ export default async function EditTaskPage({ params }: { params: Promise<{ id: s
           priority: task.priority,
           dueAt: task.dueAt.toISOString(),
           assigneeIds,
+          leadId: task.assignees.find((a) => a.role === "LEAD")?.userId ?? assigneeIds[0],
         }}
       />
     </>

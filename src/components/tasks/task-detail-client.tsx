@@ -205,13 +205,16 @@ export function DeadlineCard({ dueAt, status, tz, progress }: { dueAt: string; s
   const now = useNow(15_000);
   const date = new Date(dueAt);
   const state = dueState(date, status, now);
-  const tone = {
+  // Handed in: the deadline no longer applies to them, the review does.
+  const reviewing = status === "IN_REVIEW";
+  const tone = reviewing ? { ring: "brand" as const, text: "text-brand", label: "Submitted · in review", bg: "from-brand/10" } : {
     done: { ring: "success", text: "text-success", label: "Completed", bg: "from-success/10" },
     overdue: { ring: "danger", text: "text-danger", label: "Overdue", bg: "from-danger/12" },
     urgent: { ring: "danger", text: "text-danger", label: "Due very soon", bg: "from-danger/10" },
     soon: { ring: "warning", text: "text-warning", label: "Due soon", bg: "from-warning/12" },
     upcoming: { ring: "brand", text: "text-brand", label: "On track", bg: "from-brand/10" },
   }[state] as { ring: "success" | "danger" | "warning" | "brand"; text: string; label: string; bg: string };
+  const pulse = !reviewing && (state === "urgent" || state === "overdue");
 
   return (
     <div className={cn("relative overflow-hidden rounded-2xl border border-line bg-surface p-5 shadow-sm")}>
@@ -219,7 +222,7 @@ export function DeadlineCard({ dueAt, status, tz, progress }: { dueAt: string; s
       <div className="relative flex items-start justify-between gap-4">
         <div>
           <div className={cn("flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wider", tone.text)}>
-            {(state === "urgent" || state === "overdue") && (
+            {pulse && (
               <span className="relative flex h-2 w-2">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-current opacity-60" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-current" />
@@ -233,7 +236,7 @@ export function DeadlineCard({ dueAt, status, tz, progress }: { dueAt: string; s
           <div className="text-[13.5px] text-fg-muted" suppressHydrationWarning>
             {formatLongDate(date, tz)}
           </div>
-          {state !== "done" && (
+          {state !== "done" && !reviewing && (
             <div className={cn("mt-3 inline-flex items-center rounded-full bg-surface px-2.5 py-1 text-xs font-semibold ring-1 ring-line tabular", tone.text)} suppressHydrationWarning>
               {formatCountdown(date, now)}
             </div>
@@ -470,7 +473,7 @@ export function AttachmentsPanel({
   );
 }
 
-function AttachmentCard({ a }: { a: ClientAttachment }) {
+export function AttachmentCard({ a }: { a: ClientAttachment }) {
   const [expanded, setExpanded] = React.useState(false);
   const icon =
     a.kind === "LINK" ? <Link2 /> : a.kind === "NOTE" ? <StickyNote /> : <FileText />;
@@ -644,7 +647,7 @@ export function ActivityComposer({
                     className="h-8 rounded-lg border border-line bg-surface px-2 text-xs outline-none"
                   >
                     <option value="">Keep status ({STATUS_META[currentStatus].label})</option>
-                    {STATUS_ORDER.filter((s) => s !== currentStatus).map((s) => (
+                    {STATUS_ORDER.filter((s) => s !== currentStatus && s !== "IN_REVIEW" && s !== "DONE").map((s) => (
                       <option key={s} value={s}>
                         Move to {STATUS_META[s].label}
                       </option>

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { db } from "@/lib/db";
-import { getCurrentUser, getSubordinateIds } from "@/lib/auth/current-user";
+import { getCurrentUser } from "@/lib/auth/current-user";
+import { getClearedIds } from "@/lib/clearance";
 import { canViewTask } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
@@ -20,18 +21,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       fileName: true,
       mimeType: true,
       blob: { select: { data: true } },
-      task: { select: { createdById: true, archivedAt: true, assignees: { select: { userId: true } } } },
+      task: { select: { createdById: true, archivedAt: true, assignees: { select: { userId: true, user: { select: { role: true } } } } } },
     },
   });
   if (!attachment || attachment.kind !== "FILE" || !attachment.blob || attachment.task.archivedAt) {
     return NextResponse.json({ error: "Not found." }, { status: 404 });
   }
 
-  const subs = await getSubordinateIds(user.id);
   const allowed = canViewTask(
     user,
-    { createdById: attachment.task.createdById, assigneeIds: attachment.task.assignees.map((a) => a.userId) },
-    subs,
+    {
+      createdById: attachment.task.createdById,
+      assigneeIds: attachment.task.assignees.map((a) => a.userId),
+      involvesFounder: attachment.task.assignees.some((a) => a.user.role === "FOUNDER"),
+    },
+    await getClearedIds(user),
   );
   if (!allowed) return NextResponse.json({ error: "Not found." }, { status: 404 });
 

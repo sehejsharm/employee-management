@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Check } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Check, FileCheck2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   DropdownMenu,
@@ -17,7 +18,9 @@ import { STATUS_META, STATUS_ORDER, type TaskStatusKey } from "./meta";
 
 /**
  * Changes a task's status from anywhere it's shown. Optimistic: the new status
- * appears immediately and rolls back if the server refuses.
+ * appears immediately and rolls back if the server refuses. "In review" isn't a
+ * status you pick — work gets there by being submitted with proof — so that
+ * option opens the task's submit panel instead.
  */
 export function StatusMenu({
   taskId,
@@ -34,6 +37,7 @@ export function StatusMenu({
 }) {
   const [optimistic, setOptimistic] = useSyncedState(status);
   const [pending, start] = React.useTransition();
+  const router = useRouter();
 
   const choose = (next: TaskStatusKey) => {
     if (next === optimistic) return;
@@ -47,7 +51,7 @@ export function StatusMenu({
         onChange?.(prev);
         toast.error(res.error);
       } else if (next === "DONE") {
-        toast.success("Nice work — task completed.");
+        toast.success("Work accepted — task completed.");
       }
     });
   };
@@ -65,10 +69,18 @@ export function StatusMenu({
         <DropdownMenuLabel>Set status</DropdownMenuLabel>
         {STATUS_ORDER.map((s) => {
           const m = STATUS_META[s];
+          if (s === "IN_REVIEW" && optimistic !== "IN_REVIEW") {
+            return (
+              <DropdownMenuItem key={s} onSelect={() => router.push(`/tasks/${taskId}#submit`)}>
+                <FileCheck2 className="!size-4 text-info" />
+                <span className="flex-1">Submit work…</span>
+              </DropdownMenuItem>
+            );
+          }
           return (
             <DropdownMenuItem key={s} onSelect={() => choose(s)}>
               <m.icon className={cn("!size-4", m.iconClass)} />
-              <span className="flex-1">{m.label}</span>
+              <span className="flex-1">{s === "DONE" && optimistic === "IN_REVIEW" ? "Done — accept the work" : m.label}</span>
               {s === optimistic && <Check className="!text-brand" />}
             </DropdownMenuItem>
           );

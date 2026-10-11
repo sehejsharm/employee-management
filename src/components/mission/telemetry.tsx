@@ -36,6 +36,12 @@ function tagOf(e: StreamEntry): { label: string; tone: BadgeTone } {
       return { label: "Asked", tone: "info" };
     case "ATTACHMENT_ADDED":
       return { label: "File", tone: "neutral" };
+    case "WORK_SUBMITTED":
+      return { label: "Submitted", tone: "info" };
+    case "WORK_ACCEPTED":
+      return { label: "Accepted", tone: "success" };
+    case "CHANGES_REQUESTED":
+      return { label: "Sent back", tone: "warning" };
     case "COMMENT":
       return { label: "Comment", tone: "neutral" };
     default:
@@ -58,6 +64,12 @@ function describe(e: StreamEntry) {
       return e.body ? `asked for an update — ${e.body}` : "asked for an update";
     case "ATTACHMENT_ADDED":
       return `attached ${String(m.title ?? "a file")}`;
+    case "WORK_SUBMITTED":
+      return e.body ? `submitted the work — ${e.body}` : "submitted the work with proof";
+    case "WORK_ACCEPTED":
+      return e.body ? `accepted the work — ${e.body}` : "accepted the work";
+    case "CHANGES_REQUESTED":
+      return e.body ? `asked for changes — ${e.body}` : "asked for changes";
     default:
       return "";
   }

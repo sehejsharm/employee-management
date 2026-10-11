@@ -2,7 +2,7 @@ import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { isFounder, type Actor } from "@/lib/permissions";
-import { taskRowSelect, toClientRow } from "@/lib/tasks/queries";
+import { taskRowSelect, taskVisibilityWhere, toClientRow } from "@/lib/tasks/queries";
 import { DUE_SOON_HOURS, dayKey, startOfDayInZone } from "@/lib/time";
 
 const HOUR = 3600_000;
@@ -55,25 +55,26 @@ export async function memberDashboard(userId: string) {
   };
 }
 
-/** Who a leader looks after: everyone for founders, the reporting line for managers. */
-async function teamIds(user: Actor, subordinateIds: Set<string>) {
+/** Whose work a leader sees: everyone for founders; themselves plus the colleagues a founder has cleared them to see, for everyone else. */
+async function teamIds(user: Actor, clearedIds: Set<string>) {
   if (isFounder(user)) {
     const all = await db.user.findMany({ where: { status: { not: "INACTIVE" } }, select: { id: true } });
     return all.map((u) => u.id);
   }
-  return [user.id, ...subordinateIds];
+  return [user.id, ...clearedIds];
 }
 
 /**
  * Mission control: the whole team's work as live telemetry. Founders see the
- * company; managers see their reporting line and the work they've handed out.
+ * company; management sees their own work, what they've handed out, and the
+ * colleagues they're cleared to see — never founders' work.
  */
-export async function missionControl(user: Actor, subordinateIds: Set<string>, tz: string) {
+export async function missionControl(user: Actor, clearedIds: Set<string>, tz: string) {
   const now = new Date();
-  const ids = await teamIds(user, subordinateIds);
+  const ids = await teamIds(user, clearedIds);
   const scope: Prisma.TaskWhereInput = isFounder(user)
     ? { archivedAt: null }
-    : { archivedAt: null, OR: [{ createdById: user.id }, { assignees: { some: { userId: { in: ids } } } }] };
+    : { AND: [{ archivedAt: null }, taskVisibilityWhere(user, clearedIds)] };
 
   const weekAgo = new Date(now.getTime() - 7 * DAY);
   const twoWeeksAgo = new Date(now.getTime() - 14 * DAY);
@@ -110,7 +111,10 @@ export async function missionControl(user: Actor, subordinateIds: Set<string>, t
         },
       }),
       db.taskActivity.findMany({
-        where: { kind: { in: ["PROGRESS_UPDATE", "STATUS_CHANGED", "COMMENT", "CREATED", "UPDATE_REQUESTED", "ATTACHMENT_ADDED"] }, task: scope },
+        where: {
+          kind: { in: ["PROGRESS_UPDATE", "STATUS_CHANGED", "COMMENT", "CREATED", "UPDATE_REQUESTED", "ATTACHMENT_ADDED", "WORK_SUBMITTED", "WORK_ACCEPTED", "CHANGES_REQUESTED"] },
+          task: scope,
+        },
         orderBy: { createdAt: "desc" },
         take: 16,
         select: {

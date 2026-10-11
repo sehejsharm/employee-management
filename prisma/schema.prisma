@@ -72,6 +72,29 @@ enum ActivityKind {
   ATTACHMENT_ADDED
   ATTACHMENT_REMOVED
   CHECKLIST_CHANGED
+  LEAD_CHANGED
+  WORK_SUBMITTED
+  WORK_ACCEPTED
+  CHANGES_REQUESTED
+}
+
+/// Who leads a task and who follows: one LEAD answers for it, FOLLOWERs work alongside.
+enum AssigneeRole {
+  LEAD
+  FOLLOWER
+}
+
+enum SubmissionStatus {
+  SUBMITTED
+  ACCEPTED
+  CHANGES_REQUESTED
+}
+
+enum ClearanceRequestStatus {
+  PENDING
+  APPROVED
+  DECLINED
+  WITHDRAWN
 }
 
 enum NotificationKind {
@@ -85,6 +108,9 @@ enum NotificationKind {
   TASK_COMPLETED
   ANNOUNCEMENT
   SYSTEM
+  WORK_SUBMITTED
+  WORK_REVIEWED
+  CLEARANCE
 }
 
 model Department {
@@ -99,64 +125,73 @@ model Department {
 }
 
 model User {
-  id                 String           @id @default(cuid())
+  id           String           @id @default(cuid())
   /// The login ID, e.g. FR-0042. Stored upper-case.
-  employeeCode       String           @unique
+  employeeCode String           @unique
   /// Stored lower-case. Also accepted as a login ID.
-  email              String           @unique
-  firstName          String
-  lastName           String
-  title              String?
-  role               Role             @default(EMPLOYEE)
-  status             EmploymentStatus @default(ACTIVE)
+  email        String           @unique
+  firstName    String
+  lastName     String
+  title        String?
+  role         Role             @default(EMPLOYEE)
+  status       EmploymentStatus @default(ACTIVE)
 
   /// Granular grants for management. Founders implicitly have all of them.
-  canAssignTasks     Boolean          @default(false)
-  canManageOrg       Boolean          @default(false)
-  canManagePeople    Boolean          @default(false)
+  canAssignTasks  Boolean @default(false)
+  canManageOrg    Boolean @default(false)
+  canManagePeople Boolean @default(false)
 
-  phone              String?
-  location           String?
-  bio                String?
+  phone          String?
+  location       String?
+  bio            String?
   /// What the person says they are focused on right now. Self-reported, optional.
-  focus              String?
-  focusUpdatedAt     DateTime?
+  focus          String?
+  focusUpdatedAt DateTime?
   /// Hue (0–360) used for the initials avatar.
-  avatarHue          Int              @default(212)
-  joinedAt           DateTime?
+  avatarHue      Int       @default(212)
+  joinedAt       DateTime?
 
   passwordHash       String
-  mustChangePassword Boolean          @default(true)
+  mustChangePassword Boolean   @default(true)
   passwordChangedAt  DateTime?
-  failedLoginCount   Int              @default(0)
+  failedLoginCount   Int       @default(0)
   lockedUntil        DateTime?
 
-  source             AccountSource    @default(MANUAL)
+  source     AccountSource @default(MANUAL)
   /// The record id in the HR console. Set only for HR-provisioned accounts.
-  externalId         String?          @unique
+  externalId String?       @unique
 
-  managerId          String?
-  manager            User?            @relation("ReportingLine", fields: [managerId], references: [id], onDelete: SetNull)
-  reports            User[]           @relation("ReportingLine")
+  managerId String?
+  manager   User?   @relation("ReportingLine", fields: [managerId], references: [id], onDelete: SetNull)
+  reports   User[]  @relation("ReportingLine")
   /// Order among siblings on the org chart.
-  orgOrder           Int              @default(0)
+  orgOrder  Int     @default(0)
 
-  departmentId       String?
-  department         Department?      @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
 
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   sessions           Session[]
-  tasksCreated       Task[]           @relation("TaskCreator")
+  tasksCreated       Task[]          @relation("TaskCreator")
   assignments        TaskAssignee[]
   activities         TaskActivity[]
   attachments        Attachment[]
-  updateRequestsMade UpdateRequest[]  @relation("UpdateRequester")
-  notifications      Notification[]   @relation("NotificationRecipient")
-  notificationsSent  Notification[]   @relation("NotificationActor")
+  updateRequestsMade UpdateRequest[] @relation("UpdateRequester")
+  notifications      Notification[]  @relation("NotificationRecipient")
+  notificationsSent  Notification[]  @relation("NotificationActor")
   announcements      Announcement[]
   auditEntries       AuditLog[]
+
+  submissions        Submission[]       @relation("SubmissionAuthor")
+  reviewsGiven       Submission[]       @relation("SubmissionReviewer")
+  clearancesHeld     Clearance[]        @relation("ClearanceViewer")
+  clearancesOnMe     Clearance[]        @relation("ClearanceSubject")
+  clearancesGranted  Clearance[]        @relation("ClearanceGrantor")
+  clearanceRequests  ClearanceRequest[] @relation("ClearanceRequester")
+  clearanceAsks      ClearanceRequest[] @relation("ClearanceRequestSubject")
+  clearanceDecisions ClearanceRequest[] @relation("ClearanceDecider")
 
   @@index([managerId])
   @@index([departmentId])
@@ -179,25 +214,25 @@ model Session {
 }
 
 model Task {
-  id             String          @id @default(cuid())
+  id          String       @id @default(cuid())
   /// Human-friendly sequence number, shown as T-123.
-  number         Int             @unique @default(autoincrement())
-  title          String
-  description    String?         @db.Text
-  status         TaskStatus      @default(TODO)
-  priority       TaskPriority    @default(MEDIUM)
+  number      Int          @unique @default(autoincrement())
+  title       String
+  description String?      @db.Text
+  status      TaskStatus   @default(TODO)
+  priority    TaskPriority @default(MEDIUM)
   /// The deadline: a date AND a time, stored in UTC.
-  dueAt          DateTime
+  dueAt       DateTime
   /// 0–100, set by assignees when they post a progress update.
-  progress       Int             @default(0)
-  completedAt    DateTime?
-  archivedAt     DateTime?
+  progress    Int          @default(0)
+  completedAt DateTime?
+  archivedAt  DateTime?
 
-  createdById    String
-  createdBy      User            @relation("TaskCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  createdById String
+  createdBy   User   @relation("TaskCreator", fields: [createdById], references: [id], onDelete: Restrict)
 
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   assignees      TaskAssignee[]
   attachments    Attachment[]
@@ -205,6 +240,8 @@ model Task {
   updateRequests UpdateRequest[]
   checklist      ChecklistItem[]
   notifications  Notification[]
+
+  submissions Submission[]
 
   @@index([dueAt])
   @@index([status])
@@ -217,6 +254,8 @@ model TaskAssignee {
   task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   assignedAt DateTime @default(now())
+
+  role AssigneeRole @default(FOLLOWER)
 
   @@id([taskId, userId])
   @@index([userId])
@@ -254,7 +293,12 @@ model Attachment {
   createdBy   User           @relation(fields: [createdById], references: [id], onDelete: Restrict)
   createdAt   DateTime       @default(now())
 
+  /// Set when the attachment is proof inside a work submission rather than task material.
+  submissionId String?
+  submission   Submission? @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
   @@index([taskId])
+  @@index([submissionId])
 }
 
 /// Uploaded file bytes. Kept in Postgres so the app runs anywhere with no
@@ -335,16 +379,16 @@ model Announcement {
 /// Every call the HR console makes, minus any credentials. Lets founders see
 /// that the integration is healthy and makes webhook delivery idempotent.
 model IntegrationEvent {
-  id         String   @id @default(cuid())
-  source     String
+  id        String   @id @default(cuid())
+  source    String
   /// The sender's event id. Unique, so a retried delivery is never applied twice.
-  eventId    String   @unique
-  type       String
-  status     String
-  error      String?
-  summary    Json?
-  userId     String?
-  createdAt  DateTime @default(now())
+  eventId   String   @unique
+  type      String
+  status    String
+  error     String?
+  summary   Json?
+  userId    String?
+  createdAt DateTime @default(now())
 
   @@index([source, createdAt])
 }
@@ -364,4 +408,72 @@ model AuditLog {
   createdAt  DateTime @default(now())
 
   @@index([createdAt])
+}
+
+/// Work handed in for review. Never empty: a write-up, a document or a link proves the work was done.
+model Submission {
+  id            String           @id @default(cuid())
+  taskId        String
+  task          Task             @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  submittedById String
+  submittedBy   User             @relation("SubmissionAuthor", fields: [submittedById], references: [id], onDelete: Restrict)
+  /// The written account of what was done.
+  summary       String?          @db.Text
+  status        SubmissionStatus @default(SUBMITTED)
+  reviewedById  String?
+  reviewedBy    User?            @relation("SubmissionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt    DateTime?
+  reviewNote    String?          @db.Text
+  createdAt     DateTime         @default(now())
+  attachments   Attachment[]
+
+  @@index([taskId, createdAt])
+}
+
+/// Permission for one person to see another's work. Only founders grant it, and
+/// never over a founder: founders' work is visible to founders alone.
+model Clearance {
+  id          String            @id @default(cuid())
+  viewerId    String
+  viewer      User              @relation("ClearanceViewer", fields: [viewerId], references: [id], onDelete: Cascade)
+  subjectId   String
+  subject     User              @relation("ClearanceSubject", fields: [subjectId], references: [id], onDelete: Cascade)
+  grantedById String
+  grantedBy   User              @relation("ClearanceGrantor", fields: [grantedById], references: [id], onDelete: Restrict)
+  note        String?
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  revokedById String?
+  createdAt   DateTime          @default(now())
+  request     ClearanceRequest?
+
+  @@index([viewerId, revokedAt])
+  @@index([subjectId, revokedAt])
+}
+
+/// Someone asking to see a colleague's work. Needs the colleague's consent and a founder's approval.
+model ClearanceRequest {
+  id                String                 @id @default(cuid())
+  requesterId       String
+  requester         User                   @relation("ClearanceRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  subjectId         String
+  subject           User                   @relation("ClearanceRequestSubject", fields: [subjectId], references: [id], onDelete: Cascade)
+  reason            String                 @db.Text
+  status            ClearanceRequestStatus @default(PENDING)
+  /// The colleague's answer; null until they respond.
+  subjectConsent    Boolean?
+  subjectAnsweredAt DateTime?
+  /// A founder's decision; null until one decides.
+  founderApproved   Boolean?
+  decidedById       String?
+  decidedBy         User?                  @relation("ClearanceDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+  decidedAt         DateTime?
+  clearanceId       String?                @unique
+  clearance         Clearance?             @relation(fields: [clearanceId], references: [id], onDelete: SetNull)
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  @@index([subjectId, status])
+  @@index([requesterId, status])
+  @@index([status])
 }

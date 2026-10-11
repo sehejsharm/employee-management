@@ -166,22 +166,29 @@ export async function setupWorkspace(_: AuthFormState, formData: FormData): Prom
   if (problems.length) return { error: `Your password needs: ${problems.join(", ").toLowerCase()}.`, field: "password" };
   if (password !== confirm) return { error: "The two passwords don't match.", field: "confirm" };
 
+  // Hash before taking the lock, so the transaction holds it only for the inserts.
+  const passwordHash = await hashPassword(password);
   let userId: string;
   try {
+    // Everything runs on the transaction's own connection: the lock covers the
+    // founder check and the inserts, and the whole setup commits or none of it does.
     userId = await db.$transaction(
       async (tx) => {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(${SETUP_LOCK_KEY}::bigint)`;
         if (await tx.user.count({ where: { role: "FOUNDER" } })) throw new SetupClosed();
-        const { user } = await createAccount({
-          email,
-          firstName,
-          lastName,
-          title,
-          role: "FOUNDER",
-          departmentId: await departmentIdByName("Leadership"),
-          source: "MANUAL",
-          credentials: { password, mustChangePassword: false },
-        });
+        const { user } = await createAccount(
+          {
+            email,
+            firstName,
+            lastName,
+            title,
+            role: "FOUNDER",
+            departmentId: await departmentIdByName("Leadership", tx),
+            source: "MANUAL",
+            credentials: { passwordHash, mustChangePassword: false },
+          },
+          tx,
+        );
         return user.id;
       },
       { timeout: 20_000, maxWait: 5_000 },

@@ -58,38 +58,54 @@ export function defaultGrants(role: Role) {
 export interface TaskAccessContext {
   createdById: string;
   assigneeIds: string[];
+  /** A founder is among the assignees: founders' work is visible to founders alone. */
+  involvesFounder: boolean;
+}
+
+/** Lead, follower or the person who assigned it. */
+export function isInvolved(a: Pick<Actor, "id">, task: Pick<TaskAccessContext, "createdById" | "assigneeIds">) {
+  return task.createdById === a.id || task.assigneeIds.includes(a.id);
 }
 
 /**
  * Who can see a task: founders see everything; everyone else sees what they
- * created or are assigned, and leaders also see their reporting line's work.
+ * created or are assigned, plus the work of colleagues a founder has cleared
+ * them to see — never work a founder is doing.
  */
-export function canViewTask(a: Actor, task: TaskAccessContext, subordinateIds?: Set<string>) {
+export function canViewTask(a: Actor, task: TaskAccessContext, clearedIds?: Set<string>) {
   if (isFounder(a)) return true;
-  if (task.createdById === a.id || task.assigneeIds.includes(a.id)) return true;
-  if (subordinateIds && task.assigneeIds.some((id) => subordinateIds.has(id))) return true;
-  return false;
+  if (isInvolved(a, task)) return true;
+  if (task.involvesFounder) return false;
+  return !!clearedIds && task.assigneeIds.some((id) => clearedIds.has(id));
 }
 
-/** Title, description, deadline, assignees, priority. */
-export function canEditTask(a: Actor, task: TaskAccessContext) {
+/** Title, description, deadline, lead and followers. */
+export function canEditTask(a: Actor, task: Pick<TaskAccessContext, "createdById">) {
   return isFounder(a) || task.createdById === a.id;
 }
 
-/** Moving a task through its statuses. */
+/** Reviewing submitted work — accepting it or sending it back. Whoever assigned it, or a founder. */
+export const canReviewWork = canEditTask;
+
+/** Handing in work for review: the lead and followers. */
+export function canSubmitWork(a: Actor, task: Pick<TaskAccessContext, "assigneeIds">) {
+  return task.assigneeIds.includes(a.id);
+}
+
+/** Moving a task through its statuses (submission and review have their own gates). */
 export function canChangeStatus(a: Actor, task: TaskAccessContext) {
   return canEditTask(a, task) || task.assigneeIds.includes(a.id);
 }
 
-/** Asking assignees for a progress update. */
-export function canRequestUpdate(a: Actor, task: TaskAccessContext, subordinateIds?: Set<string>) {
+/** Asking assignees for a progress update: founders, whoever assigned it, or a leader cleared to see it. */
+export function canRequestUpdate(a: Actor, task: TaskAccessContext, clearedIds?: Set<string>) {
   if (task.assigneeIds.length === 0) return false;
   if (task.assigneeIds.length === 1 && task.assigneeIds[0] === a.id) return false;
   if (isFounder(a) || task.createdById === a.id) return true;
-  return isLeader(a) && !!subordinateIds && task.assigneeIds.some((id) => subordinateIds.has(id));
+  return isLeader(a) && !task.involvesFounder && !!clearedIds && task.assigneeIds.some((id) => clearedIds.has(id));
 }
 
-/** Anyone involved can comment, attach and post progress. */
-export function canContribute(a: Actor, task: TaskAccessContext, subordinateIds?: Set<string>) {
-  return canViewTask(a, task, subordinateIds);
+/** Commenting, attaching and checking things off: the people doing the work, whoever assigned it, and founders. Clearance is look-only. */
+export function canContribute(a: Actor, task: TaskAccessContext) {
+  return isFounder(a) || isInvolved(a, task);
 }

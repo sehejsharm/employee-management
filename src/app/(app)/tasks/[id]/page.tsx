@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeft, ListChecks, MessageCircleQuestion, MessagesSquare, Paperclip } from "lucide-react";
+import { ChevronLeft, Crown, FileCheck2, ListChecks, MessageCircleQuestion, MessagesSquare, Paperclip } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { RichText } from "@/components/ui/rich-text";
@@ -16,37 +16,63 @@ import {
   HeaderStatus,
   TaskActions,
 } from "@/components/tasks/task-detail-client";
-import { getSubordinateIds, requireUser } from "@/lib/auth/current-user";
+import { NoClearance } from "@/components/clearance/no-clearance";
+import { SubmissionsPanel, SubmitWorkPanel } from "@/components/tasks/submissions";
+import { requireUser } from "@/lib/auth/current-user";
+import { clearanceBlock, getClearedIds, pendingClearanceWaitingOn } from "@/lib/clearance";
 import { db } from "@/lib/db";
 import { config } from "@/lib/env";
-import { canChangeStatus, canContribute, canEditTask, canRequestUpdate, canViewTask } from "@/lib/permissions";
+import {
+  canChangeStatus,
+  canContribute,
+  canEditTask,
+  canRequestUpdate,
+  canReviewWork,
+  canSubmitWork,
+  canViewTask,
+  isFounder,
+} from "@/lib/permissions";
+import { assigneeOrder } from "@/lib/tasks/queries";
 import { formatDateTime, timeAgo } from "@/lib/time";
 import { getTimeZone } from "@/lib/tz.server";
 import { taskRef } from "@/lib/utils";
 
 const person = { id: true, firstName: true, lastName: true, avatarHue: true, title: true } as const;
+const attachmentSelect = {
+  id: true,
+  kind: true,
+  title: true,
+  url: true,
+  content: true,
+  fileName: true,
+  mimeType: true,
+  size: true,
+  createdAt: true,
+  createdById: true,
+  createdBy: { select: { id: true, firstName: true, lastName: true, avatarHue: true } },
+} as const;
 
 async function load(id: string) {
   return db.task.findFirst({
     where: { id, archivedAt: null },
     include: {
       createdBy: { select: person },
-      assignees: { select: { user: { select: person } }, orderBy: { assignedAt: "asc" } },
+      assignees: { select: { role: true, user: { select: { ...person, role: true } } }, orderBy: assigneeOrder },
       checklist: { orderBy: { position: "asc" }, select: { id: true, text: true, done: true } },
-      attachments: {
-        orderBy: { createdAt: "asc" },
+      // Task material only; proof lives with its submission.
+      attachments: { where: { submissionId: null }, orderBy: { createdAt: "asc" }, select: attachmentSelect },
+      submissions: {
+        orderBy: { createdAt: "desc" },
         select: {
           id: true,
-          kind: true,
-          title: true,
-          url: true,
-          content: true,
-          fileName: true,
-          mimeType: true,
-          size: true,
+          status: true,
+          summary: true,
           createdAt: true,
-          createdById: true,
-          createdBy: { select: { id: true, firstName: true, lastName: true, avatarHue: true } },
+          reviewedAt: true,
+          reviewNote: true,
+          submittedBy: { select: { id: true, firstName: true, lastName: true, avatarHue: true } },
+          reviewedBy: { select: { firstName: true, lastName: true } },
+          attachments: { orderBy: { createdAt: "asc" }, select: attachmentSelect },
         },
       },
       activities: {
@@ -82,16 +108,54 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
   const task = await load(id);
   if (!task) notFound();
 
-  const subs = await getSubordinateIds(user.id);
-  const access = { createdById: task.createdById, assigneeIds: task.assignees.map((a) => a.user.id) };
-  // A task you can't see doesn't exist, as far as you can tell.
-  if (!canViewTask(user, access, subs)) notFound();
+  const cleared = await getClearedIds(user);
+  const access = {
+    createdById: task.createdById,
+    assigneeIds: task.assignees.map((a) => a.user.id),
+    involvesFounder: task.assignees.some((a) => a.user.role === "FOUNDER"),
+  };
+  const lead = task.assignees.find((a) => a.role === "LEAD")?.user ?? task.assignees[0]?.user ?? null;
+  const followers = task.assignees.map((a) => a.user).filter((a) => a.id !== lead?.id);
+
+  // Someone else's work without clearance: say so plainly (founders' work can't be requested).
+  if (!canViewTask(user, access, cleared)) {
+    const founderWork = access.involvesFounder;
+    const subject = lead ?? task.createdBy;
+    const block = founderWork ? clearanceBlock({ role: "FOUNDER", firstName: subject.firstName }) : clearanceBlock({ role: "EMPLOYEE", firstName: subject.firstName });
+    const waitingOn = block.requestable ? await pendingClearanceWaitingOn(user.id, subject) : null;
+    return (
+      <FadeIn>
+        <Link href="/tasks" className="mb-4 inline-flex items-center gap-1 text-[13px] font-medium text-fg-muted transition hover:text-fg">
+          <ChevronLeft className="size-4" /> Tasks
+        </Link>
+        <Card className="mx-auto max-w-xl">
+          <NoClearance subject={subject} reason={block.reason} requestable={block.requestable} pending={waitingOn} canRequest={!isFounder(user)} className="py-12" />
+        </Card>
+      </FadeIn>
+    );
+  }
 
   const isAssignee = access.assigneeIds.includes(user.id);
   const editable = canEditTask(user, access);
-  const contribute = canContribute(user, access, subs);
+  const contribute = canContribute(user, access);
+  const reviewer = canReviewWork(user, access);
   const ref = taskRef(task.number);
   const openRequests = task.updateRequests;
+  const canSubmit = canSubmitWork(user, access) && task.status !== "IN_REVIEW" && task.status !== "DONE";
+  const lastSentBack = task.submissions[0]?.status === "CHANGES_REQUESTED" ? task.submissions[0].reviewNote : null;
+  const toClientAttachment = (a: (typeof task.attachments)[number], removable: boolean) => ({
+    id: a.id,
+    kind: a.kind,
+    title: a.title,
+    url: a.url,
+    content: a.content,
+    fileName: a.fileName,
+    mimeType: a.mimeType,
+    size: a.size,
+    createdAt: a.createdAt.toISOString(),
+    createdBy: a.createdBy,
+    canRemove: removable,
+  });
 
   return (
     <FadeIn>
@@ -103,7 +167,7 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
         <div className="min-w-0">
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <span className="rounded-md bg-surface-sunken px-2 py-0.5 font-mono text-xs font-medium text-fg-muted ring-1 ring-line">{ref}</span>
-            <HeaderStatus taskId={task.id} status={task.status} canChange={canChangeStatus(user, access)} />
+            <HeaderStatus taskId={task.id} status={task.status} canChange={canChangeStatus(user, access) && contribute} />
             <PriorityBadge priority={task.priority} />
           </div>
           <h1 className="text-balance text-[26px] font-semibold leading-tight tracking-[-0.025em] sm:text-[32px]">{task.title}</h1>
@@ -118,7 +182,7 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
           taskId={task.id}
           taskRef={ref}
           canEdit={editable}
-          canRequest={canRequestUpdate(user, access, subs)}
+          canRequest={task.status !== "IN_REVIEW" && task.status !== "DONE" && canRequestUpdate(user, access, cleared)}
           assigneeNames={task.assignees.map((a) => a.user.firstName).join(", ")}
         />
       </div>
@@ -178,22 +242,51 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
                 taskId={task.id}
                 canContribute={contribute}
                 maxUploadBytes={config.maxUploadBytes()}
-                attachments={task.attachments.map((a) => ({
-                  id: a.id,
-                  kind: a.kind,
-                  title: a.title,
-                  url: a.url,
-                  content: a.content,
-                  fileName: a.fileName,
-                  mimeType: a.mimeType,
-                  size: a.size,
-                  createdAt: a.createdAt.toISOString(),
-                  createdBy: a.createdBy,
-                  canRemove: a.createdById === user.id || editable,
-                }))}
+                attachments={task.attachments.map((a) => toClientAttachment(a, a.createdById === user.id || editable))}
               />
             </CardBody>
           </Card>
+
+          {canSubmit && (
+            <SubmitWorkPanel
+              taskId={task.id}
+              maxUploadBytes={config.maxUploadBytes()}
+              reviewer={task.createdById === user.id ? "You" : task.createdBy.firstName}
+              sentBack={lastSentBack}
+            />
+          )}
+
+          {task.submissions.length > 0 && (
+            <Card id="submissions" className="scroll-mt-24">
+              <CardHeader
+                icon={<FileCheck2 />}
+                title="Submitted work"
+                description={
+                  task.status === "IN_REVIEW"
+                    ? reviewer
+                      ? "Waiting for your review."
+                      : `Waiting for ${task.createdBy.firstName} to review.`
+                    : `${task.submissions.length} submission${task.submissions.length === 1 ? "" : "s"}`
+                }
+              />
+              <CardBody>
+                <SubmissionsPanel
+                  canReview={reviewer}
+                  submissions={task.submissions.map((sub) => ({
+                    id: sub.id,
+                    status: sub.status,
+                    summary: sub.summary,
+                    createdAt: sub.createdAt.toISOString(),
+                    reviewedAt: sub.reviewedAt?.toISOString() ?? null,
+                    reviewNote: sub.reviewNote,
+                    submittedBy: sub.submittedBy,
+                    reviewedBy: sub.reviewedBy,
+                    attachments: sub.attachments.map((a) => toClientAttachment(a, false)),
+                  }))}
+                />
+              </CardBody>
+            </Card>
+          )}
 
           <Card>
             <CardHeader icon={<ListChecks />} title="Checklist" />
@@ -229,24 +322,45 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
         <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
           <DeadlineCard dueAt={task.dueAt.toISOString()} status={task.status} tz={tz} progress={task.progress} />
           <Card className="p-5">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">Assignees</div>
-            <ul className="mt-3 space-y-2.5">
-              {task.assignees.map(({ user: a }) => (
-                <li key={a.id}>
-                  <Link href={`/people/${a.id}`} className="group flex items-center gap-3">
-                    <Avatar person={a} size="md" />
-                    <span className="min-w-0">
-                      <span className="block truncate text-[13.5px] font-medium group-hover:text-brand">
-                        {a.firstName} {a.lastName}
-                        {a.id === user.id && <span className="ml-1 font-normal text-fg-subtle">(you)</span>}
-                      </span>
-                      <span className="block truncate text-xs text-fg-subtle">{a.title}</span>
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-            <div className="mt-5 border-t border-line pt-4 text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">Owner</div>
+            <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-brand">
+              <Crown className="size-3" /> Lead
+            </div>
+            {lead && (
+              <Link href={`/people/${lead.id}`} className="group mt-3 flex items-center gap-3">
+                <Avatar person={lead} size="md" />
+                <span className="min-w-0">
+                  <span className="block truncate text-[13.5px] font-medium group-hover:text-brand">
+                    {lead.firstName} {lead.lastName}
+                    {lead.id === user.id && <span className="ml-1 font-normal text-fg-subtle">(you)</span>}
+                  </span>
+                  <span className="block truncate text-xs text-fg-subtle">{lead.title}</span>
+                </span>
+              </Link>
+            )}
+            {followers.length > 0 && (
+              <>
+                <div className="mt-5 border-t border-line pt-4 text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">
+                  Following · {followers.length}
+                </div>
+                <ul className="mt-3 space-y-2.5">
+                  {followers.map((a) => (
+                    <li key={a.id}>
+                      <Link href={`/people/${a.id}`} className="group flex items-center gap-3">
+                        <Avatar person={a} size="md" />
+                        <span className="min-w-0">
+                          <span className="block truncate text-[13.5px] font-medium group-hover:text-brand">
+                            {a.firstName} {a.lastName}
+                            {a.id === user.id && <span className="ml-1 font-normal text-fg-subtle">(you)</span>}
+                          </span>
+                          <span className="block truncate text-xs text-fg-subtle">{a.title}</span>
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+            <div className="mt-5 border-t border-line pt-4 text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">Assigned by · reviews the work</div>
             <Link href={`/people/${task.createdBy.id}`} className="group mt-3 flex items-center gap-3">
               <Avatar person={task.createdBy} size="md" />
               <span className="min-w-0">

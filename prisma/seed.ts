@@ -52,6 +52,9 @@ async function main() {
     db.task.deleteMany(),
     db.announcement.deleteMany(),
     db.integrationEvent.deleteMany(),
+    db.clearanceRequest.deleteMany(),
+    db.clearance.deleteMany(),
+    db.submission.deleteMany(),
     db.auditLog.deleteMany(),
     db.session.deleteMany(),
     db.user.updateMany({ data: { managerId: null } }),
@@ -296,7 +299,8 @@ async function main() {
         completedAt: status === "DONE" ? new Date(dueAt.getTime() - 4 * HOUR) : null,
         createdById: users[t.by].id,
         createdAt,
-        assignees: { create: t.to.map((k) => ({ userId: users[k].id, assignedAt: createdAt })) },
+        // The first person named leads; anyone else follows.
+        assignees: { create: t.to.map((k, i) => ({ userId: users[k].id, assignedAt: createdAt, role: i === 0 ? ("LEAD" as const) : ("FOLLOWER" as const) })) },
         checklist: t.checklist ? { create: t.checklist.map(([text, done], i) => ({ text, done, position: i })) } : undefined,
         attachments: {
           create: [
@@ -327,6 +331,37 @@ async function main() {
         },
       },
     });
+
+    // Work in review or done was handed in with proof, like it has to be now.
+    if (status === "IN_REVIEW" || status === "DONE") {
+      const lead = users[t.to[0]];
+      const submittedAt = new Date(Math.min(now - 3 * HOUR, dueAt.getTime() - 5 * HOUR));
+      const accepted = status === "DONE";
+      const submission = await db.submission.create({
+        data: {
+          taskId: task.id,
+          submittedById: lead.id,
+          summary: `Done — ${t.title.toLowerCase()}. Everything is in the linked folder, with notes on what changed and what's still open.`,
+          status: accepted ? "ACCEPTED" : "SUBMITTED",
+          reviewedById: accepted ? users[t.by].id : null,
+          reviewedAt: accepted ? new Date(submittedAt.getTime() + 2 * HOUR) : null,
+          reviewNote: accepted ? "Looks good — thanks." : null,
+          createdAt: submittedAt,
+          attachments: {
+            create: { taskId: task.id, kind: "LINK", title: "drive.google.com", url: "https://drive.google.com/drive/folders/focus-realm-demo", createdById: lead.id, createdAt: submittedAt },
+          },
+        },
+        select: { id: true },
+      });
+      await db.taskActivity.create({
+        data: { taskId: task.id, actorId: lead.id, kind: "WORK_SUBMITTED", body: "Everything is in the linked folder.", meta: { submissionId: submission.id, files: 0, links: 1 }, createdAt: submittedAt },
+      });
+      if (accepted) {
+        await db.taskActivity.create({
+          data: { taskId: task.id, actorId: users[t.by].id, kind: "WORK_ACCEPTED", body: "Looks good — thanks.", meta: { submissionId: submission.id }, createdAt: new Date(submittedAt.getTime() + 2 * HOUR) },
+        });
+      }
+    }
 
     if (t.requestUpdate) {
       const [who, message] = t.requestUpdate;
@@ -367,6 +402,17 @@ async function main() {
       });
     }
   }
+
+  // Clearance: Riya has been cleared to see her two interns' work; Sana is asking to see Arjun's.
+  await db.clearance.createMany({
+    data: [
+      { viewerId: users.riya.id, subjectId: users.rohan.id, grantedById: users.aarav.id, note: "Riya mentors the marketing interns" },
+      { viewerId: users.riya.id, subjectId: users.kunal.id, grantedById: users.aarav.id, note: "Riya mentors the marketing interns" },
+    ],
+  });
+  await db.clearanceRequest.create({
+    data: { requesterId: users.sana.id, subjectId: users.arjun.id, reason: "I'm booking the Diwali shoot logistics and need to see where the social calendar stands." },
+  });
 
   await db.announcement.createMany({
     data: [

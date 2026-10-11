@@ -25,6 +25,7 @@ export interface TaskFormInitial {
   priority: TaskPriorityKey;
   dueAt: string;
   assigneeIds: string[];
+  leadId?: string;
 }
 
 export function TaskForm({
@@ -55,6 +56,9 @@ export function TaskForm({
   const [assignees, setAssignees] = React.useState<string[]>(
     initial?.assigneeIds ?? (presetAssignee ? [presetAssignee] : canAssignOthers ? [] : [selfId]),
   );
+  // The lead answers for the task; everyone else follows. Defaults to the first person picked.
+  const [chosenLead, setLead] = React.useState<string | null>(initial?.leadId ?? null);
+  const leadId = chosenLead && assignees.includes(chosenLead) ? chosenLead : (assignees[0] ?? null);
   const [links, setLinks] = React.useState<{ title: string; url: string }[]>([]);
   const [notes, setNotes] = React.useState<{ title: string; content: string }[]>([]);
   const [files, setFiles] = React.useState<File[]>([]);
@@ -71,13 +75,13 @@ export function TaskForm({
     setPending(true);
     try {
       if (editing) {
-        const res = await updateTask(initial!.id, { title, description, priority, dueAt, assigneeIds: assignees });
+        const res = await updateTask(initial!.id, { title, description, priority, dueAt, assigneeIds: assignees, leadId: leadId ?? undefined });
         if (!res.ok) return void toast.error(res.error);
         toast.success("Task updated.");
         router.push(`/tasks/${initial!.id}`);
         return;
       }
-      const res = await createTask({ title, description, priority, dueAt, assigneeIds: assignees, links, notes, checklist });
+      const res = await createTask({ title, description, priority, dueAt, assigneeIds: assignees, leadId: leadId ?? undefined, links, notes, checklist });
       if (!res.ok) return void toast.error(res.error);
       const id = res.data!.id;
       for (const f of files) {
@@ -104,6 +108,7 @@ export function TaskForm({
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="What needs to be done?"
+            aria-label="Task title"
             className="w-full bg-transparent text-[22px] font-semibold tracking-[-0.02em] text-fg outline-none placeholder:text-fg-subtle/70 focus-visible:outline-none sm:text-[26px]"
             maxLength={200}
             autoFocus={!editing}
@@ -113,6 +118,7 @@ export function TaskForm({
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Add context: the goal, what good looks like, anything they should know…"
+            aria-label="Brief"
             className="mt-4 min-h-36 border-0 bg-surface-sunken/60 shadow-none focus:bg-surface"
             maxLength={20000}
           />
@@ -183,11 +189,13 @@ export function TaskForm({
 
       <div className="space-y-5 lg:sticky lg:top-24 lg:self-start">
         <Card className="space-y-5 p-5 sm:p-6">
-          <Field label="Assign to">
+          <Field label="Assign to" hint={assignees.length > 1 ? "One person leads; the rest follow. Choose who leads." : undefined}>
             <AssigneePicker
               people={people}
               value={assignees}
               onChange={setAssignees}
+              leadId={leadId}
+              onLeadChange={setLead}
               selfId={selfId}
               restrictedToSelf={!canAssignOthers}
             />

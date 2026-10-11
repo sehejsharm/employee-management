@@ -10,7 +10,9 @@ import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ManageMember } from "@/components/people/manage-member";
 import { TaskRow } from "@/components/tasks/task-row";
-import { getSubordinateIds, requireUser } from "@/lib/auth/current-user";
+import { requireUser } from "@/lib/auth/current-user";
+import { canSeeWorkOf, clearanceBlock, getClearedIds, pendingClearanceWaitingOn } from "@/lib/clearance";
+import { NoClearance } from "@/components/clearance/no-clearance";
 import { db } from "@/lib/db";
 import { ROLE_LABEL, STATUS_LABEL, canAssignTasks, canManagePeople, isFounder } from "@/lib/permissions";
 import { taskRowSelect, taskVisibilityWhere, toClientRow } from "@/lib/tasks/queries";
@@ -64,13 +66,21 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
   if (!person) notFound();
 
   const isSelf = viewer.id === person.id;
-  const subs = await getSubordinateIds(viewer.id);
+  const cleared = await getClearedIds(viewer);
   const admin = canManagePeople(viewer);
+  // Someone's work — their task list and their focus — needs clearance; founders' work is founders-only.
+  const canSeeWork = canSeeWorkOf(viewer, person, cleared);
+  const block = canSeeWork ? null : clearanceBlock(person);
+  const waitingOn = block?.requestable ? await pendingClearanceWaitingOn(viewer.id, person) : null;
+  if (!canSeeWork) {
+    person.focus = null;
+    person.focusUpdatedAt = null;
+  }
 
-  // Only the tasks the viewer is already allowed to see.
+  // Only the tasks the viewer is already allowed to see (without clearance: just the ones you share).
   const tasks = await db.task.findMany({
     where: {
-      AND: [taskVisibilityWhere(viewer, subs), { archivedAt: null, status: { not: "DONE" }, assignees: { some: { userId: person.id } } }],
+      AND: [taskVisibilityWhere(viewer, cleared), { archivedAt: null, status: { not: "DONE" }, assignees: { some: { userId: person.id } } }],
     },
     select: taskRowSelect,
     orderBy: { dueAt: "asc" },
@@ -201,14 +211,24 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
           <Card>
             <CardHeader
               icon={<ClipboardList />}
-              title={isSelf ? "Your open work" : `${person.firstName}'s open work`}
-              description={isSelf || isFounder(viewer) ? undefined : "Only tasks you're involved in or oversee are shown."}
+              title={isSelf ? "Your open work" : block ? `Work you share with ${person.firstName}` : `${person.firstName}'s open work`}
+              description={isSelf || isFounder(viewer) ? undefined : block ? undefined : "Shown with clearance from a founder."}
             />
             <CardBody className="px-2 sm:px-3">
+              {block && (
+                <NoClearance
+                  subject={person}
+                  reason={block.reason}
+                  requestable={block.requestable}
+                  pending={waitingOn}
+                  canRequest={!isFounder(viewer)}
+                  className={tasks.length ? "border-b border-line pb-6" : undefined}
+                />
+              )}
               {tasks.length === 0 ? (
-                <EmptyState icon={<ClipboardList />} title="Nothing to show" description="No open tasks you can see." compact />
+                !block && <EmptyState icon={<ClipboardList />} title="Nothing to show" description="No open tasks right now." compact />
               ) : (
-                <ul>
+                <ul className={block ? "pt-3" : undefined}>
                   {tasks.map((t, i) => (
                     <TaskRow key={t.id} task={toClientRow(t)} tz={tz} index={i} canChangeStatus={false} />
                   ))}

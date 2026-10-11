@@ -54,9 +54,16 @@ export function poolConfig(connectionString: string): PoolConfig {
   }
 
   const ca = process.env.DATABASE_CA_CERT?.replace(/\\n/g, "\n").trim();
+  const mode = url.searchParams.get("sslmode");
   let ssl: PoolConfig["ssl"] | undefined;
   if (ca) ssl = { ca };
-  else if (/\.supabase\.(co|com)$/i.test(url.hostname) && url.searchParams.get("sslmode") !== "verify-full") {
+  else if (
+    /\.supabase\.(co|com)$/i.test(url.hostname) &&
+    // Only when the URL didn't ask for verification itself (verify-ca/verify-full or its own root cert).
+    !url.searchParams.has("sslrootcert") &&
+    mode !== "verify-ca" &&
+    mode !== "verify-full"
+  ) {
     ssl = { rejectUnauthorized: false };
   }
   if (!ssl) return { connectionString, ...limits };

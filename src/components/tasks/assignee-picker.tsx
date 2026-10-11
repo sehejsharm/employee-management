@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Command } from "cmdk";
-import { Check, ChevronDown, UserPlus, X } from "lucide-react";
+import { Check, ChevronDown, Crown, UserPlus, X } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/menu";
 import { cn } from "@/lib/utils";
@@ -22,12 +22,17 @@ export function AssigneePicker({
   people,
   value,
   onChange,
+  leadId,
+  onLeadChange,
   selfId,
   restrictedToSelf,
 }: {
   people: PickablePerson[];
   value: string[];
   onChange: (ids: string[]) => void;
+  /** Who leads; the rest follow. */
+  leadId: string | null;
+  onLeadChange: (id: string) => void;
   selfId: string;
   restrictedToSelf: boolean;
 }) {
@@ -59,24 +64,38 @@ export function AssigneePicker({
                 <UserPlus className="size-4" /> Choose who this is for
               </span>
             )}
-            {selected.map((p) => (
-              <span key={p.id} className="inline-flex h-7 items-center gap-1.5 rounded-full bg-surface-sunken py-0.5 pl-0.5 pr-1 text-[13px] ring-1 ring-line">
-                <Avatar person={p} size="xs" className="!h-6 !w-6" />
-                {p.id === selfId ? "Me" : `${p.firstName} ${p.lastName}`}
+            {selected.map((p) => {
+              const isLead = p.id === leadId;
+              return (
                 <span
-                  role="button"
-                  tabIndex={-1}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggle(p.id);
-                  }}
-                  className="rounded-full p-0.5 text-fg-subtle hover:bg-surface-hover hover:text-fg"
-                  aria-label={`Remove ${p.firstName}`}
+                  key={p.id}
+                  className={cn(
+                    "inline-flex h-7 items-center gap-1.5 rounded-full py-0.5 pl-0.5 pr-1 text-[13px] ring-1",
+                    isLead ? "bg-brand-soft text-brand-soft-fg ring-brand/30" : "bg-surface-sunken ring-line",
+                  )}
                 >
-                  <X className="size-3" />
+                  <Avatar person={p} size="xs" className="!h-6 !w-6" />
+                  {p.id === selfId ? "Me" : `${p.firstName} ${p.lastName}`}
+                  {isLead && selected.length > 1 && (
+                    <span className="inline-flex items-center gap-0.5 px-0.5 text-[10.5px] font-semibold uppercase tracking-wide text-brand">
+                      <Crown className="size-3" /> Lead
+                    </span>
+                  )}
+                  <span
+                    role="button"
+                    tabIndex={-1}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggle(p.id);
+                    }}
+                    className="rounded-full p-0.5 text-fg-subtle hover:bg-surface-hover hover:text-fg"
+                    aria-label={`Remove ${p.firstName}`}
+                  >
+                    <X className="size-3" />
+                  </span>
                 </span>
-              </span>
-            ))}
+              );
+            })}
             <ChevronDown className="ml-auto mr-1 size-4 text-fg-subtle" />
           </button>
         </PopoverTrigger>
@@ -131,6 +150,29 @@ export function AssigneePicker({
           </Command>
         </PopoverContent>
       </Popover>
+      {selected.length > 1 && (
+        <div role="radiogroup" aria-label="Who leads this task" className="mt-2.5 flex flex-wrap gap-1.5">
+          {selected.map((p) => {
+            const isLead = p.id === leadId;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                role="radio"
+                aria-checked={isLead}
+                onClick={() => onLeadChange(p.id)}
+                className={cn(
+                  "inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-[12px] font-medium transition focus:outline-none focus-visible:ring-4 focus-visible:ring-ring/40",
+                  isLead ? "border-brand/40 bg-brand-soft text-brand-soft-fg" : "border-line text-fg-muted hover:border-line-strong hover:text-fg",
+                )}
+              >
+                <Crown className={cn("size-3", isLead ? "text-brand" : "text-fg-subtle")} />
+                {p.id === selfId ? "Me" : p.firstName}
+              </button>
+            );
+          })}
+        </div>
+      )}
       {restrictedToSelf && (
         <p className="mt-1.5 text-xs text-fg-subtle">You can create tasks for yourself. Founders can grant you assigning rights.</p>
       )}

@@ -5,7 +5,8 @@ import type { Prisma } from "@/generated/prisma/client";
 import { PageHeader } from "@/components/app/page-header";
 import { Button } from "@/components/ui/button";
 import { TasksView, type Scope } from "@/components/tasks/tasks-view";
-import { getSubordinateIds, requireUser } from "@/lib/auth/current-user";
+import { requireUser } from "@/lib/auth/current-user";
+import { getClearedIds } from "@/lib/clearance";
 import { db } from "@/lib/db";
 import { canAssignTasks, isFounder } from "@/lib/permissions";
 import { taskRowSelect, toClientRow } from "@/lib/tasks/queries";
@@ -19,7 +20,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   const user = await requireUser();
   const tz = await getTimeZone();
   const params = await searchParams;
-  const subs = await getSubordinateIds(user.id);
+  const cleared = await getClearedIds(user);
 
   const filters: Partial<Record<ScopeKey, Prisma.TaskWhereInput>> = {
     mine: { assignees: { some: { userId: user.id } } },
@@ -27,15 +28,18 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   if (canAssignTasks(user)) {
     filters.delegated = { createdById: user.id, assignees: { some: { userId: { not: user.id } } } };
   }
-  if (!isFounder(user) && subs.size) {
-    filters.team = { assignees: { some: { userId: { in: [...subs] } } } };
+  // Colleagues a founder has cleared you to see — never work a founder is doing.
+  if (!isFounder(user) && cleared.size) {
+    filters.team = {
+      AND: [{ assignees: { some: { userId: { in: [...cleared] } } } }, { assignees: { none: { user: { role: "FOUNDER" } } } }],
+    };
   }
   if (isFounder(user)) filters.all = {};
 
   const labels: Record<ScopeKey, string> = {
     mine: "Assigned to me",
     delegated: "Assigned by me",
-    team: "My team",
+    team: "Cleared to view",
     all: "Everyone",
   };
 

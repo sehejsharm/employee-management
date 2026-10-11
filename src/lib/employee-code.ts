@@ -1,3 +1,4 @@
+import type { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { config } from "@/lib/env";
 
@@ -10,10 +11,10 @@ export function isEmployeeCode(value: string) {
   return /^[A-Z][A-Z0-9]{1,9}-[A-Z0-9-]{1,16}$/.test(normaliseEmployeeCode(value));
 }
 
-/** The next free code in the FR-0001 sequence. */
-export async function nextEmployeeCode() {
+/** The next free code in the FR-0001 sequence. Pass a transaction client to read inside it. */
+export async function nextEmployeeCode(client: Prisma.TransactionClient = db) {
   const prefix = config.employeeCodePrefix();
-  const rows = await db.user.findMany({
+  const rows = await client.user.findMany({
     where: { employeeCode: { startsWith: `${prefix}-` } },
     select: { employeeCode: true },
   });

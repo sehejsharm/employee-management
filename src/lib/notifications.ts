@@ -1,9 +1,6 @@
 import { db } from "@/lib/db";
 import type { NotificationKind } from "@/generated/prisma/enums";
-import { DUE_SOON_HOURS } from "@/lib/time";
-import { deadlineAlerts } from "@/lib/deadline-alerts";
-
-const HOUR = 60 * 60 * 1000;
+import { REMINDER_HORIZON_MS, SUBMITTED_STATUSES, deadlineAlerts } from "@/lib/deadline-alerts";
 
 export interface NotificationInput {
   userId: string;
@@ -46,11 +43,11 @@ const openTaskSelect = {
 
 /** Reminders for one person. Cheap; called whenever their client polls. */
 export async function syncDeadlineAlertsFor(userId: string, now = new Date()) {
-  const horizon = new Date(now.getTime() + DUE_SOON_HOURS * HOUR);
+  const horizon = new Date(now.getTime() + REMINDER_HORIZON_MS);
   const tasks = await db.task.findMany({
     where: {
       archivedAt: null,
-      status: { not: "DONE" },
+      status: { notIn: [...SUBMITTED_STATUSES] },
       dueAt: { lte: horizon },
       OR: [{ assignees: { some: { userId } } }, { createdById: userId, dueAt: { lte: now } }],
     },
@@ -63,9 +60,9 @@ export async function syncDeadlineAlertsFor(userId: string, now = new Date()) {
 
 /** Reminders for everyone. Run by the cron endpoint so nobody misses one while signed out. */
 export async function syncAllDeadlineAlerts(now = new Date()) {
-  const horizon = new Date(now.getTime() + DUE_SOON_HOURS * HOUR);
+  const horizon = new Date(now.getTime() + REMINDER_HORIZON_MS);
   const tasks = await db.task.findMany({
-    where: { archivedAt: null, status: { not: "DONE" }, dueAt: { lte: horizon } },
+    where: { archivedAt: null, status: { notIn: [...SUBMITTED_STATUSES] }, dueAt: { lte: horizon } },
     select: openTaskSelect,
   });
   const alerts = deadlineAlerts(tasks, now);

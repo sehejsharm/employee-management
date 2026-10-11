@@ -22,7 +22,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { RichText } from "@/components/ui/rich-text";
 import { FocusEditor, NextDeadline, StatCard, WelcomeToast } from "@/components/dashboard/widgets";
 import { TaskRow } from "@/components/tasks/task-row";
-import { getSubordinateIds, requireUser } from "@/lib/auth/current-user";
+import { requireUser } from "@/lib/auth/current-user";
+import { getClearedIds } from "@/lib/clearance";
 import { founderPulse, memberDashboard, missionControl } from "@/lib/dashboard";
 import { MissionControl } from "@/components/mission/mission-control";
 import { isFounder, isLeader } from "@/lib/permissions";
@@ -54,7 +55,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           view === "team"
             ? isFounder(user)
               ? "Here's the whole company's work — what's late, what's next, and who's carrying what."
-              : "Here's your team's work — what's late, what's next, and who's carrying what."
+              : "Here's your work and everyone you're cleared to see — what's late, what's next, and who's carrying what."
             : "Here's what's on your plate. Deadlines are in your local time."
         }
         actions={
@@ -226,12 +227,12 @@ async function MemberView({ tz }: { tz: string }) {
 
 async function LeaderView({ tz }: { tz: string }) {
   const user = await requireUser();
-  const subs = await getSubordinateIds(user.id);
-  const [data, pulse] = await Promise.all([missionControl(user, subs, tz), isFounder(user) ? founderPulse() : Promise.resolve([])]);
+  const cleared = await getClearedIds(user);
+  const [data, pulse] = await Promise.all([missionControl(user, cleared, tz), isFounder(user) ? founderPulse() : Promise.resolve([])]);
 
   return (
     <div className="space-y-6">
-      <MissionControl data={data} tz={tz} scopeLabel={isFounder(user) ? "Everything Focus Realm is working on, live" : "Everything your team is working on, live"} />
+      <MissionControl data={data} tz={tz} scopeLabel={isFounder(user) ? "Everything Focus Realm is working on, live" : "Your work and everyone you're cleared to see, live"} />
 
       {pulse.length > 0 && (
         <Card>

@@ -1,3 +1,4 @@
+import type { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import type { AccountSource, EmploymentStatus, Role } from "@/generated/prisma/enums";
 import { generateTemporaryPassword, hashPassword, isBcryptHash } from "@/lib/auth/password";
@@ -60,21 +61,22 @@ export interface NewAccount {
   credentials?: CredentialInput;
 }
 
-export async function createAccount(input: NewAccount) {
+/** Pass a transaction client to create the account inside that transaction (first-run setup does). */
+export async function createAccount(input: NewAccount, client: Prisma.TransactionClient = db) {
   const email = input.email.trim().toLowerCase();
-  if (await db.user.findUnique({ where: { email }, select: { id: true } })) {
+  if (await client.user.findUnique({ where: { email }, select: { id: true } })) {
     throw new AccountError(`An account already uses ${email}.`);
   }
 
-  let employeeCode = input.employeeCode ? normaliseEmployeeCode(input.employeeCode) : await nextEmployeeCode();
+  let employeeCode = input.employeeCode ? normaliseEmployeeCode(input.employeeCode) : await nextEmployeeCode(client);
   if (!isEmployeeCode(employeeCode)) throw new AccountError(`"${employeeCode}" is not a valid employee ID (e.g. FR-0042).`);
-  if (await db.user.findUnique({ where: { employeeCode }, select: { id: true } })) {
+  if (await client.user.findUnique({ where: { employeeCode }, select: { id: true } })) {
     if (input.employeeCode) throw new AccountError(`Employee ID ${employeeCode} is already taken.`);
-    employeeCode = await nextEmployeeCode();
+    employeeCode = await nextEmployeeCode(client);
   }
 
   const creds = await resolveCredentials(input.credentials);
-  const user = await db.user.create({
+  const user = await client.user.create({
     data: {
       email,
       employeeCode,
@@ -121,15 +123,15 @@ export async function setPassword(userId: string, credentials?: CredentialInput)
 }
 
 /** Finds a department by name, creating it on first use (HR sends names, not ids). */
-export async function departmentIdByName(name: string | undefined | null) {
+export async function departmentIdByName(name: string | undefined | null, client: Prisma.TransactionClient = db) {
   const clean = name?.trim();
   if (!clean) return null;
-  const existing = await db.department.findFirst({
+  const existing = await client.department.findFirst({
     where: { name: { equals: clean, mode: "insensitive" } },
     select: { id: true },
   });
   if (existing) return existing.id;
-  const created = await db.department.create({ data: { name: clean }, select: { id: true } });
+  const created = await client.department.create({ data: { name: clean }, select: { id: true } });
   return created.id;
 }
 

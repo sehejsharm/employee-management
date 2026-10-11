@@ -7,6 +7,7 @@ import {
   Megaphone,
   Network,
   Settings,
+  ShieldCheck,
   Telescope,
   Users,
 } from "lucide-react";
@@ -24,6 +25,7 @@ export interface ShellUser {
 
 export interface ShellFlags {
   isLeader: boolean;
+  isFounder: boolean;
   canAssign: boolean;
   canAdminister: boolean;
   canManagePeople: boolean;
@@ -45,8 +47,10 @@ export function navItems(flags: ShellFlags): NavItem[] {
     { href: "/org", label: "Org chart", icon: Network, section: "company" },
     { href: "/people", label: "People", icon: Users, section: "company", match: (p) => p.startsWith("/people") },
     { href: "/announcements", label: "Announcements", icon: Megaphone, section: "company" },
+    { href: "/clearance", label: "Clearance", icon: ShieldCheck, section: "company" },
   ];
-  if (flags.isLeader) {
+  // Founders' work is founders-only, so the leadership board is too.
+  if (flags.isFounder) {
     items.push({ href: "/leadership", label: "Leadership", icon: Telescope, section: "leadership" });
   }
   if (flags.canAdminister) {

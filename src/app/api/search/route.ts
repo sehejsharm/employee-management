@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { db } from "@/lib/db";
-import { getCurrentUser, getSubordinateIds } from "@/lib/auth/current-user";
+import { getCurrentUser } from "@/lib/auth/current-user";
+import { getClearedIds } from "@/lib/clearance";
 import { taskVisibilityWhere } from "@/lib/tasks/queries";
 
 export const dynamic = "force-dynamic";
@@ -13,13 +14,13 @@ export async function GET(request: NextRequest) {
   if (q.length < 1) return NextResponse.json({ tasks: [], people: [] });
 
   const numeric = Number(q.replace(/^t-?/i, ""));
-  const subordinates = await getSubordinateIds(user.id);
+  const cleared = await getClearedIds(user);
 
   const [tasks, people] = await Promise.all([
     db.task.findMany({
       where: {
         AND: [
-          taskVisibilityWhere(user, subordinates),
+          taskVisibilityWhere(user, cleared),
           { archivedAt: null },
           {
             OR: [

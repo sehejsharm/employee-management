@@ -12,7 +12,7 @@ import { DueLabel } from "@/components/tasks/badges";
 import { STATUS_META } from "@/components/tasks/meta";
 import { requireUser } from "@/lib/auth/current-user";
 import { db } from "@/lib/db";
-import { isFounder, isLeader } from "@/lib/permissions";
+import { isFounder } from "@/lib/permissions";
 import { timeAgo } from "@/lib/time";
 import { getTimeZone } from "@/lib/tz.server";
 import { cn } from "@/lib/utils";
@@ -31,13 +31,11 @@ const taskSelect = {
   assignees: { select: { user: { select: { id: true, firstName: true, lastName: true, avatarHue: true } } } },
 } as const;
 
-/**
- * Who in leadership is carrying what. Founders see every task; management
- * sees the shape of the work (focus and counts) without the task details.
- */
+/** Who in leadership is carrying what. Founders only. */
 export default async function LeadershipPage() {
   const user = await requireUser();
-  if (!isLeader(user)) notFound();
+  // Founders' work is visible to founders alone, and this board is mostly founders' work.
+  if (!isFounder(user)) notFound();
   const tz = await getTimeZone();
   const detailed = isFounder(user);
   const now = new Date();

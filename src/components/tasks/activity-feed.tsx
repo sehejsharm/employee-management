@@ -1,4 +1,18 @@
-import { ArrowRight, CalendarClock, Flag, MessageCircleQuestion, Paperclip, Pencil, Sparkles, Trash2, Users } from "lucide-react";
+import {
+  ArrowRight,
+  BadgeCheck,
+  CalendarClock,
+  Crown,
+  FileCheck2,
+  Flag,
+  MessageCircleQuestion,
+  Paperclip,
+  Pencil,
+  Sparkles,
+  Trash2,
+  Undo2,
+  Users,
+} from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { RichText } from "@/components/ui/rich-text";
 import { ProgressBar } from "@/components/ui/progress-ring";
@@ -42,6 +56,12 @@ function StatusChip({ s }: { s: string }) {
   );
 }
 
+const REVIEW_TAG: Record<string, { label: string; icon: React.ElementType; chip: string; card: string } | undefined> = {
+  WORK_SUBMITTED: { label: "Submitted for review", icon: FileCheck2, chip: "bg-info-soft text-info", card: "border-info/25 bg-info-soft/50" },
+  WORK_ACCEPTED: { label: "Accepted the work", icon: BadgeCheck, chip: "bg-success/15 text-success", card: "border-success/25 bg-success-soft/50" },
+  CHANGES_REQUESTED: { label: "Asked for changes", icon: Undo2, chip: "bg-warning-soft text-warning", card: "border-warning/25 bg-warning-soft/50" },
+};
+
 /** The task's history: conversation as cards, changes as quiet one-liners. */
 export function ActivityFeed({ entries, tz }: { entries: FeedEntry[]; tz: string }) {
   return (
@@ -49,9 +69,17 @@ export function ActivityFeed({ entries, tz }: { entries: FeedEntry[]; tz: string
       {entries.map((e) => {
         const meta = e.meta ?? {};
 
-        if (e.kind === "COMMENT" || e.kind === "PROGRESS_UPDATE" || e.kind === "UPDATE_REQUESTED") {
+        if (
+          e.kind === "COMMENT" ||
+          e.kind === "PROGRESS_UPDATE" ||
+          e.kind === "UPDATE_REQUESTED" ||
+          e.kind === "WORK_SUBMITTED" ||
+          e.kind === "WORK_ACCEPTED" ||
+          e.kind === "CHANGES_REQUESTED"
+        ) {
           const isUpdate = e.kind === "PROGRESS_UPDATE";
           const isRequest = e.kind === "UPDATE_REQUESTED";
+          const review = REVIEW_TAG[e.kind];
           return (
             <li key={e.id} className="relative flex gap-3">
               <Avatar person={e.actor} size="md" ring className="relative z-10" />
@@ -60,7 +88,8 @@ export function ActivityFeed({ entries, tz }: { entries: FeedEntry[]; tz: string
                   "min-w-0 flex-1 rounded-2xl border p-3.5",
                   isUpdate && "border-success/25 bg-success-soft/50",
                   isRequest && "border-info/25 bg-info-soft/60",
-                  !isUpdate && !isRequest && "border-line bg-surface",
+                  review?.card,
+                  !isUpdate && !isRequest && !review && "border-line bg-surface",
                 )}
               >
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px]">
@@ -75,9 +104,22 @@ export function ActivityFeed({ entries, tz }: { entries: FeedEntry[]; tz: string
                       <MessageCircleQuestion className="size-3" /> Requested an update
                     </span>
                   )}
+                  {review && (
+                    <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold", review.chip)}>
+                      <review.icon className="size-3" /> {review.label}
+                    </span>
+                  )}
                   <When date={e.createdAt} tz={tz} />
                 </div>
                 {e.body && <RichText text={e.body} className="mt-1.5 text-[13.5px]" />}
+                {e.kind === "WORK_SUBMITTED" && (Number(meta.files) > 0 || Number(meta.links) > 0) && (
+                  <a href="#submissions" className="mt-2 inline-block text-[12.5px] font-medium text-brand hover:underline">
+                    {[Number(meta.files) ? `${meta.files} document${Number(meta.files) === 1 ? "" : "s"}` : null, Number(meta.links) ? `${meta.links} link${Number(meta.links) === 1 ? "" : "s"}` : null]
+                      .filter(Boolean)
+                      .join(" · ")}{" "}
+                    attached as proof →
+                  </a>
+                )}
                 {isUpdate && <ProgressBar value={Number(meta.progress ?? 0)} tone="success" className="mt-3" />}
               </div>
             </li>
@@ -144,6 +186,14 @@ export function ActivityFeed({ entries, tz }: { entries: FeedEntry[]; tz: string
           case "EDITED":
             icon = <Pencil />;
             text = <>edited the details</>;
+            break;
+          case "LEAD_CHANGED":
+            icon = <Crown />;
+            text = (
+              <>
+                made <span className="font-medium text-fg">{String(meta.to ?? "someone")}</span> the lead
+              </>
+            );
             break;
           case "ATTACHMENT_ADDED":
             icon = <Paperclip />;

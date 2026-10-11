@@ -1,7 +1,7 @@
 import { AppShell } from "@/components/app/app-shell";
 import { requireUser } from "@/lib/auth/current-user";
 import { db } from "@/lib/db";
-import { ROLE_LABEL, canAdminister, canAssignTasks, canManagePeople, isLeader } from "@/lib/permissions";
+import { ROLE_LABEL, canAdminister, canAssignTasks, canManagePeople, isFounder, isLeader } from "@/lib/permissions";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
@@ -21,6 +21,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       }}
       flags={{
         isLeader: isLeader(user),
+        isFounder: isFounder(user),
         canAssign: canAssignTasks(user),
         canAdminister: canAdminister(user),
         canManagePeople: canManagePeople(user),

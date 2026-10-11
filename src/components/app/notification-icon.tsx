@@ -1,7 +1,10 @@
 import {
   AlarmClock,
   AlertTriangle,
+  BadgeCheck,
   CheckCircle2,
+  FileCheck2,
+  ShieldCheck,
   ClipboardList,
   Megaphone,
   MessageCircleQuestion,
@@ -23,6 +26,9 @@ const MAP: Record<string, { icon: React.ElementType; className: string }> = {
   TASK_COMPLETED: { icon: CheckCircle2, className: "bg-success-soft text-success" },
   ANNOUNCEMENT: { icon: Megaphone, className: "bg-brand-soft text-brand-soft-fg" },
   SYSTEM: { icon: Sparkles, className: "bg-brand-soft text-brand-soft-fg" },
+  WORK_SUBMITTED: { icon: FileCheck2, className: "bg-info-soft text-info" },
+  WORK_REVIEWED: { icon: BadgeCheck, className: "bg-success-soft text-success" },
+  CLEARANCE: { icon: ShieldCheck, className: "bg-brand-soft text-brand-soft-fg" },
 };
 
 export function NotificationIcon({ kind, className }: { kind: string; className?: string }) {

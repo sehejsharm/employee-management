@@ -37,7 +37,8 @@ import { Dialog, SheetContent } from "@/components/ui/dialog";
 import { Field, Input, NativeSelect } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { setManager, updatePlacement } from "@/actions/org";
-import { buildForest, countDescendants, wouldCreateCycle, type TreeNode } from "@/lib/org";
+import { buildForest, countDescendants, withAdditionalLines, wouldCreateCycle, type TreeNode } from "@/lib/org";
+import { AdditionalManagersEditor } from "./additional-managers";
 import { useSyncedState } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import "./org-tree.css";
@@ -51,12 +52,17 @@ export interface OrgPerson {
   role: string;
   status: "ACTIVE" | "ON_LEAVE" | "INACTIVE";
   managerId: string | null;
+  /** Anyone else they report to besides their main manager. */
+  alsoReportsTo: string[];
   avatarHue: number;
   focus: string | null;
   orgOrder: number;
   employeeCode: string;
   department: { id: string; name: string; color: string } | null;
 }
+
+/** First names by id, so a card can say who else someone reports to. */
+const NamesContext = React.createContext<Map<string, string>>(new Map());
 
 const ROLE_RANK: Record<string, number> = { FOUNDER: 0, MANAGER: 1, EMPLOYEE: 2, INTERN: 3 };
 
@@ -80,6 +86,7 @@ export function OrgChart({
   const [zoom, setZoom] = React.useState(1);
   const [dragging, setDragging] = React.useState<OrgPerson | null>(null);
   const [local, setLocal] = useSyncedState(people);
+  const names = React.useMemo(() => new Map(local.map((p) => [p.id, p.firstName])), [local]);
 
   const visible = React.useMemo(() => local.filter((p) => showFormer || p.status !== "INACTIVE"), [local, showFormer]);
   const forest = React.useMemo(
@@ -183,12 +190,13 @@ export function OrgChart({
   const move = async (personId: string, managerId: string | null) => {
     const person = local.find((p) => p.id === personId);
     if (!person || person.managerId === managerId) return;
-    if (wouldCreateCycle(local, personId, managerId)) {
+    if (wouldCreateCycle(allLines(local), personId, managerId)) {
       toast.error("That would make someone report to their own report.");
       return;
     }
     const before = local;
-    setLocal((list) => list.map((p) => (p.id === personId ? { ...p, managerId } : p)));
+    // Becoming the main manager replaces being an additional one.
+    setLocal((list) => list.map((p) => (p.id === personId ? { ...p, managerId, alsoReportsTo: p.alsoReportsTo.filter((m) => m !== managerId) } : p)));
     const res = await setManager(personId, managerId);
     if (!res.ok) {
       setLocal(before);
@@ -353,7 +361,7 @@ export function OrgChart({
           >
             <div style={{ width: natural.w * zoom || undefined, height: natural.h * zoom || undefined }} className="mx-auto">
               <div ref={content} style={{ transform: `scale(${zoom})`, transformOrigin: "0 0" }} className="w-max">
-                {chart}
+                <NamesContext.Provider value={names}>{chart}</NamesContext.Provider>
               </div>
             </div>
           </div>
@@ -363,7 +371,7 @@ export function OrgChart({
 
       <PersonSheet
         key={selected?.id ?? "none"}
-        person={selected}
+        person={selected ? (local.find((p) => p.id === selected.id) ?? selected) : null}
         people={local}
         departments={departments}
         canEdit={canEdit}
@@ -474,11 +482,14 @@ function EditableNode({
 }) {
   const { setNodeRef: setDragRef, attributes, listeners, isDragging } = useDraggable({ id: person.id, disabled: !editMode });
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: `drop-${person.id}`, disabled: !editMode });
+  const names = React.useContext(NamesContext);
+  const alsoReportsTo = person.alsoReportsTo.map((id) => names.get(id)).filter((n): n is string => !!n);
   return (
     <div ref={setDropRef} className="relative flex flex-col items-center">
       <div ref={setDragRef} className={cn(isDragging && "opacity-30")}>
         <NodeCard
           person={person}
+          alsoReportsTo={alsoReportsTo}
           reports={reports}
           dim={dim}
           highlight={highlight}
@@ -505,6 +516,7 @@ function EditableNode({
 
 function NodeCard({
   person,
+  alsoReportsTo,
   reports,
   dim,
   highlight,
@@ -516,6 +528,8 @@ function NodeCard({
   handleProps,
 }: {
   person: OrgPerson;
+  /** First names of their additional bosses. */
+  alsoReportsTo?: string[];
   reports: number;
   dim?: boolean;
   highlight?: boolean;
@@ -574,6 +588,11 @@ function NodeCard({
           </span>
         )}
       </div>
+      {alsoReportsTo && alsoReportsTo.length > 0 && !former && (
+        <div className="truncate border-t border-dashed border-line px-3.5 py-1.5 text-[11px] text-fg-muted" title={`Also reports to ${alsoReportsTo.join(", ")}`}>
+          <span className="font-medium text-brand">Also reports to</span> {alsoReportsTo.join(", ")}
+        </div>
+      )}
       {person.focus && !former && (
         <div className="border-t border-line bg-surface-sunken/50 px-3.5 py-2 text-[11px] leading-snug text-fg-muted">
           <span className="line-clamp-2">
@@ -612,8 +631,11 @@ function PersonSheet({
   if (!person) return <Dialog open={false} />;
 
   const manager = people.find((p) => p.id === person.managerId);
-  const reports = people.filter((p) => p.managerId === person.id && p.status !== "INACTIVE");
-  const managerOptions = people.filter((p) => p.status !== "INACTIVE" && !wouldCreateCycle(people, person.id, p.id));
+  const otherBosses = person.alsoReportsTo.map((id) => people.find((p) => p.id === id)).filter((p): p is OrgPerson => !!p);
+  const reports = people.filter((p) => (p.managerId === person.id || p.alsoReportsTo.includes(person.id)) && p.status !== "INACTIVE");
+  const lines = allLines(people);
+  const managerOptions = people.filter((p) => p.status !== "INACTIVE" && !wouldCreateCycle(lines, person.id, p.id));
+  const extraBossOptions = managerOptions.filter((p) => p.id !== person.id && p.id !== person.managerId && !person.alsoReportsTo.includes(p.id));
 
   const save = () =>
     start(async () => {
@@ -641,6 +663,15 @@ function PersonSheet({
               {manager ? (
                 <>
                   Reports to <span className="font-medium text-fg">{manager.firstName} {manager.lastName}</span>
+                  {otherBosses.length > 0 && (
+                    <>
+                      {" "}and <span className="font-medium text-fg">{otherBosses.map((b) => `${b.firstName} ${b.lastName}`).join(", ")}</span>
+                    </>
+                  )}
+                </>
+              ) : otherBosses.length ? (
+                <>
+                  Reports to <span className="font-medium text-fg">{otherBosses.map((b) => `${b.firstName} ${b.lastName}`).join(", ")}</span>
                 </>
               ) : (
                 "Top level"
@@ -694,6 +725,14 @@ function PersonSheet({
                   ))}
               </NativeSelect>
             </Field>
+            <Field label="Also reports to" hint="A second (or third) boss. They see this person as their report; the main manager decides where they sit on the chart.">
+              <AdditionalManagersEditor
+                personId={person.id}
+                personFirstName={person.firstName}
+                current={otherBosses}
+                candidates={extraBossOptions}
+              />
+            </Field>
             <Field label="Status" hint="Former members can't sign in. Their history stays.">
               <div className="grid grid-cols-3 gap-1.5">
                 {(
@@ -730,5 +769,13 @@ function PersonSheet({
         )}
       </SheetContent>
     </Dialog>
+  );
+}
+
+/** Every reporting line on the chart — main managers plus additional bosses — for loop checks. */
+function allLines(people: OrgPerson[]) {
+  return withAdditionalLines(
+    people,
+    people.flatMap((p) => p.alsoReportsTo.map((managerId) => ({ userId: p.id, managerId }))),
   );
 }

@@ -3,6 +3,7 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
+import { reportingEdges } from "@/lib/reporting";
 import { SESSION_COOKIE, hashToken } from "./tokens";
 import type { Actor } from "@/lib/permissions";
 
@@ -59,9 +60,9 @@ export async function requireUser(): Promise<CurrentUser & Actor> {
   return user;
 }
 
-/** Ids of everyone below a person in the reporting line. */
+/** Ids of everyone below a person through any reporting line (main or additional). */
 export const getSubordinateIds = cache(async (userId: string) => {
-  const edges = await db.user.findMany({ select: { id: true, managerId: true } });
+  const edges = await reportingEdges();
   const children = new Map<string, string[]>();
   for (const e of edges) {
     if (!e.managerId) continue;

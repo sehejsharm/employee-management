@@ -8,6 +8,7 @@ import { AccountError, createAccount, setPassword } from "@/lib/accounts";
 import { audit } from "@/lib/audit";
 import { canChangeEmail, canManagePeople, defaultGrants, isFounder, ROLE_LABEL } from "@/lib/permissions";
 import { isAboveInReportingLine, wouldCreateCycle } from "@/lib/org";
+import { reportingEdges } from "@/lib/reporting";
 import { notify } from "@/lib/notifications";
 import { fullName, type ActionResult } from "@/lib/utils";
 
@@ -112,8 +113,7 @@ export async function updateMember(userId: string, input: z.input<typeof accessS
     if (others === 0) return { ok: false, error: "The workspace needs at least one active founder." };
   }
 
-  const edges = await db.user.findMany({ select: { id: true, managerId: true } });
-  if (wouldCreateCycle(edges, userId, d.managerId)) return { ok: false, error: "That would make someone report to their own report." };
+  if (wouldCreateCycle(await reportingEdges(), userId, d.managerId)) return { ok: false, error: "That would make someone report to their own report." };
 
   // Founders always hold every grant.
   const grants = d.role === "FOUNDER" ? defaultGrants("FOUNDER") : { canAssignTasks: d.canAssignTasks, canManageOrg: d.canManageOrg, canManagePeople: d.canManagePeople };
@@ -130,6 +130,7 @@ export async function updateMember(userId: string, input: z.input<typeof accessS
         ...grants,
       },
     }),
+    ...(d.managerId ? [db.additionalManager.deleteMany({ where: { userId, managerId: d.managerId } })] : []),
     ...(d.status === "INACTIVE" ? [db.session.deleteMany({ where: { userId } })] : []),
   ]);
 
@@ -189,8 +190,7 @@ async function emailTarget(userId: string) {
     select: { id: true, role: true, firstName: true, lastName: true, email: true, status: true, source: true, emailSetManuallyAt: true },
   });
   if (!target) return { error: "That person no longer exists." } as const;
-  const edges = await db.user.findMany({ select: { id: true, managerId: true } });
-  if (!canChangeEmail(actor, target, isAboveInReportingLine(edges, actor.id, target.id))) {
+  if (!canChangeEmail(actor, target, isAboveInReportingLine(await reportingEdges(), actor.id, target.id))) {
     return { error: "Only a founder or someone they report to can change their email." } as const;
   }
   return { actor, target } as const;

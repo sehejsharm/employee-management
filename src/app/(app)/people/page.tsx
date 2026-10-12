@@ -32,6 +32,7 @@ export default async function PeoplePage() {
         focus: true,
         department: { select: { id: true, name: true, color: true } },
         manager: { select: { firstName: true, lastName: true } },
+        additionalManagers: { select: { manager: { select: { firstName: true, lastName: true, status: true } } } },
       },
     }),
     db.department.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, color: true } }),
@@ -71,7 +72,11 @@ export default async function PeoplePage() {
           ...p,
           roleLabel: ROLE_LABEL[p.role],
           sharedEmailWith: p.status === "INACTIVE" ? 0 : Math.max(0, (emailCounts.get(p.email) ?? 1) - 1),
-          manager: p.manager ? `${p.manager.firstName} ${p.manager.lastName}` : null,
+          manager:
+            [p.manager, ...p.additionalManagers.map((a) => a.manager).filter((m) => m.status !== "INACTIVE")]
+              .filter((m): m is { firstName: string; lastName: string } => !!m)
+              .map((m) => `${m.firstName} ${m.lastName}`)
+              .join(" & ") || null,
         }))}
       />
     </>

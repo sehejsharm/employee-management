@@ -50,7 +50,11 @@ export async function login(_: AuthFormState, formData: FormData): Promise<AuthF
   const remember = formData.get("remember") === "on";
   const next = safeNext(formData.get("next"));
 
-  if (!identifier) return { error: "Enter your employee ID or work email.", field: "identifier" };
+  if (!identifier) return { error: "Enter your employee ID.", field: "identifier" };
+  // Emails are shared between colleagues, so they can never identify one account.
+  if (identifier.includes("@")) {
+    return { error: "Sign in with your employee ID (e.g. FR-0042), not your email — several people can share one email.", field: "identifier" };
+  }
   if (!password) return { error: "Enter your password.", field: "password" };
 
   if (ipThrottled(clientIp(await headers()))) return { error: "Too many sign-in attempts from this network. Wait a few minutes and try again." };
@@ -69,12 +73,8 @@ export async function login(_: AuthFormState, formData: FormData): Promise<AuthF
 }
 
 async function authenticate(identifier: string, password: string, remember: boolean): Promise<AuthFormState | { mustChangePassword: boolean }> {
-  const where = identifier.includes("@")
-    ? { email: identifier.toLowerCase() }
-    : { employeeCode: normaliseEmployeeCode(identifier) };
-
   const user = await db.user.findUnique({
-    where,
+    where: { employeeCode: normaliseEmployeeCode(identifier) },
     select: { id: true, passwordHash: true, status: true, lockedUntil: true, failedLoginCount: true, mustChangePassword: true },
   });
 

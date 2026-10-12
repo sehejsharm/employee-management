@@ -18,11 +18,14 @@ import {
 } from "@/components/tasks/task-detail-client";
 import { NoClearance } from "@/components/clearance/no-clearance";
 import { SubmissionsPanel, SubmitWorkPanel } from "@/components/tasks/submissions";
+import { ReassignDialog } from "@/components/tasks/reassign-dialog";
+import { pickablePeople } from "@/lib/people";
 import { requireUser } from "@/lib/auth/current-user";
 import { clearanceBlock, getClearedIds, pendingClearanceWaitingOn } from "@/lib/clearance";
 import { db } from "@/lib/db";
 import { config } from "@/lib/env";
 import {
+  canAssignTasks,
   canChangeStatus,
   canContribute,
   canEditTask,
@@ -140,6 +143,19 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
   const contribute = canContribute(user, access);
   const reviewer = canReviewWork(user, access);
   const ref = taskRef(task.number);
+  // Founders (and whoever assigned it) can hand the task on or add people, unless it's finished.
+  const canReassign = editable && task.status !== "DONE";
+  const reassignProps = canReassign
+    ? {
+        taskId: task.id,
+        taskRef: ref,
+        people: await pickablePeople(),
+        assigneeIds: access.assigneeIds,
+        leadId: lead?.id ?? null,
+        selfId: user.id,
+        restrictedToSelf: !canAssignTasks(user),
+      }
+    : null;
   const openRequests = task.updateRequests;
   // Keyed on the pending submission, so a task left "In review" with nothing handed in can still be submitted.
   const canSubmit = canSubmitWork(user, access) && task.status !== "DONE" && !task.submissions.some((s) => s.status === "SUBMITTED");
@@ -179,13 +195,16 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
             </span>
           </p>
         </div>
-        <TaskActions
-          taskId={task.id}
-          taskRef={ref}
-          canEdit={editable}
-          canRequest={task.status !== "IN_REVIEW" && task.status !== "DONE" && canRequestUpdate(user, access)}
-          assigneeNames={task.assignees.map((a) => a.user.firstName).join(", ")}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          {reassignProps && <ReassignDialog {...reassignProps} className="lg:hidden" />}
+          <TaskActions
+            taskId={task.id}
+            taskRef={ref}
+            canEdit={editable}
+            canRequest={task.status !== "IN_REVIEW" && task.status !== "DONE" && canRequestUpdate(user, access)}
+            assigneeNames={task.assignees.map((a) => a.user.firstName).join(", ")}
+          />
+        </div>
       </div>
 
       {openRequests.length > 0 && (
@@ -361,6 +380,7 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
                 </ul>
               </>
             )}
+            {reassignProps && <ReassignDialog {...reassignProps} variant="soft" className="mt-4 hidden w-full lg:inline-flex" />}
             <div className="mt-5 border-t border-line pt-4 text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">Assigned by · reviews the work</div>
             <Link href={`/people/${task.createdBy.id}`} className="group mt-3 flex items-center gap-3">
               <Avatar person={task.createdBy} size="md" />

@@ -63,10 +63,9 @@ export interface NewAccount {
 
 /** Pass a transaction client to create the account inside that transaction (first-run setup does). */
 export async function createAccount(input: NewAccount, client: Prisma.TransactionClient = db) {
+  // Emails are deliberately not unique: several employees can share one mailbox.
+  // Each person is told apart by their employee ID, which is what they sign in with.
   const email = input.email.trim().toLowerCase();
-  if (await client.user.findUnique({ where: { email }, select: { id: true } })) {
-    throw new AccountError(`An account already uses ${email}.`);
-  }
 
   let employeeCode = input.employeeCode ? normaliseEmployeeCode(input.employeeCode) : await nextEmployeeCode(client);
   if (!isEmployeeCode(employeeCode)) throw new AccountError(`"${employeeCode}" is not a valid employee ID (e.g. FR-0042).`);
@@ -93,7 +92,7 @@ export async function createAccount(input: NewAccount, client: Prisma.Transactio
       status: input.status ?? "ACTIVE",
       source: input.source,
       externalId: input.externalId ?? null,
-      avatarHue: hueFor(email),
+      avatarHue: hueFor(employeeCode),
       passwordHash: creds.passwordHash,
       mustChangePassword: creds.mustChangePassword,
     },

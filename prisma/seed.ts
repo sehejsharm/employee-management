@@ -118,7 +118,8 @@ async function main() {
     users[p.key] = await db.user.create({
       data: {
         employeeCode: p.code,
-        email: `${p.first}.${p.last}@focusrealm.com`.toLowerCase(),
+        // Interns share one mailbox — emails aren't unique; employee IDs are what people sign in with.
+        email: p.role === "INTERN" ? "interns@focusrealm.com" : `${p.first}.${p.last}@focusrealm.com`.toLowerCase(),
         firstName: p.first,
         lastName: p.last,
         title: p.title,

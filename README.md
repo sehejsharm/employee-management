@@ -15,8 +15,9 @@ Prisma 7 and PostgreSQL, in the blue-and-white Focus Realm brand
 
 **For everyone**
 
-- **Sign in** with your employee ID (`FR-0042`) or work email. First sign-in
-  forces a new password. Five wrong attempts lock the account for 15 minutes.
+- **Sign in** with your employee ID (`FR-0042`) and password — never an email,
+  because several people can share one mailbox. First sign-in forces a new
+  password. Five wrong attempts lock the account for 15 minutes.
 - **My work** — your next deadline counting down, everything due grouped by
   *overdue / today / tomorrow / this week*, requests for updates waiting on
   you, and pinned announcements.
@@ -40,6 +41,15 @@ Prisma 7 and PostgreSQL, in the blue-and-white Focus Realm brand
   the answer is *No clearance given*. Clearance lets you look, not edit.
 - **Org chart** — the whole company as a tree, with departments, who is on
   leave and who has left. Search, zoom, collapse branches.
+- **Your day at a glance** — the first time you open the workspace each day
+  (in your time zone) a short summary pops up: what's overdue, due today,
+  tomorrow, the day after and later this week, plus work waiting for your
+  review. It's filed in your inbox too, and *Today's plan* in the account menu
+  brings it back.
+- **Shared emails** — several people can share one mailbox. Everyone can see
+  who uses which email under *People → Who uses which email*, and anyone
+  sharing a mailbox sees exactly who they share it with on Home, Settings and
+  their profile.
 - **People** directory and profiles, **announcements**, a **⌘K command
   palette**, light and dark themes, and a phone layout with a bottom tab bar.
 
@@ -51,6 +61,9 @@ Prisma 7 and PostgreSQL, in the blue-and-white Focus Realm brand
   unanswered update requests. Re-syncs every minute.
 - **Assign work** to anyone (founders always; management when granted), with
   one person leading and the rest following.
+- **Reassign or add people** to a task straight from the task page
+  (*Reassign / add people*): add followers, take people off, or hand the lead
+  to someone else. Everyone affected is notified.
 - **Review submitted work** — accept it or request changes.
 - **Request an update** on tasks you assigned (founders: any task) — assignees
   are notified, the request stays visible until they post a progress update,

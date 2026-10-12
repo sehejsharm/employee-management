@@ -22,6 +22,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { RichText } from "@/components/ui/rich-text";
 import { FocusEditor, NextDeadline, StatCard, WelcomeToast } from "@/components/dashboard/widgets";
 import { TaskRow } from "@/components/tasks/task-row";
+import { SharedEmailNotice } from "@/components/people/shared-email-notice";
+import { sharingEmailWith } from "@/lib/shared-email";
 import { requireUser } from "@/lib/auth/current-user";
 import { getClearedIds } from "@/lib/clearance";
 import { founderPulse, memberDashboard, missionControl } from "@/lib/dashboard";
@@ -40,6 +42,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const leader = isLeader(user);
   const view = leader && params.view !== "me" ? "team" : "me";
   const now = new Date();
+  const emailSharers = await sharingEmailWith(user);
 
   return (
     <>
@@ -83,6 +86,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           ) : undefined
         }
       />
+      {emailSharers.length > 0 && (
+        <FadeIn delay={0.03} className="mb-6">
+          <SharedEmailNotice self email={user.email} others={emailSharers} />
+        </FadeIn>
+      )}
       <FadeIn delay={0.05} className="mb-6">
         <FocusEditor initial={user.focus} />
       </FadeIn>

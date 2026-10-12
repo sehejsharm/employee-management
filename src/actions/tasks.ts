@@ -261,6 +261,16 @@ export async function updateTask(taskId: string, input: z.input<typeof editSchem
 
   const href = `/tasks/${taskId}`;
   if (added.length) await notifyAssigned(user, { id: taskId, number: task.number, title: data.title }, added, lead);
+  if (removed.length) {
+    await notify(removed, {
+      kind: "TASK_STATUS",
+      actorId: user.id,
+      taskId,
+      href,
+      title: `${user.firstName} took you off ${taskRef(task.number)}`,
+      body: `${data.title} — it's no longer on your list.`,
+    });
+  }
   if (lead !== previousLead && !added.includes(lead)) {
     await notify([lead], { kind: "TASK_STATUS", actorId: user.id, taskId, href, title: `${user.firstName} made you the lead on ${taskRef(task.number)}`, body: data.title });
   }
@@ -278,6 +288,35 @@ export async function updateTask(taskId: string, input: z.input<typeof editSchem
 
   refresh();
   return { ok: true, message: "Task updated." };
+}
+
+const reassignSchema = z.object({
+  assigneeIds: z.array(z.string().min(1)).max(25),
+  leadId: z.string().min(1).optional(),
+});
+
+/**
+ * Reassigns a task or adds people to it without touching anything else —
+ * the quick path from the task page. Same rules and notifications as a full
+ * edit: founders and whoever assigned it.
+ */
+export async function reassignTask(taskId: string, input: z.input<typeof reassignSchema>): Promise<ActionResult> {
+  const parsed = reassignSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
+  const current = await db.task.findFirst({
+    where: { id: taskId, archivedAt: null },
+    select: { title: true, description: true, priority: true, dueAt: true },
+  });
+  if (!current) return { ok: false, error: "That task no longer exists." };
+  const res = await updateTask(taskId, {
+    title: current.title,
+    description: current.description ?? "",
+    priority: current.priority,
+    dueAt: current.dueAt.toISOString(),
+    assigneeIds: parsed.data.assigneeIds,
+    leadId: parsed.data.leadId,
+  });
+  return res.ok ? { ok: true, message: "People on this task updated — everyone affected has been notified." } : res;
 }
 
 export async function archiveTask(taskId: string): Promise<ActionResult> {

@@ -215,12 +215,12 @@ Sign in at    https://workspace.focusrealm.com/login
 | Field | Notes |
 |---|---|
 | `externalId` | **Required.** The HR console's record id. Links the two systems. |
-| `email` | Required to create. Lower-cased. |
+| `email` | Required to create. Lower-cased. **Not unique** — several employees can share one mailbox. Never used to sign in or to match records; the employee ID is. |
 | `fullName` *or* `firstName`/`lastName` | Required to create. |
 | `role` | `INTERN` (default), `EMPLOYEE` or `MANAGER`. `FOUNDER` is refused unless the Workspace sets `HR_ALLOW_FOUNDER_PROVISIONING=true`. |
 | `title`, `department`, `phone`, `location`, `startDate` | Optional. Unknown departments are created. |
-| `managerEmail` / `managerEmployeeCode` | Optional. Places them on the org chart. |
-| `employeeCode` | Optional. Omit it and the Workspace assigns the next `FR-0001`-style id. |
+| `managerEmail` / `managerEmployeeCode` | Optional. Places them on the org chart. Prefer `managerEmployeeCode`: an email is only used when exactly one current person has it. |
+| `employeeCode` | Optional. Omit it and the Workspace assigns the next `FR-0001`-style id. If it matches an account a founder added by hand, that account is linked to this HR record. |
 | `credentials` | Optional. Omit it (recommended) and the Workspace generates a strong temporary password and returns it once. Or send `passwordHash` (bcrypt — the plaintext never leaves HR), or `password` (hashed on arrival, never stored or logged). |
 
 **Responses**
@@ -233,7 +233,7 @@ Sign in at    https://workspace.focusrealm.com/login
 | `401` | Bad or missing signature, or timestamp more than 5 minutes off. |
 | `403` | Tried to create, link to or change a founder account. |
 | `404` | Offboard/restore/reset for an `externalId` that was never linked. |
-| `409` | Email or employee ID already belongs to someone else. |
+| `409` | The employee ID already belongs to a different HR record. |
 | `503` | `HR_WEBHOOK_SECRET` isn't set on the Workspace. |
 
 ## 4. Security model — do's and don'ts

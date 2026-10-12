@@ -128,8 +128,13 @@ async function managerIdFor(e: HrEmployee) {
     if (m) return m.id;
   }
   if (e.managerEmail) {
-    const m = await db.user.findUnique({ where: { email: e.managerEmail.toLowerCase() }, select: { id: true } });
-    if (m) return m.id;
+    // Emails can be shared, so an email only identifies a manager when exactly one current person uses it.
+    const matches = await db.user.findMany({
+      where: { email: e.managerEmail.toLowerCase(), status: { not: "INACTIVE" } },
+      select: { id: true },
+      take: 2,
+    });
+    if (matches.length === 1) return matches[0].id;
   }
   return undefined;
 }
@@ -159,15 +164,19 @@ async function upsertEmployee(e: HrEmployee): Promise<HrResult> {
     const names = namesOf(e);
     if (!names) throw new HrEventError("fullName (or firstName) is required to create an account.");
 
-    // Someone a founder already added by hand: link rather than duplicate.
-    const byEmail = await db.user.findUnique({ where: { email: e.email.toLowerCase() } });
-    if (byEmail) {
-      guardExistingFounder(byEmail);
-      if (byEmail.externalId && byEmail.externalId !== e.externalId) {
-        throw new HrEventError(`${e.email} is already linked to a different HR record.`, 409);
+    // Someone a founder already added by hand: link by employee ID rather than duplicate.
+    // Never by email — several employees can share one mailbox, so an email
+    // match says nothing about which person this HR record is.
+    if (e.employeeCode) {
+      const byCode = await db.user.findUnique({ where: { employeeCode: normaliseEmployeeCode(e.employeeCode) } });
+      if (byCode) {
+        guardExistingFounder(byCode);
+        if (byCode.externalId && byCode.externalId !== e.externalId) {
+          throw new HrEventError(`Employee ID ${byCode.employeeCode} is already linked to a different HR record.`, 409);
+        }
+        await db.user.update({ where: { id: byCode.id }, data: { externalId: e.externalId } });
+        return updateExisting(byCode, e, "linked");
       }
-      await db.user.update({ where: { id: byEmail.id }, data: { externalId: e.externalId } });
-      return updateExisting(byEmail, e, "linked");
     }
 
     const { user, generatedPassword } = await createAccount({
@@ -240,11 +249,8 @@ async function updateExisting(
     data.firstName = names.firstName;
     data.lastName = names.lastName;
   }
-  if (e.email && e.email.toLowerCase() !== existing.email) {
-    const clash = await db.user.findUnique({ where: { email: e.email.toLowerCase() }, select: { id: true } });
-    if (clash && clash.id !== existing.id) throw new HrEventError(`${e.email} is already used by another account.`, 409);
-    data.email = e.email.toLowerCase();
-  }
+  // Shared emails are fine: the employee ID, not the email, identifies the account.
+  if (e.email && e.email.toLowerCase() !== existing.email) data.email = e.email.toLowerCase();
   if (e.role) data.role = e.role;
   if (e.title !== undefined) data.title = e.title || null;
   if (e.phone !== undefined) data.phone = e.phone || null;

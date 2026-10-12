@@ -234,7 +234,7 @@ async function upsertEmployee(e: HrEmployee): Promise<HrResult> {
 }
 
 async function updateExisting(
-  existing: { id: string; role: string; email: string; employeeCode: string },
+  existing: { id: string; role: string; email: string; employeeCode: string; emailSetManuallyAt: Date | null },
   e: HrEmployee,
   action: "updated" | "linked",
 ): Promise<HrResult> {
@@ -250,7 +250,8 @@ async function updateExisting(
     data.lastName = names.lastName;
   }
   // Shared emails are fine: the employee ID, not the email, identifies the account.
-  if (e.email && e.email.toLowerCase() !== existing.email) data.email = e.email.toLowerCase();
+  // An email a founder or manager set in the Workspace wins over the HR console's.
+  if (e.email && e.email.toLowerCase() !== existing.email && !existing.emailSetManuallyAt) data.email = e.email.toLowerCase();
   if (e.role) data.role = e.role;
   if (e.title !== undefined) data.title = e.title || null;
   if (e.phone !== undefined) data.phone = e.phone || null;

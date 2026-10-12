@@ -24,6 +24,20 @@ export function wouldCreateCycle(edges: OrgEdge[], userId: string, managerId: st
   return false;
 }
 
+/** True if `managerId` is above `userId` in the reporting line — their manager, their manager's manager, and so on. */
+export function isAboveInReportingLine(edges: OrgEdge[], managerId: string, userId: string) {
+  if (managerId === userId) return false;
+  const parent = new Map(edges.map((e) => [e.id, e.managerId]));
+  const seen = new Set<string>();
+  let cursor = parent.get(userId) ?? null;
+  while (cursor && !seen.has(cursor)) {
+    if (cursor === managerId) return true;
+    seen.add(cursor);
+    cursor = parent.get(cursor) ?? null;
+  }
+  return false;
+}
+
 export interface TreeNode<T> {
   item: T;
   children: TreeNode<T>[];

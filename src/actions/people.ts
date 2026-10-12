@@ -6,8 +6,8 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth/current-user";
 import { AccountError, createAccount, setPassword } from "@/lib/accounts";
 import { audit } from "@/lib/audit";
-import { canManagePeople, defaultGrants, isFounder, ROLE_LABEL } from "@/lib/permissions";
-import { wouldCreateCycle } from "@/lib/org";
+import { canChangeEmail, canManagePeople, defaultGrants, isFounder, ROLE_LABEL } from "@/lib/permissions";
+import { isAboveInReportingLine, wouldCreateCycle } from "@/lib/org";
 import { notify } from "@/lib/notifications";
 import { fullName, type ActionResult } from "@/lib/utils";
 
@@ -177,4 +177,71 @@ export async function revokeMemberSessions(userId: string): Promise<ActionResult
   const { count } = await db.session.deleteMany({ where: { userId } });
   await audit({ actorId: actor.id, action: "account.sessions_revoked", targetType: "user", targetId: userId, summary: `Signed ${fullName(target)} out everywhere` });
   return { ok: true, message: count ? `Signed out of ${count} device${count === 1 ? "" : "s"}.` : "They weren't signed in anywhere." };
+}
+
+const emailSchema = z.object({ email: z.email("Enter a valid email address.").max(254) });
+
+/** Loads the target and checks the actor may change their email. */
+async function emailTarget(userId: string) {
+  const actor = await requireUser();
+  const target = await db.user.findUnique({
+    where: { id: userId },
+    select: { id: true, role: true, firstName: true, lastName: true, email: true, status: true, source: true, emailSetManuallyAt: true },
+  });
+  if (!target) return { error: "That person no longer exists." } as const;
+  const edges = await db.user.findMany({ select: { id: true, managerId: true } });
+  if (!canChangeEmail(actor, target, isAboveInReportingLine(edges, actor.id, target.id))) {
+    return { error: "Only a founder or someone they report to can change their email." } as const;
+  }
+  return { actor, target } as const;
+}
+
+/**
+ * Changes someone's email. Founders, people admins and anyone above them in
+ * the reporting line can do it. Emails can be shared, so there's no clash
+ * check; sign-in is unaffected (it uses the employee ID). An email changed
+ * here is kept even when the HR console later sends a different one.
+ */
+export async function changeMemberEmail(userId: string, input: z.input<typeof emailSchema>): Promise<ActionResult> {
+  const r = await emailTarget(userId);
+  if ("error" in r) return { ok: false, error: r.error! };
+  const { actor, target } = r;
+  const parsed = emailSchema.safeParse({ email: String(input.email ?? "").trim() });
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  const email = parsed.data.email.toLowerCase();
+  if (email === target.email) return { ok: true, message: "That's already their email." };
+
+  await db.user.update({ where: { id: userId }, data: { email, emailSetManuallyAt: new Date() } });
+  await audit({
+    actorId: actor.id,
+    action: "account.email_changed",
+    targetType: "user",
+    targetId: userId,
+    summary: `Changed ${fullName(target)}'s email from ${target.email} to ${email}`,
+  });
+  await notify([userId], {
+    kind: "SYSTEM",
+    actorId: actor.id,
+    title: `${actor.firstName} changed your email to ${email}`,
+    body: "You still sign in with your employee ID.",
+    href: `/people/${userId}`,
+  });
+  refresh();
+  return { ok: true, message: `Email changed to ${email}.` };
+}
+
+/** Lets HR console updates manage this person's email again. */
+export async function releaseMemberEmail(userId: string): Promise<ActionResult> {
+  const r = await emailTarget(userId);
+  if ("error" in r) return { ok: false, error: r.error! };
+  await db.user.update({ where: { id: userId }, data: { emailSetManuallyAt: null } });
+  await audit({
+    actorId: r.actor.id,
+    action: "account.email_released",
+    targetType: "user",
+    targetId: userId,
+    summary: `Let the HR console manage ${fullName(r.target)}'s email again`,
+  });
+  refresh();
+  return { ok: true, message: "The HR console will update this email again on its next sync." };
 }

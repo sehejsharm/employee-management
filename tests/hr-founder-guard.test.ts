@@ -74,4 +74,16 @@ describe("HR webhook founder guard", () => {
     expect(res.status).toBe(403);
     expect(fake.user.create).not.toHaveBeenCalled();
   });
+
+  it("keeps an email a founder or manager set in the Workspace when HR sends a different one", async () => {
+    const intern = { id: "u_intern", role: "INTERN", email: "kept@focusrealm.com", employeeCode: "FR-0020", externalId: "hr_intern", emailSetManuallyAt: new Date() };
+    fake.user.findUnique.mockImplementation(({ where }: { where: { externalId?: string } }) =>
+      Promise.resolve(where.externalId === "hr_intern" ? { ...intern } : null),
+    );
+    fake.user.update.mockResolvedValue({ id: intern.id, employeeCode: intern.employeeCode, email: intern.email });
+    const res = await handleHrEvent(event("employee.updated", { externalId: "hr_intern", email: "hr-says@focusrealm.com", title: "Analyst" }));
+    expect(res.status).toBe(200);
+    expect(fake.user.update.mock.calls[0][0].data).not.toHaveProperty("email");
+    expect(fake.user.update.mock.calls[0][0].data).toMatchObject({ title: "Analyst" });
+  });
 });

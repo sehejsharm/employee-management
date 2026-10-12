@@ -43,6 +43,17 @@ export const canManageOrg = (a: Actor) => isFounder(a) || a.canManageOrg;
 /** Adding people, resetting passwords, changing roles and grants. */
 export const canManagePeople = (a: Actor) => isFounder(a) || a.canManagePeople;
 
+/**
+ * Changing someone's email: founders, people admins, and anyone above them in
+ * the reporting line. Only founders change a founder's email, and nobody but a
+ * founder changes their own here (it comes from HR).
+ */
+export function canChangeEmail(a: Actor, target: { id: string; role: Role }, managesThem: boolean) {
+  if (target.role === "FOUNDER") return isFounder(a);
+  if (target.id === a.id) return false;
+  return canManagePeople(a) || managesThem;
+}
+
 /** Workspace settings: integrations, departments, audit log. */
 export const canAdminister = (a: Actor) => isFounder(a) || a.canManagePeople;
 

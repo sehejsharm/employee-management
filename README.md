@@ -79,6 +79,10 @@ Prisma 7 and PostgreSQL, in the blue-and-white Focus Realm brand
   one else can be cleared to see it.
 - **Leadership board (founders)** — what each founder and lead is working on,
   what they've delegated, and their current focus.
+- **Two (or more) bosses** — someone can report to a second or third person
+  besides their main manager (*Also reports to*, on their profile or in the
+  org chart panel). Every boss sees them as a direct report; the main manager
+  decides where they sit on the chart, and loops are refused across every line.
 - **Edit the hierarchy** — drag people onto their new manager, change titles,
   departments and status (working / on leave / former). Loops are impossible.
 - **People admin** — add members (ID and temporary password generated and

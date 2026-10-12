@@ -8,34 +8,52 @@ export interface OrgEdge {
   managerId: string | null;
 }
 
-/** True if making `managerId` the manager of `userId` would create a loop. */
+/**
+ * Reporting lines can have several bosses: the main manager plus any
+ * additional ones. Pass one edge per line — the same person may appear more
+ * than once (`{ id, managerId }` for each boss).
+ */
+function parentsOf(edges: OrgEdge[]) {
+  const parents = new Map<string, string[]>();
+  for (const e of edges) {
+    if (!e.managerId) continue;
+    parents.set(e.id, [...(parents.get(e.id) ?? []), e.managerId]);
+  }
+  return parents;
+}
+
+/** Everyone above `userId` through any reporting line. Tolerates loops in stored data. */
+function ancestors(parents: Map<string, string[]>, userId: string) {
+  const seen = new Set<string>();
+  const stack = [...(parents.get(userId) ?? [])];
+  while (stack.length) {
+    const id = stack.pop()!;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    stack.push(...(parents.get(id) ?? []));
+  }
+  return seen;
+}
+
+/** True if making `managerId` a boss of `userId` would create a loop through any reporting line. */
 export function wouldCreateCycle(edges: OrgEdge[], userId: string, managerId: string | null) {
   if (!managerId) return false;
   if (managerId === userId) return true;
-  const parent = new Map(edges.map((e) => [e.id, e.managerId]));
-  const seen = new Set<string>();
-  let cursor: string | null | undefined = managerId;
-  while (cursor) {
-    if (cursor === userId) return true;
-    if (seen.has(cursor)) return true;
-    seen.add(cursor);
-    cursor = parent.get(cursor) ?? null;
-  }
-  return false;
+  return ancestors(parentsOf(edges), managerId).has(userId);
 }
 
-/** True if `managerId` is above `userId` in the reporting line — their manager, their manager's manager, and so on. */
+/** True if `managerId` is above `userId` through any reporting line — a boss, a boss's boss, and so on. */
 export function isAboveInReportingLine(edges: OrgEdge[], managerId: string, userId: string) {
   if (managerId === userId) return false;
-  const parent = new Map(edges.map((e) => [e.id, e.managerId]));
-  const seen = new Set<string>();
-  let cursor = parent.get(userId) ?? null;
-  while (cursor && !seen.has(cursor)) {
-    if (cursor === managerId) return true;
-    seen.add(cursor);
-    cursor = parent.get(cursor) ?? null;
-  }
-  return false;
+  return ancestors(parentsOf(edges), userId).has(managerId);
+}
+
+/** One edge per reporting line: main managers plus additional ones. */
+export function withAdditionalLines(
+  people: OrgEdge[],
+  additional: { userId: string; managerId: string }[],
+): OrgEdge[] {
+  return [...people, ...additional.map((a) => ({ id: a.userId, managerId: a.managerId }))];
 }
 
 export interface TreeNode<T> {

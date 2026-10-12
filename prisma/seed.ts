@@ -57,6 +57,7 @@ async function main() {
     db.submission.deleteMany(),
     db.auditLog.deleteMany(),
     db.session.deleteMany(),
+    db.additionalManager.deleteMany(),
     db.user.updateMany({ data: { managerId: null } }),
     db.user.deleteMany(),
     db.department.deleteMany(),
@@ -146,6 +147,8 @@ async function main() {
   for (const p of people) {
     if (p.manager) await db.user.update({ where: { id: users[p.key].id }, data: { managerId: users[p.manager].id } });
   }
+  // Rohan reports to two people: Riya (main manager) and Ananya, for partnership work.
+  await db.additionalManager.create({ data: { userId: users.rohan.id, managerId: users.ananya.id } });
 
   type TaskSeed = {
     title: string;

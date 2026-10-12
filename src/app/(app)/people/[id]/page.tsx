@@ -15,10 +15,12 @@ import { canSeeWorkOf, clearanceBlock, getClearedIds, pendingClearanceWaitingOn 
 import { NoClearance } from "@/components/clearance/no-clearance";
 import { SharedEmailNotice } from "@/components/people/shared-email-notice";
 import { ChangeEmailDialog } from "@/components/people/change-email-dialog";
-import { isAboveInReportingLine } from "@/lib/org";
+import { isAboveInReportingLine, wouldCreateCycle } from "@/lib/org";
+import { reportingEdges } from "@/lib/reporting";
+import { AdditionalManagersEditor } from "@/components/org/additional-managers";
 import { sharingEmailWith } from "@/lib/shared-email";
 import { db } from "@/lib/db";
-import { ROLE_LABEL, STATUS_LABEL, canAssignTasks, canChangeEmail, canManagePeople, isFounder } from "@/lib/permissions";
+import { ROLE_LABEL, STATUS_LABEL, canAssignTasks, canChangeEmail, canManageOrg, canManagePeople, isFounder } from "@/lib/permissions";
 import { taskRowSelect, taskVisibilityWhere, toClientRow } from "@/lib/tasks/queries";
 import { formatDate, timeAgo } from "@/lib/time";
 import { getTimeZone } from "@/lib/tz.server";
@@ -66,6 +68,14 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
         orderBy: { firstName: "asc" },
         select: { id: true, firstName: true, lastName: true, title: true, avatarHue: true, status: true },
       },
+      additionalManagers: {
+        orderBy: { createdAt: "asc" },
+        select: { manager: { select: { id: true, firstName: true, lastName: true, title: true, avatarHue: true, status: true } } },
+      },
+      additionalReports: {
+        where: { user: { status: { not: "INACTIVE" } } },
+        select: { user: { select: { id: true, firstName: true, lastName: true, title: true, avatarHue: true, status: true } } },
+      },
     },
   });
   if (!person) notFound();
@@ -73,8 +83,24 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
   const isSelf = viewer.id === person.id;
   const emailSharers = person.status === "INACTIVE" ? [] : await sharingEmailWith(person);
   // Founders, people admins and anyone this person reports to (directly or further up) can change their email.
-  const orgEdges = await db.user.findMany({ select: { id: true, managerId: true } });
+  const orgEdges = await reportingEdges();
   const emailEditable = canChangeEmail(viewer, person, isAboveInReportingLine(orgEdges, viewer.id, person.id));
+  // Everyone they report to: the main manager first, then any additional bosses.
+  const otherBosses = person.additionalManagers.map((a) => a.manager).filter((m) => m.status !== "INACTIVE");
+  const reportIds = new Set(person.reports.map((r) => r.id));
+  const alsoReports = person.additionalReports.map((a) => a.user).filter((u) => !reportIds.has(u.id));
+  const directReports = [...person.reports.map((r) => ({ ...r, also: false })), ...alsoReports.map((r) => ({ ...r, also: true }))];
+  // Founders (and whoever they allow to edit the org chart) can add a second boss; only founders for a founder.
+  const bossesEditable = canManageOrg(viewer) && person.status !== "INACTIVE" && (person.role !== "FOUNDER" || isFounder(viewer));
+  const bossCandidates = bossesEditable
+    ? (
+        await db.user.findMany({
+          where: { status: { not: "INACTIVE" }, id: { notIn: [person.id, ...(person.managerId ? [person.managerId] : []), ...otherBosses.map((b) => b.id)] } },
+          orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
+          select: { id: true, firstName: true, lastName: true, title: true, avatarHue: true },
+        })
+      ).filter((c) => !wouldCreateCycle(orgEdges, person.id, c.id))
+    : [];
   const cleared = await getClearedIds(viewer);
   const admin = canManagePeople(viewer);
   // Someone's work — their task list and their focus — needs clearance; founders' work is founders-only.
@@ -211,23 +237,34 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
             <CardHeader icon={<UsersRound />} title="Reporting line" />
             <CardBody className="space-y-4">
               <div>
-                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">Reports to</div>
-                {person.manager ? (
-                  <PersonLink p={person.manager} />
+                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">
+                  Reports to {otherBosses.length > 0 && `· ${otherBosses.length + (person.manager ? 1 : 0)}`}
+                </div>
+                {person.manager || otherBosses.length ? (
+                  <div className="space-y-2">
+                    {person.manager && <PersonLink p={person.manager} tag={otherBosses.length ? "Main" : undefined} />}
+                    {!bossesEditable && otherBosses.map((b) => <PersonLink key={b.id} p={b} tag="Also" />)}
+                  </div>
                 ) : (
                   <p className="text-[13px] text-fg-subtle">{person.role === "FOUNDER" ? "Founder — top of the organisation" : "No one yet"}</p>
+                )}
+                {bossesEditable && (
+                  <div className="mt-3">
+                    <div className="mb-1.5 text-[11.5px] text-fg-subtle">Also reports to</div>
+                    <AdditionalManagersEditor personId={person.id} personFirstName={person.firstName} current={otherBosses} candidates={bossCandidates} />
+                  </div>
                 )}
               </div>
               <div>
                 <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">
-                  Direct reports {person.reports.length > 0 && `· ${person.reports.length}`}
+                  Direct reports {directReports.length > 0 && `· ${directReports.length}`}
                 </div>
-                {person.reports.length === 0 ? (
+                {directReports.length === 0 ? (
                   <p className="text-[13px] text-fg-subtle">None</p>
                 ) : (
                   <div className="space-y-2">
-                    {person.reports.map((r) => (
-                      <PersonLink key={r.id} p={r} />
+                    {directReports.map((r) => (
+                      <PersonLink key={r.id} p={r} tag={r.also ? "Also reports here" : undefined} />
                     ))}
                   </div>
                 )}
@@ -310,16 +347,24 @@ function Detail({ icon, label, value }: { icon: React.ReactNode; label: string; 
   );
 }
 
-function PersonLink({ p }: { p: { id: string; firstName: string; lastName: string; title: string | null; avatarHue: number } }) {
+function PersonLink({
+  p,
+  tag,
+}: {
+  p: { id: string; firstName: string; lastName: string; title: string | null; avatarHue: number };
+  /** A small label after the name, e.g. "Main" or "Also". */
+  tag?: string;
+}) {
   return (
     <Link href={`/people/${p.id}`} className="group flex items-center gap-3 rounded-xl p-1.5 transition hover:bg-surface-hover">
       <Avatar person={p} size="md" />
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <div className="truncate text-[13.5px] font-medium group-hover:text-brand">
           {p.firstName} {p.lastName}
         </div>
         <div className="truncate text-xs text-fg-subtle">{p.title}</div>
       </div>
+      {tag && <span className="shrink-0 rounded-full bg-surface-sunken px-2 py-0.5 text-[10.5px] font-semibold text-fg-muted">{tag}</span>}
     </Link>
   );
 }

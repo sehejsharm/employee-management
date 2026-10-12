@@ -21,6 +21,7 @@ export default async function OrgPage() {
         role: true,
         status: true,
         managerId: true,
+        additionalManagers: { select: { managerId: true } },
         avatarHue: true,
         focus: true,
         orgOrder: true,
@@ -45,7 +46,11 @@ export default async function OrgPage() {
         description={`${active.length} people across ${departments.length} departments. ${editable ? "You can edit the hierarchy — switch on edit mode to move people." : "Click anyone to see who they work with."}`}
       />
       <OrgChart
-        people={people.map((p) => ({ ...p, roleLabel: ROLE_LABEL[p.role] }))}
+        people={people.map(({ additionalManagers, ...p }) => ({
+          ...p,
+          alsoReportsTo: additionalManagers.map((a) => a.managerId),
+          roleLabel: ROLE_LABEL[p.role],
+        }))}
         departments={departments}
         canEdit={editable}
         meId={user.id}

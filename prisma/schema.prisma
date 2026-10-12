@@ -167,9 +167,13 @@ model User {
   /// The record id in the HR console. Set only for HR-provisioned accounts.
   externalId String?       @unique
 
+  /// The main manager: places the person on the org chart tree.
   managerId String?
   manager   User?   @relation("ReportingLine", fields: [managerId], references: [id], onDelete: SetNull)
   reports   User[]  @relation("ReportingLine")
+  /// Anyone else this person also reports to (a second boss).
+  additionalManagers AdditionalManager[] @relation("AdditionalManagerReport")
+  additionalReports  AdditionalManager[] @relation("AdditionalManagerBoss")
   /// Order among siblings on the org chart.
   orgOrder  Int     @default(0)
 
@@ -483,4 +487,17 @@ model ClearanceRequest {
   @@index([subjectId, status])
   @@index([requesterId, status])
   @@index([status])
+}
+
+/// A second (or third) person someone reports to, alongside their main manager.
+/// Both are their bosses; only the main manager places them on the org chart tree.
+model AdditionalManager {
+  userId    String
+  user      User     @relation("AdditionalManagerReport", fields: [userId], references: [id], onDelete: Cascade)
+  managerId String
+  manager   User     @relation("AdditionalManagerBoss", fields: [managerId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([userId, managerId])
+  @@index([managerId])
 }

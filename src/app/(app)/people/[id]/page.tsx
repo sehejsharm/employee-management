@@ -14,9 +14,11 @@ import { requireUser } from "@/lib/auth/current-user";
 import { canSeeWorkOf, clearanceBlock, getClearedIds, pendingClearanceWaitingOn } from "@/lib/clearance";
 import { NoClearance } from "@/components/clearance/no-clearance";
 import { SharedEmailNotice } from "@/components/people/shared-email-notice";
+import { ChangeEmailDialog } from "@/components/people/change-email-dialog";
+import { isAboveInReportingLine } from "@/lib/org";
 import { sharingEmailWith } from "@/lib/shared-email";
 import { db } from "@/lib/db";
-import { ROLE_LABEL, STATUS_LABEL, canAssignTasks, canManagePeople, isFounder } from "@/lib/permissions";
+import { ROLE_LABEL, STATUS_LABEL, canAssignTasks, canChangeEmail, canManagePeople, isFounder } from "@/lib/permissions";
 import { taskRowSelect, taskVisibilityWhere, toClientRow } from "@/lib/tasks/queries";
 import { formatDate, timeAgo } from "@/lib/time";
 import { getTimeZone } from "@/lib/tz.server";
@@ -39,6 +41,7 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
       firstName: true,
       lastName: true,
       email: true,
+      emailSetManuallyAt: true,
       employeeCode: true,
       title: true,
       role: true,
@@ -69,6 +72,9 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
 
   const isSelf = viewer.id === person.id;
   const emailSharers = person.status === "INACTIVE" ? [] : await sharingEmailWith(person);
+  // Founders, people admins and anyone this person reports to (directly or further up) can change their email.
+  const orgEdges = await db.user.findMany({ select: { id: true, managerId: true } });
+  const emailEditable = canChangeEmail(viewer, person, isAboveInReportingLine(orgEdges, viewer.id, person.id));
   const cleared = await getClearedIds(viewer);
   const admin = canManagePeople(viewer);
   // Someone's work — their task list and their focus — needs clearance; founders' work is founders-only.
@@ -152,6 +158,15 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
                 value={
                   <span className="break-all">
                     <a href={`mailto:${person.email}`} className="text-brand hover:underline">{person.email}</a>
+                    {emailEditable && (
+                      <ChangeEmailDialog
+                        userId={person.id}
+                        firstName={person.firstName}
+                        email={person.email}
+                        fromHr={person.source === "HR_CONSOLE"}
+                        setManually={!!person.emailSetManuallyAt}
+                      />
+                    )}
                     {emailSharers.length > 0 && (
                       <Link href="/people/emails" className="ml-1.5 whitespace-nowrap rounded-full bg-info-soft px-1.5 text-[11px] font-semibold text-info">
                         Shared · {emailSharers.length + 1}

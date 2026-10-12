@@ -84,7 +84,7 @@ export function ManageMember({ member, departments, managers, actorIsFounder, is
       <CardHeader
         icon={<ShieldCheck />}
         title="Manage account"
-        description={member.source === "HR_CONSOLE" ? "Provisioned by the HR console. Name and email sync from there." : "Added manually."}
+        description={member.source === "HR_CONSOLE" ? "Provisioned by the HR console. Name and email sync from there, unless a founder or their manager changes the email here." : "Added manually."}
       />
       <CardBody className="space-y-4">
         {founderLocked ? (

@@ -215,7 +215,7 @@ Sign in at    https://workspace.focusrealm.com/login
 | Field | Notes |
 |---|---|
 | `externalId` | **Required.** The HR console's record id. Links the two systems. |
-| `email` | Required to create. Lower-cased. **Not unique** — several employees can share one mailbox. Never used to sign in or to match records; the employee ID is. |
+| `email` | Required to create. Lower-cased. Ignored on updates for anyone whose email a founder or manager changed in the Workspace. **Not unique** — several employees can share one mailbox. Never used to sign in or to match records; the employee ID is. |
 | `fullName` *or* `firstName`/`lastName` | Required to create. |
 | `role` | `INTERN` (default), `EMPLOYEE` or `MANAGER`. `FOUNDER` is refused unless the Workspace sets `HR_ALLOW_FOUNDER_PROVISIONING=true`. |
 | `title`, `department`, `phone`, `location`, `startDate` | Optional. Unknown departments are created. |

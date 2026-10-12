@@ -64,6 +64,11 @@ Prisma 7 and PostgreSQL, in the blue-and-white Focus Realm brand
 - **Reassign or add people** to a task straight from the task page
   (*Reassign / add people*): add followers, take people off, or hand the lead
   to someone else. Everyone affected is notified.
+- **Change a reportee's email** whenever needed — from their profile
+  (*Email → Change*). Founders, people admins and anyone above them in the
+  reporting line can do it; only founders change a founder's email. The person
+  is notified, it's audited, and an email set here isn't overwritten by later
+  HR console updates (until someone hands it back to HR).
 - **Review submitted work** — accept it or request changes.
 - **Request an update** on tasks you assigned (founders: any task) — assignees
   are notified, the request stays visible until they post a progress update,

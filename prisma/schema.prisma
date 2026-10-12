@@ -133,6 +133,9 @@ model User {
   /// Stored lower-case. NOT unique: several people can share one mailbox, so
   /// it is never used to sign in or to match HR records.
   email        String
+  /// Set when a founder or the person's manager changed the email in the
+  /// Workspace. While set, HR console updates leave the email alone.
+  emailSetManuallyAt DateTime?
   firstName    String
   lastName     String
   title        String?

@@ -17,7 +17,7 @@ repo sehejsharm/employee-management) so every person added here automatically ge
 a Workspace login: an employee ID like FR-0042 plus a temporary password.
 
 Read these two files from sehejsharm/employee-management, branch
-claude/friendly-heisenberg-mgxoro (or main once it's merged), before writing code:
+claude/friendly-heisenberg-mgxoro (the deployed branch), before writing code:
   - docs/HR_CONSOLE_INTEGRATION.md          (the contract, security model, and where to hook in)
   - integrations/hr-console/workspace-sync.server.ts   (the ready-made client)
 They're public: https://github.com/sehejsharm/employee-management
@@ -76,7 +76,12 @@ the style of lib/onboarding/*.server.ts, and the existing mailbox-password flow)
      FOCUS_REALM_WORKSPACE_SECRET=   # same value as HR_WEBHOOK_SECRET on the Workspace
    Document them in README.md. With them unset, every Workspace call is a silent no-op.
 
-8. Security: never log or return the plaintext password except in the one-time reveal
+8. Shared emails: several people can share one email (e.g. a team mailbox). Never
+   de-duplicate, match or look anyone up by email when syncing — the candidate id
+   (externalId) is the only key, and the Workspace employee ID (loginId) is what people
+   sign in with. Always show the loginId, never the email, as "how to sign in".
+
+9. Security: never log or return the plaintext password except in the one-time reveal
    responses; never put it in the candidate list endpoint; keep the console's admin auth
    check on every new route.
 
@@ -92,8 +97,8 @@ the password once, sign in to the Workspace with it).
 **New people** — a founder creates the candidate in the HR console as usual.
 In the same click the Workspace creates their login. The founder (or the
 candidate, on their last onboarding step) reveals the temporary password once.
-The person signs in at the Workspace with their **employee ID** (or email) and
-that password, and is asked to set their own.
+The person signs in at the Workspace with their **employee ID** (never their
+email — colleagues can share one) and that password, and is asked to set their own.
 
 **People already in the HR console** — a founder clicks **Sync everyone to the
 Workspace** once. Everyone without a login gets one; each person's temporary
@@ -101,7 +106,9 @@ password waits, sealed, on their page in the HR console until it's revealed.
 Running it again is harmless.
 
 **People you already added by hand in the Workspace** — the sync links them by
-email instead of creating a duplicate, and doesn't touch their password.
+**employee ID** (when the HR console sends `employeeCode`) instead of creating a
+duplicate, and doesn't touch their password. It never links by email: two people
+with the same email are always two separate accounts.
 
 **Leavers** — removing someone in the HR console locks them out of the
 Workspace immediately and marks them *Former* on the org chart. Restoring them
@@ -110,3 +117,61 @@ in the HR console lets them back in.
 **No HR change yet?** You don't have to wait: founders can add anyone from
 **Workspace → People → Add member**, which generates the ID and temporary
 password on the spot.
+
+
+---
+
+## Follow-up: people who share an email weren't synced
+
+Before this change the Workspace refused a second person with an email that was
+already in use (HTTP 409 "…is already used by another account"), so the HR
+console recorded them as failed. The Workspace now accepts shared emails. Once
+it's deployed, open a Claude Code session on **`sehejsharm/focusrealmhr`** and
+paste this:
+
+```text
+The Focus Realm Workspace (repo sehejsharm/employee-management, deployed branch
+claude/friendly-heisenberg-mgxoro) now allows several employees to share one email.
+Emails are no longer unique there and are never used to sign in or to match people:
+the HR candidate id (externalId) links the two systems and the Workspace employee ID
+(e.g. FR-0042) is the only login ID. Read docs/HR_CONSOLE_INTEGRATION.md and
+integrations/hr-console/workspace-sync.server.ts from that repo first.
+
+Update this HR console to match:
+
+1. Replace lib/onboarding/workspace-sync.server.ts with the current
+   integrations/hr-console/workspace-sync.server.ts, verbatim.
+
+2. Remove anything in the Workspace sync path that de-duplicates, skips, matches or
+   looks people up by email (e.g. "someone with this email is already synced",
+   a Set of seen emails in the sync loop, findCandidateByEmail before provisioning).
+   Two candidates with the same invitedEmail or mailbox address are two different
+   people and each must get their own Workspace login. Key everything on candidate.id.
+   If the console itself blocks creating a candidate whose email already exists, allow
+   it (a warning such as "Also used by: <names>" is fine; refusing is not).
+
+3. Make "Sync everyone to the Workspace" (POST /api/onboarding/admin/workspace/sync)
+   also retry candidates whose previous attempt failed: any active candidate WITHOUT
+   workspace.loginId is attempted again. Re-running stays safe — the event id comes
+   from the candidate id, and the Workspace re-applies an event that previously failed.
+   Return { synced, alreadyLinked, skipped, failed: [{ id, name, email, error }] } and
+   show failures with their error text on /hr/admin so nothing fails silently.
+
+4. Wherever the console shows Workspace credentials (founder candidate page, the
+   candidate's final onboarding step), label the loginId as "Sign in with this
+   employee ID" and say the email is not a login. Where an email is shared, list the
+   other candidates using it.
+
+5. Send employeeCode in the payload only if this console already stores one; never
+   invent it.
+
+Then run the linter and a production build, list the changed files, and describe how
+to test: create two candidates with the same email, click "Sync everyone to the
+Workspace", confirm each gets a different FR-xxxx, and sign in to the Workspace with
+each employee ID.
+```
+
+After it's deployed, click **Sync everyone to the Workspace** once. Everyone who
+was skipped because of a shared email gets their own employee ID and temporary
+password. In the Workspace, *People → Who uses which email* shows who shares
+each mailbox.

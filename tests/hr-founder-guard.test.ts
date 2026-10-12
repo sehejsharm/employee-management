@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const founder = { id: "u_founder", role: "FOUNDER", email: "aarav@focusrealm.com", employeeCode: "FR-0001", externalId: null as string | null };
 
 const fake = vi.hoisted(() => ({
-  user: { findUnique: vi.fn(), update: vi.fn(), create: vi.fn() },
+  user: { findUnique: vi.fn(), findMany: vi.fn(), update: vi.fn(), create: vi.fn() },
   integrationEvent: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
 }));
 
@@ -31,14 +31,29 @@ beforeEach(() => {
 });
 
 describe("HR webhook founder guard", () => {
-  it("refuses to link an unknown HR record to an existing founder by email", async () => {
-    fake.user.findUnique.mockImplementation(({ where }: { where: { externalId?: string; email?: string } }) =>
-      Promise.resolve(where.email === founder.email ? { ...founder } : null),
+  it("refuses to link an unknown HR record to an existing founder by employee ID", async () => {
+    fake.user.findUnique.mockImplementation(({ where }: { where: { externalId?: string; employeeCode?: string } }) =>
+      Promise.resolve(where.employeeCode === founder.employeeCode ? { ...founder } : null),
     );
     const res = await handleHrEvent(
-      event("employee.updated", { externalId: "hr_attacker", email: founder.email, fullName: "Aarav Mehta", credentials: { password: "attacker-pass-123" } }),
+      event("employee.updated", { externalId: "hr_attacker", employeeCode: "fr-0001", email: "x@evil.test", fullName: "Aarav Mehta", credentials: { password: "attacker-pass-123" } }),
     );
     expect(res.status).toBe(403);
+    expect(fake.user.update).not.toHaveBeenCalled();
+  });
+
+  it("never links by email: a founder's shared email gets a separate account and the founder is untouched", async () => {
+    fake.user.findUnique.mockResolvedValue(null);
+    fake.user.findMany.mockResolvedValue([]);
+    fake.user.create.mockImplementation(({ data }: { data: Record<string, unknown> }) =>
+      Promise.resolve({ id: "u_new", employeeCode: data.employeeCode, email: data.email, firstName: data.firstName, lastName: data.lastName }),
+    );
+    const res = await handleHrEvent(
+      event("employee.created", { externalId: "hr_assistant", email: founder.email, fullName: "Shared Inbox", credentials: { password: "assistant-pass-123" } }),
+    );
+    expect(res.status).toBe(201);
+    expect(fake.user.create).toHaveBeenCalledTimes(1);
+    expect(fake.user.create.mock.calls[0][0].data).toMatchObject({ email: founder.email, role: "INTERN", externalId: "hr_assistant" });
     expect(fake.user.update).not.toHaveBeenCalled();
   });
 

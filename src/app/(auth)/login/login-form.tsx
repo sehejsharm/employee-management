@@ -55,7 +55,7 @@ export function LoginForm({ next }: { next: string }) {
           <input type="hidden" name="next" value={next} />
 
           <div>
-            <Label htmlFor="identifier">Employee ID or work email</Label>
+            <Label htmlFor="identifier">Employee ID</Label>
             <div className="relative">
               <IdCard className="pointer-events-none absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-fg-subtle" />
               <Input
@@ -66,7 +66,7 @@ export function LoginForm({ next }: { next: string }) {
                 autoComplete="username"
                 autoCapitalize="none"
                 spellCheck={false}
-                placeholder="FR-0042 or you@focusrealm.com"
+                placeholder="FR-0042"
                 className="h-12 rounded-xl pl-11 text-[15px]"
                 aria-invalid={state.field === "identifier"}
                 autoFocus
@@ -135,8 +135,9 @@ export function LoginForm({ next }: { next: string }) {
         <div className="mt-8 flex items-start gap-3 rounded-xl border border-line bg-surface-sunken/70 px-4 py-3.5 text-[12.5px] leading-relaxed text-fg-muted">
           <ShieldCheck className="mt-0.5 size-4 shrink-0 text-brand" />
           <p>
-            Your login is created automatically when HR adds you to the Focus Realm HR console. Forgotten your
-            password? Ask HR or a founder to reset it.
+            Your login is created automatically when HR adds you to the Focus Realm HR console. You always sign in
+            with your own employee ID — never your email, since colleagues can share one. Forgotten your password?
+            Ask HR or a founder to reset it.
           </p>
         </div>
       </motion.div>

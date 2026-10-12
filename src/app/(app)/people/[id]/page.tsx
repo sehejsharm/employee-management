@@ -13,6 +13,8 @@ import { TaskRow } from "@/components/tasks/task-row";
 import { requireUser } from "@/lib/auth/current-user";
 import { canSeeWorkOf, clearanceBlock, getClearedIds, pendingClearanceWaitingOn } from "@/lib/clearance";
 import { NoClearance } from "@/components/clearance/no-clearance";
+import { SharedEmailNotice } from "@/components/people/shared-email-notice";
+import { sharingEmailWith } from "@/lib/shared-email";
 import { db } from "@/lib/db";
 import { ROLE_LABEL, STATUS_LABEL, canAssignTasks, canManagePeople, isFounder } from "@/lib/permissions";
 import { taskRowSelect, taskVisibilityWhere, toClientRow } from "@/lib/tasks/queries";
@@ -66,6 +68,7 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
   if (!person) notFound();
 
   const isSelf = viewer.id === person.id;
+  const emailSharers = person.status === "INACTIVE" ? [] : await sharingEmailWith(person);
   const cleared = await getClearedIds(viewer);
   const admin = canManagePeople(viewer);
   // Someone's work — their task list and their focus — needs clearance; founders' work is founders-only.
@@ -139,10 +142,24 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
 
       <div className="grid gap-6 lg:grid-cols-[340px_minmax(0,1fr)]">
         <div className="space-y-6">
+          <SharedEmailNotice email={person.email} others={emailSharers} self={isSelf} name={person.firstName} />
           <Card>
             <CardBody className="space-y-3.5 pt-5 text-[13.5px]">
               <Detail icon={<Hash />} label="Employee ID" value={<span className="font-mono">{person.employeeCode}</span>} />
-              <Detail icon={<Mail />} label="Email" value={<a href={`mailto:${person.email}`} className="text-brand hover:underline">{person.email}</a>} />
+              <Detail
+                icon={<Mail />}
+                label="Email"
+                value={
+                  <span className="break-all">
+                    <a href={`mailto:${person.email}`} className="text-brand hover:underline">{person.email}</a>
+                    {emailSharers.length > 0 && (
+                      <Link href="/people/emails" className="ml-1.5 whitespace-nowrap rounded-full bg-info-soft px-1.5 text-[11px] font-semibold text-info">
+                        Shared · {emailSharers.length + 1}
+                      </Link>
+                    )}
+                  </span>
+                }
+              />
               {person.phone && <Detail icon={<Phone />} label="Phone" value={<a href={`tel:${person.phone}`} className="hover:text-brand">{person.phone}</a>} />}
               {person.location && <Detail icon={<MapPin />} label="Location" value={person.location} />}
               {person.joinedAt && <Detail icon={<CalendarDays />} label="Joined" value={formatDate(person.joinedAt, tz, { year: true })} />}
@@ -272,7 +289,7 @@ function Detail({ icon, label, value }: { icon: React.ReactNode; label: string; 
       <span className="mt-0.5 text-fg-subtle [&_svg]:size-4">{icon}</span>
       <div className="min-w-0">
         <div className="text-[11.5px] text-fg-subtle">{label}</div>
-        <div className="truncate">{value}</div>
+        <div className="break-words">{value}</div>
       </div>
     </div>
   );

@@ -33,7 +33,8 @@ export function dayKey(date: Date, tz: string) {
   }).format(date);
 }
 
-function dayDiff(date: Date, now: Date, tz: string) {
+/** Calendar days from `now` to `date` in `tz`: 0 today, 1 tomorrow, -1 yesterday. */
+export function dayDiff(date: Date, now: Date, tz: string) {
   const a = Date.parse(`${dayKey(date, tz)}T00:00:00Z`);
   const b = Date.parse(`${dayKey(now, tz)}T00:00:00Z`);
   return Math.round((a - b) / DAY);

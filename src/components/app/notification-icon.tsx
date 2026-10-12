@@ -11,6 +11,7 @@ import {
   MessageSquare,
   RefreshCw,
   Sparkles,
+  Sun,
   TrendingUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -29,6 +30,7 @@ const MAP: Record<string, { icon: React.ElementType; className: string }> = {
   WORK_SUBMITTED: { icon: FileCheck2, className: "bg-info-soft text-info" },
   WORK_REVIEWED: { icon: BadgeCheck, className: "bg-success-soft text-success" },
   CLEARANCE: { icon: ShieldCheck, className: "bg-brand-soft text-brand-soft-fg" },
+  DAILY_BRIEFING: { icon: Sun, className: "bg-warning-soft text-warning" },
 };
 
 export function NotificationIcon({ kind, className }: { kind: string; className?: string }) {

@@ -28,7 +28,7 @@ export interface WorkspaceCandidate {
 }
 
 export interface WorkspaceCredentials {
-  /** The employee ID they sign in with, e.g. FR-0042. Their email works too. */
+  /** The employee ID they sign in with, e.g. FR-0042. The only login ID — emails can be shared, so they never sign anyone in. */
   loginId: string;
   email: string;
   /** Present only when the workspace generated a password. Seal it, show it once, then discard it. */

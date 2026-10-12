@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
-import { ChevronsUpDown, LogOut, MoreHorizontal, Plus, Search, Settings, UserRound } from "lucide-react";
+import { ChevronsUpDown, LogOut, MoreHorizontal, Plus, Search, Settings, Sun, UserRound } from "lucide-react";
 import { BrandMark } from "@/components/brand/logo";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,7 @@ import { Dialog, SheetContent } from "@/components/ui/dialog";
 import { logout } from "@/app/(auth)/actions";
 import { cn } from "@/lib/utils";
 import { CommandPalette, usePalette } from "./command-palette";
+import { DailyBriefing, OPEN_BRIEFING_EVENT } from "./daily-briefing";
 import { NotificationBell, NotificationsProvider } from "./notification-bell";
 import { SECTION_LABEL, navItems, type NavItem, type ShellFlags, type ShellUser } from "./nav";
 import { ThemeToggle } from "./theme-toggle";
@@ -55,6 +56,7 @@ export function AppShell({
           </div>
           <MobileNav nav={nav} user={user} />
         </div>
+        <DailyBriefing />
       </CommandPalette>
     </NotificationsProvider>
   );
@@ -163,6 +165,9 @@ function UserMenu({
           <span className="block truncate text-xs font-normal text-fg-subtle">{user.email}</span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={() => window.dispatchEvent(new Event(OPEN_BRIEFING_EVENT))}>
+          <Sun /> Today&apos;s plan
+        </DropdownMenuItem>
         <DropdownMenuItem asChild>
           <Link href={`/people/${user.id}`}>
             <UserRound /> My profile
@@ -282,7 +287,17 @@ function MobileNav({ nav, user }: { nav: NavItem[]; user: ShellUser }) {
               </Link>
             ))}
           </div>
-          <form action={logout} className="mt-5">
+          <Button
+            variant="soft"
+            className="mt-4 w-full"
+            onClick={() => {
+              setMore(false);
+              window.dispatchEvent(new Event(OPEN_BRIEFING_EVENT));
+            }}
+          >
+            <Sun /> Today&apos;s plan
+          </Button>
+          <form action={logout} className="mt-2">
             <Button variant="secondary" className="w-full" type="submit">
               <LogOut /> Sign out
             </Button>

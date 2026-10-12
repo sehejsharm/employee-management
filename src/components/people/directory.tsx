@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
-import { MapPin, Search, Target, Users } from "lucide-react";
+import { Mail, MapPin, Search, Target, Users } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { deptColor } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -20,6 +20,9 @@ export interface DirectoryPerson {
   status: "ACTIVE" | "ON_LEAVE" | "INACTIVE";
   avatarHue: number;
   employeeCode: string;
+  email: string;
+  /** How many other current people use the same email. */
+  sharedEmailWith: number;
   location: string | null;
   focus: string | null;
   department: { id: string; name: string; color: string } | null;
@@ -37,7 +40,7 @@ export function Directory({ people, departments }: { people: DirectoryPerson[]; 
     if (role !== "all" && p.role !== role) return false;
     if (dept !== "all" && p.department?.id !== dept) return false;
     const q = query.trim().toLowerCase();
-    if (q && !`${p.firstName} ${p.lastName} ${p.title ?? ""} ${p.employeeCode} ${p.department?.name ?? ""}`.toLowerCase().includes(q)) return false;
+    if (q && !`${p.firstName} ${p.lastName} ${p.title ?? ""} ${p.employeeCode} ${p.email} ${p.department?.name ?? ""}`.toLowerCase().includes(q)) return false;
     return true;
   });
 
@@ -49,7 +52,7 @@ export function Directory({ people, departments }: { people: DirectoryPerson[]; 
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by name, title or ID"
+            placeholder="Search by name, title, ID or email"
             className="h-9 w-full rounded-[10px] border border-line bg-surface pl-9 pr-3 text-[13.5px] shadow-xs outline-none placeholder:text-fg-subtle focus:border-brand focus:ring-4 focus:ring-ring/40"
           />
         </div>
@@ -127,7 +130,19 @@ export function Directory({ people, departments }: { people: DirectoryPerson[]; 
                         </div>
                       </div>
                     </div>
-                    <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-fg-muted">
+                    <div className="mt-3 flex min-w-0 items-center gap-1.5 text-[12px] text-fg-muted">
+                      <Mail className="size-3 shrink-0" />
+                      <span className="truncate">{p.email}</span>
+                      {p.sharedEmailWith > 0 && (
+                        <span
+                          className="shrink-0 rounded-full bg-info-soft px-1.5 text-[10.5px] font-semibold text-info"
+                          title={`Shared with ${p.sharedEmailWith} other ${p.sharedEmailWith === 1 ? "person" : "people"}`}
+                        >
+                          Shared · {p.sharedEmailWith + 1}
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-fg-muted">
                       {p.department && (
                         <span className={cn("inline-flex items-center gap-1.5 font-medium", c.text)}>
                           <span className={cn("h-1.5 w-1.5 rounded-full", c.dot)} />

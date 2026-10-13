@@ -232,7 +232,7 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[340px_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[340px_minmax(0,1fr)]">
         <div className="space-y-6">
           <SharedEmailNotice email={person.email} others={emailSharers} self={isSelf} name={person.firstName} />
           {person.role === "FOUNDER" && !former && <MeetingNotesCallout firstName={person.firstName} notes={person.meetingNotes} self={isSelf} />}

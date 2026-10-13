@@ -318,7 +318,7 @@ export function ChecklistPanel({
                 disabled={!canContribute}
                 onClick={() => toggle(item.id, !item.done)}
                 className={cn(
-                  "flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[6px] border transition",
+                  "relative flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[6px] border transition after:absolute after:-inset-3 after:content-['']",
                   item.done ? "border-success bg-success text-white" : "border-line-strong hover:border-brand",
                 )}
                 aria-label={item.done ? "Mark not done" : "Mark done"}
@@ -331,7 +331,7 @@ export function ChecklistPanel({
                   )}
                 </AnimatePresence>
               </button>
-              <span className={cn("flex-1 text-[13.5px] transition-colors", item.done && "text-fg-subtle line-through")}>{item.text}</span>
+              <span className={cn("min-w-0 flex-1 text-[13.5px] transition-colors wrap-anywhere", item.done && "text-fg-subtle line-through")}>{item.text}</span>
               {canContribute && (
                 <button
                   type="button"
@@ -340,7 +340,7 @@ export function ChecklistPanel({
                     const res = await removeChecklistItem(item.id);
                     if (!res.ok) toast.error(res.error);
                   }}
-                  className="rounded p-1 text-fg-subtle opacity-0 transition group-hover:opacity-100 hover:text-danger"
+                  className="-my-1 shrink-0 rounded-lg p-2 text-fg-subtle transition hover:text-danger focus-visible:opacity-100 pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100"
                   aria-label="Remove step"
                 >
                   <Trash2 className="size-3.5" />
@@ -360,7 +360,7 @@ export function ChecklistPanel({
             onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), add())}
             placeholder="Add a step"
             disabled={adding}
-            className="h-8 flex-1 bg-transparent text-[13.5px] outline-none placeholder:text-fg-subtle"
+            className="h-9 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-fg-subtle sm:h-8 sm:text-[13.5px]"
           />
         </div>
       )}
@@ -422,7 +422,7 @@ export function AttachmentsPanel({
       {attachments.length === 0 ? (
         <p className="text-[13px] text-fg-subtle">No links, notes or documents yet.</p>
       ) : (
-        <ul className="grid gap-2 sm:grid-cols-2">
+        <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {attachments.map((a) => (
             <AttachmentCard key={a.id} a={a} />
           ))}
@@ -535,7 +535,7 @@ export function AttachmentCard({ a }: { a: ClientAttachment }) {
         <button
           type="button"
           onClick={remove}
-          className="absolute -right-2 -top-2 hidden h-6 w-6 items-center justify-center rounded-full border border-line bg-surface text-fg-subtle shadow-sm transition hover:text-danger group-hover:flex"
+          className="absolute -right-2 -top-2 flex h-8 w-8 items-center justify-center rounded-full border border-line bg-surface text-fg-subtle shadow-sm transition hover:text-danger focus-visible:flex pointer-fine:hidden pointer-fine:h-6 pointer-fine:w-6 pointer-fine:group-hover:flex"
           aria-label="Remove attachment"
         >
           <Trash2 className="size-3" />
@@ -647,7 +647,7 @@ export function ActivityComposer({
                       value={status}
                       onChange={(e) => setStatus(e.target.value as TaskStatusKey | "")}
                       aria-label="Status"
-                      className="h-8 rounded-lg border border-line bg-surface px-2 text-xs outline-none"
+                      className="h-9 rounded-lg border border-line bg-surface px-2 text-base outline-none sm:h-8 sm:text-xs"
                     >
                       <option value="">Keep status ({STATUS_META[currentStatus].label})</option>
                       {STATUS_ORDER.filter((s) => s !== currentStatus && s !== "IN_REVIEW" && s !== "DONE").map((s) => (

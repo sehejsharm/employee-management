@@ -91,7 +91,7 @@ export function ManageMember({ member, departments, managers, actorIsFounder, is
           <p className="text-[13px] text-fg-muted">Only founders can change a founder&apos;s account.</p>
         ) : (
           <>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Role">
                 <NativeSelect value={form.role} disabled={isSelf} onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as Role }))}>
                   {(actorIsFounder || member.role === "FOUNDER") && <option value="FOUNDER">Founder</option>}
@@ -161,7 +161,7 @@ export function ManageMember({ member, departments, managers, actorIsFounder, is
             </Button>
 
             {!isSelf && (
-              <div className="grid gap-2 border-t border-line pt-4 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-2 border-t border-line pt-4 sm:grid-cols-2">
                 <Button variant="secondary" onClick={reset} disabled={pending}>
                   <KeyRound /> Reset password
                 </Button>

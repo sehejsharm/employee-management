@@ -67,7 +67,7 @@ export function LoginForm({ next }: { next: string }) {
                 autoCapitalize="none"
                 spellCheck={false}
                 placeholder="FR-0042"
-                className="h-12 rounded-xl pl-11 text-[15px]"
+                className="h-12 rounded-xl pl-11 text-base"
                 aria-invalid={state.field === "identifier"}
                 autoFocus
                 required
@@ -85,7 +85,7 @@ export function LoginForm({ next }: { next: string }) {
                 type={show ? "text" : "password"}
                 autoComplete="current-password"
                 placeholder="••••••••••"
-                className="h-12 rounded-xl px-11 text-[15px]"
+                className="h-12 rounded-xl px-11 text-base"
                 aria-invalid={state.field === "password"}
                 required
               />

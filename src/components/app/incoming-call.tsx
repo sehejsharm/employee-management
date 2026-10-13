@@ -135,20 +135,29 @@ export function IncomingCallWatcher() {
   };
 
   return (
-    <div role="alertdialog" aria-live="assertive" aria-label={`${call.organizer.firstName} is calling`} className="fixed inset-0 z-[100] flex items-end justify-center bg-black/40 p-4 backdrop-blur-sm sm:items-center">
-      <div className="w-full max-w-sm rounded-3xl border border-line bg-surface p-6 text-center shadow-2xl">
-        <div className="relative mx-auto w-fit">
-          <span className="absolute inset-0 animate-ping rounded-full bg-success/30" />
-          <Avatar person={call.organizer} size="xl" />
+    <div
+      role="alertdialog"
+      aria-live="assertive"
+      aria-label={`${call.organizer.firstName} is calling`}
+      onKeyDown={(e) => e.key === "Escape" && close()}
+      className="fixed inset-0 z-[100] flex items-end justify-center overflow-y-auto overscroll-contain bg-black/40 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] backdrop-blur-sm sm:items-center"
+    >
+      {/* The buttons stay in a fixed footer; only the middle scrolls, so Join and Not now are always reachable — even on a landscape phone. */}
+      <div className="flex max-h-[calc(100dvh-2rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] w-full max-w-sm flex-col overflow-hidden rounded-3xl border border-line bg-surface text-center shadow-2xl">
+        <div className="min-h-0 flex-1 overflow-y-auto p-6 pb-0 [@media(max-height:500px)]:p-4 [@media(max-height:500px)]:pb-0">
+          <div className="relative mx-auto w-fit [@media(max-height:500px)]:hidden">
+            <span className="absolute inset-0 animate-ping rounded-full bg-success/30" />
+            <Avatar person={call.organizer} size="xl" />
+          </div>
+          <p className="mt-4 text-[12px] font-semibold uppercase tracking-wider text-success [@media(max-height:500px)]:mt-0">Incoming call</p>
+          <h2 className="mt-1 text-[19px] font-semibold tracking-[-0.015em]">
+            {call.organizer.firstName} {call.organizer.lastName} is inviting you to a call right now
+          </h2>
+          {call.organizer.title && <p className="mt-0.5 text-[13px] text-fg-muted">{call.organizer.title}</p>}
+          <MeetingNotesCallout firstName={call.organizer.firstName} notes={call.organizer.meetingNotes} className="mt-4 text-left" />
         </div>
-        <p className="mt-4 text-[12px] font-semibold uppercase tracking-wider text-success">Incoming call</p>
-        <h2 className="mt-1 text-[19px] font-semibold tracking-[-0.015em]">
-          {call.organizer.firstName} {call.organizer.lastName} is inviting you to a call right now
-        </h2>
-        {call.organizer.title && <p className="mt-0.5 text-[13px] text-fg-muted">{call.organizer.title}</p>}
-        <MeetingNotesCallout firstName={call.organizer.firstName} notes={call.organizer.meetingNotes} className="mt-4 text-left" />
-        <div className="mt-6 grid grid-cols-2 gap-3">
-          <Button variant="secondary" size="lg" onClick={close}>
+        <div className="grid shrink-0 grid-cols-2 gap-3 p-6 pt-5 [@media(max-height:500px)]:p-4">
+          <Button variant="secondary" size="lg" onClick={close} autoFocus>
             <PhoneOff /> Not now
           </Button>
           <Button asChild size="lg" className="bg-success hover:bg-success/90">

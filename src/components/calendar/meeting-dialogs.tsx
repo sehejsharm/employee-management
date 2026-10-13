@@ -213,7 +213,7 @@ export function ScheduleMeetingDialog({
             />
           </Field>
           <FoundersNotes people={people} ids={ids} />
-          <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_160px]">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_160px]">
             <Field label="Starts">
               <Input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} />
             </Field>
@@ -382,7 +382,7 @@ export function RequestFounderDialog({
           <Field label="What's it about">
             <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Feedback on the partnership deck" maxLength={200} />
           </Field>
-          <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_110px_150px]">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_110px_150px]">
             <Field label="Suggested time">
               <Input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} />
             </Field>
@@ -412,7 +412,7 @@ export function RequestFounderDialog({
                 Blocks {block < 60 ? `${block} min` : `${Math.floor(block / 60)} h${block % 60 ? ` ${block % 60} min` : ""}`} with {founder?.firstName ?? "them"}: {slots} back-to-back calls, each with its own Google Meet link.
               </div>
               <p className="mt-0.5 text-fg-muted">Once accepted, copy a ready-made invite for each guest from the Calendar page. Name the guests now (optional):</p>
-              <ol className="mt-2 grid gap-1.5 sm:grid-cols-2">
+              <ol className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                 {Array.from({ length: slots }, (_, i) => {
                   const at = startAt ? new Date(startAt.getTime() + i * duration * 60_000) : null;
                   return (

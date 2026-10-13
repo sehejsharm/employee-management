@@ -218,7 +218,7 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
             <HeaderStatus taskId={task.id} status={task.status} canChange={canChangeStatus(user, access) && contribute} />
             <PriorityBadge priority={task.priority} />
           </div>
-          <h1 className="text-balance text-[26px] font-semibold leading-tight tracking-[-0.025em] sm:text-[32px]">{task.title}</h1>
+          <h1 className="text-balance text-[26px] font-semibold leading-tight tracking-[-0.025em] wrap-anywhere sm:text-[32px]">{task.title}</h1>
           <p className="mt-2 text-[13.5px] text-fg-muted">
             Assigned by <span className="font-medium text-fg">{task.createdBy.firstName} {task.createdBy.lastName}</span>{" "}
             <span suppressHydrationWarning title={formatDateTime(task.createdAt, tz)}>
@@ -271,7 +271,7 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-6">
           <Card>
             <CardHeader title="Brief" />

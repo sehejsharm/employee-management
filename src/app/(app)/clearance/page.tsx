@@ -90,7 +90,7 @@ export default async function ClearancePage() {
         description="Seeing anyone else's work needs clearance from a founder. Founders' work is visible to founders alone."
       />
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
         <div className="space-y-6">
           {founder && (
             <Card>

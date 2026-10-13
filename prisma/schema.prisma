@@ -464,6 +464,8 @@ model IntegrationEvent {
   summary   Json?
   userId    String?
   createdAt DateTime @default(now())
+  /// When the status last changed — tells a crashed, half-applied delivery from one still in flight.
+  updatedAt DateTime @default(now()) @updatedAt
 
   @@index([source, createdAt])
 }

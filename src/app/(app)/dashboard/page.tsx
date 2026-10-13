@@ -124,7 +124,7 @@ async function MemberView({ tz }: { tz: string }) {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         <NextDeadline tz={tz} task={data.next} />
         <div className="grid grid-cols-2 gap-3 sm:gap-4">
           <StatCard index={0} label="Open tasks" value={data.stats.open} icon={<ClipboardList />} href="/tasks" />
@@ -166,7 +166,7 @@ async function MemberView({ tz }: { tz: string }) {
         </FadeIn>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader
             icon={<ClipboardList />}
@@ -264,7 +264,7 @@ async function LeaderView({ tz }: { tz: string }) {
               </Button>
             }
           />
-          <CardBody className="grid gap-3 sm:grid-cols-3">
+          <CardBody className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             {pulse.map((f) => (
               <Link key={f.id} href="/leadership" className="flex gap-3 rounded-xl border border-line p-3 transition hover:border-brand/30 hover:bg-surface-hover">
                 <Avatar person={f} size="md" />

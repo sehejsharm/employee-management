@@ -285,7 +285,7 @@ export function SubmissionsPanel({ submissions, canReview }: { submissions: Clie
           </div>
           {s.summary && <RichText text={s.summary} className="mt-3 text-[13.5px]" />}
           {s.attachments.length > 0 && (
-            <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+            <ul className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
               {s.attachments.map((a) => (
                 <AttachmentCard key={a.id} a={a} />
               ))}

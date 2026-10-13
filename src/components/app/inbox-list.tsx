@@ -41,8 +41,9 @@ export function InboxList({ items: initial, tz, now: nowIso }: { items: FeedItem
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between gap-3">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <Segmented
+          className="max-w-full overflow-x-auto no-scrollbar"
           layoutId="inbox-filter"
           size="sm"
           value={filter}
@@ -50,7 +51,14 @@ export function InboxList({ items: initial, tz, now: nowIso }: { items: FeedItem
           options={[
             { value: "all", label: "All" },
             { value: "unread", label: `Unread${unread ? ` · ${unread}` : ""}` },
-            { value: "urgent", label: "Deadlines & requests" },
+            {
+              value: "urgent",
+              label: (
+                <>
+                  Deadlines<span className="max-[400px]:hidden">&nbsp;&amp; requests</span>
+                </>
+              ),
+            },
           ]}
         />
         {unread > 0 && (

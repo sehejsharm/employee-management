@@ -34,7 +34,7 @@ export function ProfileForm(props: { firstName: string; phone: string; location:
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="+91 98765 43210"
-                className="h-12 rounded-xl pl-10 text-[15px]"
+                className="h-12 rounded-xl pl-10 text-base"
                 aria-invalid={state.field === "phone"}
                 autoFocus
                 required
@@ -52,7 +52,7 @@ export function ProfileForm(props: { firstName: string; phone: string; location:
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
                 placeholder="City, e.g. Mumbai"
-                className="h-12 rounded-xl pl-10 text-[15px]"
+                className="h-12 rounded-xl pl-10 text-base"
                 aria-invalid={state.field === "location"}
                 required
               />

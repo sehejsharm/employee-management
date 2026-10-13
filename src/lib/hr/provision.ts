@@ -385,8 +385,24 @@ export async function handleHrEvent(raw: unknown): Promise<HrResult> {
     return { status: 200, body: { ok: true, duplicate: true, eventId, ...(user ? { user: publicUser(user) } : {}) } };
   }
 
+  // A delivery that's still being applied must not be applied twice in parallel (e.g. two
+  // different temporary passwords from one credentials reset). Claim the row atomically:
+  // only a failed attempt, or one stuck in flight for over two minutes, can be retried.
+  if (prior) {
+    const claimed = await db.integrationEvent.updateMany({
+      where: {
+        eventId,
+        OR: [{ status: "failed" }, { status: "received", updatedAt: { lt: new Date(Date.now() - 2 * 60_000) } }],
+      },
+      data: { status: "received", error: null },
+    });
+    if (claimed.count === 0) {
+      return { status: 409, body: { ok: false, error: "This event is still being applied. Retry in a minute.", eventId } };
+    }
+  }
+
   const record = prior
-    ? await db.integrationEvent.update({ where: { eventId }, data: { status: "received", error: null } })
+    ? await db.integrationEvent.findUnique({ where: { eventId } })
     : await db.integrationEvent
         .create({ data: { source: "hr-console", eventId, type, status: "received", summary: summarise(type, data) as never } })
         .catch((error: unknown) => {

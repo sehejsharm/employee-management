@@ -73,7 +73,7 @@ export function AddMemberDialog({
           description="Most people arrive automatically from the HR console. Use this for anyone who doesn't."
           size="lg"
         >
-          <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
+          <form onSubmit={submit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="First name">
               <Input value={form.firstName} onChange={set("firstName")} required autoFocus />
             </Field>

@@ -61,7 +61,7 @@ export default async function WorkReportPage({ params }: { params: Promise<{ id:
         ))}
       </div>
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-6">
           <Card>
             <CardHeader icon={<Sparkles />} title="Highlights" />

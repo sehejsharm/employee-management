@@ -51,7 +51,7 @@ export function AppShell({
           <Sidebar nav={nav} user={user} />
           <div className="relative lg:pl-[260px]">
             <Topbar user={user} nav={nav} />
-            <main className="mx-auto w-full max-w-[1400px] px-4 pb-28 pt-5 sm:px-6 lg:px-10 lg:pb-16 lg:pt-8">
+            <main className="safe-x mx-auto w-full max-w-[1400px] pb-28 pt-5 [--gutter:1rem] sm:[--gutter:1.5rem] lg:pb-16 lg:pt-8 lg:[--gutter:2.5rem]">
               {children}
             </main>
           </div>
@@ -195,10 +195,10 @@ function Topbar({ user, nav }: { user: ShellUser; nav: NavItem[] }) {
   const current = nav.find((n) => isActive(n, path));
   return (
     <header className="sticky top-0 z-20 border-b border-line/70 glass">
-      <div className="mx-auto flex h-16 max-w-[1400px] items-center gap-3 px-4 sm:px-6 lg:px-10">
-        <Link href="/dashboard" className="flex items-center gap-2.5 lg:hidden">
-          <BrandMark size={30} variant="tile" />
-          <span className="text-[15px] font-semibold tracking-tight">{current?.label ?? "Focus Realm"}</span>
+      <div className="safe-x mx-auto flex h-16 max-w-[1400px] items-center gap-3 [--gutter:1rem] sm:[--gutter:1.5rem] lg:[--gutter:2.5rem]">
+        <Link href="/dashboard" className="flex min-w-0 items-center gap-2.5 lg:hidden">
+          <BrandMark size={30} variant="tile" className="shrink-0" />
+          <span className="truncate text-[15px] font-semibold tracking-tight">{current?.label ?? "Focus Realm"}</span>
         </Link>
 
         <button
@@ -210,7 +210,7 @@ function Topbar({ user, nav }: { user: ShellUser; nav: NavItem[] }) {
           <Kbd>⌘K</Kbd>
         </button>
 
-        <div className="ml-auto flex items-center gap-1">
+        <div className="ml-auto flex shrink-0 items-center gap-1">
           <Button variant="ghost" size="icon" className="md:hidden" onClick={palette.open} aria-label="Search">
             <Search />
           </Button>
@@ -219,10 +219,12 @@ function Topbar({ user, nav }: { user: ShellUser; nav: NavItem[] }) {
               <Plus /> New task
             </Link>
           </Button>
-          <ThemeToggle />
+          <span className="hidden min-[360px]:contents">
+            <ThemeToggle />
+          </span>
           <NotificationBell />
           <UserMenu user={user}>
-            <button className="ml-1 rounded-full lg:hidden" aria-label="Account menu">
+            <button className="flex h-10 w-10 items-center justify-center rounded-full lg:hidden" aria-label="Account menu">
               <Avatar person={user} size="sm" />
             </button>
           </UserMenu>
@@ -242,7 +244,7 @@ function MobileNav({ nav, user }: { nav: NavItem[]; user: ShellUser }) {
   return (
     <>
       <nav className="safe-bottom fixed inset-x-0 bottom-0 z-30 border-t border-line glass lg:hidden">
-        <div className="relative mx-auto grid h-[68px] max-w-lg grid-cols-5 items-center px-2">
+        <div className="safe-x relative mx-auto grid h-[68px] max-w-lg grid-cols-5 items-center [--gutter:0.5rem]">
           {tabs.slice(0, 2).map((item) => (
             <TabLink key={item.href} item={item} active={isActive(item, path)} />
           ))}
@@ -273,14 +275,14 @@ function MobileNav({ nav, user }: { nav: NavItem[]; user: ShellUser }) {
 
       <Dialog open={more} onOpenChange={setMore}>
         <SheetContent title="Menu" description={`${user.firstName} ${user.lastName} · ${user.employeeCode}`}>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2 min-[400px]:grid-cols-3">
             {[...tabs.slice(3), ...rest].map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
                 onClick={() => setMore(false)}
                 className={cn(
-                  "flex flex-col items-center gap-2 rounded-2xl border border-line p-4 text-center text-[12.5px] font-medium transition active:scale-[0.97]",
+                  "flex min-w-0 flex-col items-center gap-2 rounded-2xl border border-line px-2 py-4 text-center text-[12.5px] font-medium leading-tight transition active:scale-[0.97]",
                   isActive(item, path) ? "border-brand/30 bg-brand-soft text-brand-soft-fg" : "bg-surface text-fg-muted",
                 )}
               >

@@ -142,7 +142,7 @@ function Section({ title, boards, detailed, tz, meId }: { title: string; boards:
   return (
     <section className="mb-10">
       <h2 className="mb-4 text-[12.5px] font-semibold uppercase tracking-[0.14em] text-fg-subtle">{title}</h2>
-      <Stagger className="grid gap-5 lg:grid-cols-2 2xl:grid-cols-3">
+      <Stagger className="grid grid-cols-1 gap-5 lg:grid-cols-2 2xl:grid-cols-3">
         {boards.map((b) => (
           <StaggerItem key={b.leader.id}>
             <LeaderCard board={b} detailed={detailed} tz={tz} isMe={b.leader.id === meId} />

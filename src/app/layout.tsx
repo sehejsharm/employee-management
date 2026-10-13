@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import { Providers } from "@/components/app/providers";
@@ -17,10 +18,9 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f5f7fb" },
-    { media: "(prefers-color-scheme: dark)", color: "#060a13" },
-  ],
+  // One colour, switched by the boot script and the theme toggle to match the app's own theme
+  // (which can differ from the phone's), so the status bar never clashes with the page.
+  themeColor: "#f5f7fb",
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
@@ -31,13 +31,15 @@ export const viewport: Viewport = {
  * records the browser's time zone so deadlines render in local time, and
  * skips the splash screen if it has already played this session.
  */
-const bootScript = `(function(){var d=document.documentElement;try{var t=localStorage.getItem('fr-theme')||'light';var dark=t==='dark'||(t==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);if(dark)d.classList.add('dark');}catch(e){}try{var z=Intl.DateTimeFormat().resolvedOptions().timeZone;var c='fr_tz='+encodeURIComponent(z);if(z&&document.cookie.indexOf(c)<0){document.cookie=c+';path=/;max-age=31536000;samesite=lax';}}catch(e){}try{if(sessionStorage.getItem('fr-splash')){d.classList.add('fr-splash-seen');}else{sessionStorage.setItem('fr-splash','1');}}catch(e){d.classList.add('fr-splash-seen');}})();`;
+const bootScript = `(function(){var d=document.documentElement;try{var t=localStorage.getItem('fr-theme')||'light';var dark=t==='dark'||(t==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);if(dark)d.classList.add('dark');var tc=function(){var m=document.querySelector('meta[name=theme-color]');if(m)m.setAttribute('content',dark?'#060a13':'#f5f7fb');};tc();document.addEventListener('DOMContentLoaded',tc);}catch(e){}try{var z=Intl.DateTimeFormat().resolvedOptions().timeZone;var c='fr_tz='+encodeURIComponent(z);if(z&&document.cookie.indexOf(c)<0){document.cookie=c+';path=/;max-age=31536000;samesite=lax';}}catch(e){}try{if(sessionStorage.getItem('fr-splash')){d.classList.add('fr-splash-seen');}else{sessionStorage.setItem('fr-splash','1');}}catch(e){d.classList.add('fr-splash-seen');}})();`;
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // The per-request CSP nonce from the proxy (see src/proxy.ts); the boot script must carry it to run.
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
   return (
     <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`} suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: bootScript }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: bootScript }} />
       </head>
       <body className="min-h-dvh">
         <Splash />

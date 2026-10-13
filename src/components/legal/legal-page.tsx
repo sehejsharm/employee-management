@@ -13,7 +13,7 @@ export function LegalPage({ title, updated, sections }: { title: string; updated
         </Link>
         <h1 className="mt-8 text-[30px] font-semibold tracking-[-0.025em] sm:text-[36px]">{title}</h1>
         <p className="mt-2 text-[14px] text-fg-muted">Last updated {updated}</p>
-        <div className="mt-8 space-y-8">
+        <div className="mt-8 space-y-8 wrap-anywhere">
           {sections.map((s) => (
             <section key={s.title}>
               <h2 className="text-[18px] font-semibold tracking-[-0.01em]">{s.title}</h2>

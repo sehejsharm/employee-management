@@ -253,10 +253,10 @@ export function OrgChart({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Find someone…"
-            className="h-9 w-full rounded-[10px] border border-line bg-surface pl-9 pr-8 text-[13.5px] shadow-xs outline-none placeholder:text-fg-subtle focus:border-brand focus:ring-4 focus:ring-ring/40"
+            className="h-9 w-full rounded-[10px] border border-line bg-surface pl-9 pr-8 text-base shadow-xs sm:text-[13.5px] outline-none placeholder:text-fg-subtle focus:border-brand focus:ring-4 focus:ring-ring/40"
           />
           {query && (
-            <button onClick={() => setQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-fg-subtle hover:text-fg" aria-label="Clear">
+            <button onClick={() => setQuery("")} className="absolute right-1 top-1/2 -translate-y-1/2 rounded-lg p-2 text-fg-subtle hover:text-fg" aria-label="Clear">
               <X className="size-3.5" />
             </button>
           )}

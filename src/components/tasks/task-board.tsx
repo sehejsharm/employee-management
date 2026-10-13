@@ -148,7 +148,7 @@ function Card({ task, tz, dragging }: { task: ClientTaskRow; tz: string; draggin
       <div className="flex items-start gap-2">
         <Link
           href={`/tasks/${task.id}`}
-          className="line-clamp-2 flex-1 text-[13.5px] font-medium leading-snug text-fg after:absolute after:inset-0"
+          className="line-clamp-2 min-w-0 flex-1 text-[13.5px] font-medium leading-snug text-fg wrap-anywhere after:absolute after:inset-0"
           draggable={false}
         >
           {task.title}

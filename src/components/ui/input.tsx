@@ -2,7 +2,7 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 
 export const fieldBase =
-  "w-full rounded-[10px] border border-line bg-surface text-sm text-fg shadow-xs outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-fg-subtle hover:border-line-strong focus:border-brand focus:ring-4 focus:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-60 aria-[invalid=true]:border-danger aria-[invalid=true]:focus:ring-danger/20";
+  "w-full min-w-0 rounded-[10px] border border-line bg-surface text-base text-fg sm:text-sm shadow-xs outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-fg-subtle hover:border-line-strong focus:border-brand focus:ring-4 focus:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-60 aria-[invalid=true]:border-danger aria-[invalid=true]:focus:ring-danger/20";
 
 export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
   function Input({ className, ...props }, ref) {
@@ -19,7 +19,7 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, React.TextareaHTML
 export const NativeSelect = React.forwardRef<HTMLSelectElement, React.SelectHTMLAttributes<HTMLSelectElement>>(
   function NativeSelect({ className, children, ...props }, ref) {
     return (
-      <div className="relative">
+      <div className="relative min-w-0">
         <select ref={ref} className={cn(fieldBase, "h-10 appearance-none pl-3 pr-9", className)} {...props}>
           {children}
         </select>

@@ -101,7 +101,7 @@ export function TaskForm({
   };
 
   return (
-    <form onSubmit={submit} className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
+    <form onSubmit={submit} className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
       <div className="space-y-5">
         <Card className="p-5 sm:p-6">
           <input
@@ -272,7 +272,7 @@ export function LinkComposer({ onAdd, busy }: { onAdd: (l: { title: string; url:
     setTitle("");
   };
   return (
-    <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+    <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]">
       <Input
         value={url}
         onChange={(e) => setUrl(e.target.value)}
@@ -363,8 +363,8 @@ function ChecklistComposer({ items, onChange }: { items: string[]; onChange: (it
         {items.map((item, i) => (
           <li key={i} className="group flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-surface-hover">
             <span className="h-4 w-4 shrink-0 rounded-[5px] border border-line-strong" />
-            <span className="flex-1 text-[13.5px]">{item}</span>
-            <button type="button" onClick={() => onChange(items.filter((_, j) => j !== i))} className="rounded p-1 text-fg-subtle opacity-0 transition group-hover:opacity-100 hover:text-danger" aria-label="Remove step">
+            <span className="min-w-0 flex-1 text-[13.5px] wrap-anywhere">{item}</span>
+            <button type="button" onClick={() => onChange(items.filter((_, j) => j !== i))} className="-my-1 shrink-0 rounded-lg p-2 text-fg-subtle transition hover:text-danger focus-visible:opacity-100 pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100" aria-label="Remove step">
               <Trash2 className="size-3.5" />
             </button>
           </li>

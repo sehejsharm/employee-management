@@ -10,7 +10,7 @@ const lastSweep = new Map<string, number>();
 
 export async function GET() {
   const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+  if (!user || user.mustChangePassword) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
 
   const now = Date.now();
   if ((lastSweep.get(user.id) ?? 0) < now - 60_000) {

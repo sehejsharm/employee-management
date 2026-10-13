@@ -65,7 +65,7 @@ export function SetupForm() {
                 autoComplete="off"
                 spellCheck={false}
                 placeholder="The SETUP_TOKEN value from Vercel"
-                className="h-12 rounded-xl pl-11 text-[15px]"
+                className="h-12 rounded-xl pl-11 text-base"
                 aria-invalid={state.field === "token"}
                 autoFocus
                 required
@@ -76,17 +76,17 @@ export function SetupForm() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label htmlFor="firstName">First name</Label>
-              <Input id="firstName" {...bind("firstName")} autoComplete="given-name" className="h-12 rounded-xl text-[15px]" aria-invalid={state.field === "firstName"} required />
+              <Input id="firstName" {...bind("firstName")} autoComplete="given-name" className="h-12 rounded-xl text-base" aria-invalid={state.field === "firstName"} required />
             </div>
             <div>
               <Label htmlFor="lastName">Last name</Label>
-              <Input id="lastName" {...bind("lastName")} autoComplete="family-name" className="h-12 rounded-xl text-[15px]" />
+              <Input id="lastName" {...bind("lastName")} autoComplete="family-name" className="h-12 rounded-xl text-base" />
             </div>
           </div>
 
           <div>
             <Label htmlFor="title">Title</Label>
-            <Input id="title" {...bind("title")} placeholder="Co-founder & CEO" className="h-12 rounded-xl text-[15px]" />
+            <Input id="title" {...bind("title")} placeholder="Co-founder & CEO" className="h-12 rounded-xl text-base" />
           </div>
 
           <div>
@@ -97,7 +97,7 @@ export function SetupForm() {
               type="email"
               autoComplete="email"
               placeholder="you@focusrealm.com"
-              className="h-12 rounded-xl text-[15px]"
+              className="h-12 rounded-xl text-base"
               aria-invalid={state.field === "email"}
               required
             />
@@ -113,7 +113,7 @@ export function SetupForm() {
                 autoComplete="new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="h-12 rounded-xl pr-11 text-[15px]"
+                className="h-12 rounded-xl pr-11 text-base"
                 aria-invalid={state.field === "password"}
                 required
               />
@@ -155,7 +155,7 @@ export function SetupForm() {
               autoComplete="new-password"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
-              className="h-12 rounded-xl text-[15px]"
+              className="h-12 rounded-xl text-base"
               aria-invalid={state.field === "confirm" || (confirm.length > 0 && confirm !== password)}
               required
             />

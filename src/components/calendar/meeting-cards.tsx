@@ -161,7 +161,7 @@ export function MeetingCard({ meeting, tz, selfId }: { meeting: ClientMeeting; t
             )}
             {meeting.host && <span className="rounded-full bg-brand-soft px-2 py-0.5 text-[11px] font-semibold text-brand-soft-fg">With a founder</span>}
           </div>
-          <h3 className="mt-1 text-[15px] font-semibold leading-snug">{meeting.title}</h3>
+          <h3 className="mt-1 text-[15px] font-semibold leading-snug wrap-anywhere">{meeting.title}</h3>
           <p className="mt-0.5 text-[13px] text-fg-muted" suppressHydrationWarning>
             {when(meeting, tz)}
           </p>
@@ -262,7 +262,7 @@ export function RequestToAnswer({ meeting, tz }: { meeting: ClientMeeting; tz: s
             </span>{" "}
             asked to meet
           </p>
-          <h3 className="mt-0.5 text-[15px] font-semibold leading-snug">{meeting.title}</h3>
+          <h3 className="mt-0.5 text-[15px] font-semibold leading-snug wrap-anywhere">{meeting.title}</h3>
           <p className="mt-0.5 text-[13px] text-fg-muted" suppressHydrationWarning>
             Suggested: {when(meeting, tz)} ({meeting.slots.length > 1 ? `${meeting.slots.length} slots × ${minutes / meeting.slots.length} min, each its own Meet link` : `${minutes} min`})
           </p>
@@ -365,7 +365,7 @@ export function GoogleConnections({
     );
   }
   return (
-    <div className="grid gap-3 md:grid-cols-2">
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
       <div className="rounded-xl border border-line p-3.5">
         <div className="text-[13px] font-semibold">Your calendar</div>
         <p className="mt-0.5 text-[12.5px] text-fg-muted">

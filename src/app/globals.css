@@ -186,6 +186,13 @@ html {
   scrollbar-gutter: stable;
 }
 
+/* The app never scrolls sideways — on a phone the page must not shift under a swipe.
+   `clip` (not `hidden`) so sticky headers keep working. */
+html,
+body {
+  overflow-x: clip;
+}
+
 body {
   background-color: var(--bg);
   color: var(--fg);
@@ -194,6 +201,8 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   -webkit-tap-highlight-color: transparent;
+  /* Long words, URLs and file names wrap instead of pushing the layout wider. */
+  overflow-wrap: break-word;
 }
 
 ::selection {
@@ -294,6 +303,12 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+/* Side gutters that clear the notch / rounded corners on iPhones in landscape. */
+@utility safe-x {
+  padding-left: max(var(--gutter, 1rem), env(safe-area-inset-left));
+  padding-right: max(var(--gutter, 1rem), env(safe-area-inset-right));
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
@@ -378,4 +393,11 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
 @media (prefers-reduced-motion: reduce) {
   .fr-splash { display: none; }
+}
+
+/* Toasts clear the mobile tab bar wherever it shows (it stays up to the lg breakpoint, past Sonner's 600px "mobile"). */
+@media (min-width: 601px) and (max-width: 1023px) {
+  [data-sonner-toaster][data-y-position="bottom"] {
+    bottom: calc(92px + env(safe-area-inset-bottom)) !important;
+  }
 }

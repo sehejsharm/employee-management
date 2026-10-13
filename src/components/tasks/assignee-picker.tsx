@@ -95,7 +95,7 @@ export function AssigneePicker({
                       e.stopPropagation();
                       toggle(p.id);
                     }}
-                    className="rounded-full p-0.5 text-fg-subtle hover:bg-surface-hover hover:text-fg"
+                    className="relative rounded-full p-0.5 text-fg-subtle after:absolute after:-inset-2 after:content-[''] hover:bg-surface-hover hover:text-fg"
                     aria-label={`Remove ${p.firstName}`}
                   >
                     <X className="size-3" />
@@ -106,14 +106,14 @@ export function AssigneePicker({
             <ChevronDown className="ml-auto mr-1 size-4 text-fg-subtle" />
           </button>
         </PopoverTrigger>
-        <PopoverContent className="w-[var(--radix-popover-trigger-width)] min-w-[300px]">
-          <Command loop>
+        <PopoverContent className="w-[var(--radix-popover-trigger-width)] min-w-[min(300px,calc(100vw-1rem))]">
+          <Command loop className="flex min-h-0 flex-1 flex-col">
             <Command.Input
               placeholder="Search people…"
-              className="h-11 w-full border-b border-line bg-transparent px-3.5 text-sm outline-none placeholder:text-fg-subtle"
+              className="h-11 w-full shrink-0 border-b border-line bg-transparent px-3.5 text-base outline-none placeholder:text-fg-subtle sm:text-sm"
               autoFocus
             />
-            <Command.List className="max-h-72 overflow-y-auto p-1.5">
+            <Command.List className="max-h-72 min-h-0 flex-1 overflow-y-auto p-1.5">
               <Command.Empty className="py-6 text-center text-[13px] text-fg-muted">No one by that name.</Command.Empty>
               {groups.map(([dept, list]) => (
                 <Command.Group

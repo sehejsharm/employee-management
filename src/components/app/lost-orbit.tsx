@@ -11,11 +11,11 @@ export function LostOrbit() {
         initial={{ opacity: 0, x: -30, rotate: -8 }}
         animate={{ opacity: 1, x: 0, rotate: -4 }}
         transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
-        className="text-gradient-brand select-none text-[120px] font-semibold leading-none tracking-[-0.06em] sm:text-[180px]"
+        className="text-gradient-brand select-none text-[96px] font-semibold leading-none tracking-[-0.06em] min-[380px]:text-[120px] sm:text-[180px]"
       >
         4
       </motion.span>
-      <div className="relative h-[130px] w-[130px] sm:h-[190px] sm:w-[190px]">
+      <div className="relative h-[104px] w-[104px] min-[380px]:h-[130px] min-[380px]:w-[130px] sm:h-[190px] sm:w-[190px]">
         {[0, 1, 2].map((i) => (
           <motion.div
             key={i}
@@ -42,7 +42,7 @@ export function LostOrbit() {
         initial={{ opacity: 0, x: 30, rotate: 8 }}
         animate={{ opacity: 1, x: 0, rotate: 4 }}
         transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
-        className="text-gradient-brand select-none text-[120px] font-semibold leading-none tracking-[-0.06em] sm:text-[180px]"
+        className="text-gradient-brand select-none text-[96px] font-semibold leading-none tracking-[-0.06em] min-[380px]:text-[120px] sm:text-[180px]"
       >
         4
       </motion.span>

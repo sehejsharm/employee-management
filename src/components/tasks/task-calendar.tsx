@@ -64,7 +64,7 @@ export function TaskCalendar({ tasks, tz }: { tasks: ClientTaskRow[]; tz: string
   const selectedTasks = selected ? byDay.get(selected) ?? [] : [];
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
       <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
         <div className="flex items-center justify-between border-b border-line px-4 py-3">
           <div className="text-[15px] font-semibold tracking-tight">{monthLabel}</div>
@@ -179,7 +179,7 @@ export function TaskCalendar({ tasks, tz }: { tasks: ClientTaskRow[]; tz: string
                   href={`/tasks/${t.id}`}
                   className="block rounded-xl border border-line p-3 transition hover:border-brand/30 hover:bg-surface-hover"
                 >
-                  <div className="text-[13px] font-medium leading-snug">{t.title}</div>
+                  <div className="text-[13px] font-medium leading-snug wrap-anywhere">{t.title}</div>
                   <div className="mt-1 flex items-center gap-2 text-xs text-fg-subtle">
                     <span className="font-mono">T-{t.number}</span>·<span>{formatTime(new Date(t.dueAt), tz)}</span>
                   </div>

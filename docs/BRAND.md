@@ -1,7 +1,7 @@
 # Focus Realm Workspace — brand rules
 
 The Workspace wears the **blue-and-white Focus Realm brand**, taken from the FR
-monogram: a sky-blue **F** interlocked with a royal-blue **R**. Every screen —
+monogram: a tall royal-blue **F** whose middle arm reaches into a slender sky-blue **R**. Every screen —
 including Mission Control — follows these rules. They are enforced by the
 design tokens in `src/app/globals.css`; this page explains them.
 

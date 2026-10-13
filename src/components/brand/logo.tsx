@@ -2,10 +2,10 @@ import { useId } from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * The Focus Realm monogram: a sky-blue F interlocked with a royal-blue R.
- * Drawn inline so it stays crisp at every size and themes without assets.
- * To use the official artwork instead, drop it at public/brand/focus-realm.svg
- * and render <img src="/brand/focus-realm.svg"> here.
+ * The Focus Realm monogram: a tall royal-blue F whose middle arm reaches into
+ * a slender sky-blue R. Drawn inline so it stays crisp at every size and
+ * themes without assets. The same artwork lives in public/brand/focus-realm-mark.svg
+ * and src/app/icon.svg (the browser tab icon).
  */
 export function BrandMark({
   size = 32,
@@ -27,36 +27,37 @@ export function BrandMark({
 
   const mark = (
     <svg
-      viewBox="0 0 64 64"
-      width={variant === "tile" ? size * 0.72 : size}
-      height={variant === "tile" ? size * 0.72 : size}
+      viewBox="-4 0 32 32"
+      width={variant === "tile" ? size * 0.78 : size}
+      height={variant === "tile" ? size * 0.78 : size}
       role="img"
       aria-label="Focus Realm"
       className={variant === "tile" ? undefined : className}
     >
       <defs>
-        <linearGradient id={f} x1="0" y1="0" x2="0.4" y2="1">
-          <stop offset="0%" stopColor={inverse ? "#ffffff" : "#7cc0fa"} />
-          <stop offset="100%" stopColor={inverse ? "#dcebfe" : "#3b8ef5"} />
+        <linearGradient id={f} x1="0" y1="0" x2="0.3" y2="1">
+          <stop offset="0%" stopColor={inverse ? "#ffffff" : "#1f5fd1"} />
+          <stop offset="100%" stopColor={inverse ? "#e6f0ff" : "#0f2f86"} />
         </linearGradient>
         <linearGradient id={r} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor={inverse ? "#eaf3ff" : "#2f86f0"} />
-          <stop offset="100%" stopColor={inverse ? "#bfdcfe" : "#1655c0"} />
+          <stop offset="0%" stopColor={inverse ? "#dff0ff" : "#a3dafd"} />
+          <stop offset="100%" stopColor={inverse ? "#a9d4fb" : "#3f9be8"} />
         </linearGradient>
       </defs>
-      {/* F — sky */}
+      {/* F — royal: tall stem, fine top bar with a turned-down end, middle arm reaching into the R */}
       <g fill={`url(#${f})`} className={parts?.f}>
-        <rect x="12" y="8" width="5" height="48" />
-        <rect x="12" y="8" width="29" height="5" />
-        <rect x="12" y="27.5" width="18" height="5" />
+        <rect x="3.4" y="2.4" width="2.4" height="27.4" />
+        <rect x="3.4" y="2.4" width="15.7" height="1.1" />
+        <path d="M15.4 3.5 H19.1 V6.2 Z" />
+        <rect x="5.8" y="15.4" width="8.6" height="1.3" />
       </g>
-      {/* R — royal, its bowl growing out of the F's middle arm */}
-      <g fill={`url(#${r})`} className={parts?.r}>
-        <path
-          fillRule="evenodd"
-          d="M26 56 V27.5 H40.5 A10 10 0 0 1 40.5 47.5 H31 V56 Z M31 32.5 V42.5 H40.5 A5 5 0 0 0 40.5 32.5 Z"
-        />
-        <path d="M35 47.5 H41 L52 56 H45.2 Z" />
+      {/* R — sky, standing beside the F's stem */}
+      <g className={parts?.r}>
+        <rect x="6.6" y="12.4" width="1.9" height="17.4" fill={`url(#${r})`} />
+        <g fill="none" stroke={`url(#${r})`} strokeWidth="0.95">
+          <path d="M8.5 12.85 H13.4 C17.5 12.85 19.6 14.7 19.6 16.7 C19.6 18.7 17.5 20.5 13.4 20.5 H8.5" />
+          <path d="M13.1 20.5 L20.2 29.8" strokeWidth="1.15" />
+        </g>
       </g>
     </svg>
   );

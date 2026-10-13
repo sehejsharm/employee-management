@@ -8,7 +8,10 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         <div className="pointer-events-none absolute inset-x-0 top-0 h-72 bg-[var(--glow)] lg:hidden" />
         {children}
         <footer className="relative px-6 pb-6 text-center text-xs text-fg-subtle sm:px-10 lg:text-left">
-          © {new Date().getFullYear()} Focus Realm · Internal workspace — authorised personnel only
+          © {new Date().getFullYear()} Focus Realm · Internal workspace — authorised personnel only ·{" "}
+          <a href="/privacy" className="underline-offset-2 hover:text-fg hover:underline">
+            Privacy
+          </a>
         </footer>
       </main>
     </div>

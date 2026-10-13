@@ -6,6 +6,8 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth/current-user";
 import { isFounder, isLeader } from "@/lib/permissions";
 import { notify } from "@/lib/notifications";
+import { config } from "@/lib/env";
+import { formatBytes } from "@/lib/utils";
 import type { ActionResult } from "@/lib/utils";
 
 const schema = z.object({
@@ -14,13 +16,30 @@ const schema = z.object({
   pinned: z.boolean(),
 });
 
-export async function postAnnouncement(input: z.input<typeof schema>): Promise<ActionResult> {
+/** Form fields: title, body, pinned ("true"/"false") and an optional `pdf` file. */
+export async function postAnnouncement(formData: FormData): Promise<ActionResult> {
   const user = await requireUser();
   if (!isLeader(user)) return { ok: false, error: "Only founders and management can post announcements." };
-  const parsed = schema.safeParse(input);
+  const parsed = schema.safeParse({
+    title: String(formData.get("title") ?? ""),
+    body: String(formData.get("body") ?? ""),
+    pinned: formData.get("pinned") === "true",
+  });
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
 
-  const a = await db.announcement.create({ data: { ...parsed.data, authorId: user.id }, select: { id: true, title: true } });
+  let pdf: { pdf: Uint8Array<ArrayBuffer>; pdfName: string; pdfSize: number } | undefined;
+  const file = formData.get("pdf");
+  if (file instanceof File && file.size > 0) {
+    const max = config.maxUploadBytes();
+    if (file.size > max) return { ok: false, error: `PDFs can be up to ${formatBytes(max)}.` };
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    // Check the file itself, not just its name: it must start with the PDF signature.
+    if (new TextDecoder().decode(bytes.subarray(0, 5)) !== "%PDF-") return { ok: false, error: "Attach a PDF file." };
+    const name = file.name.replace(/[\\/\0]/g, "_").slice(0, 200) || "document.pdf";
+    pdf = { pdf: bytes, pdfName: /\.pdf$/i.test(name) ? name : `${name}.pdf`, pdfSize: file.size };
+  }
+
+  const a = await db.announcement.create({ data: { ...parsed.data, ...pdf, authorId: user.id }, select: { id: true, title: true } });
   const everyone = await db.user.findMany({ where: { status: { not: "INACTIVE" } }, select: { id: true } });
   await notify(
     everyone.map((u) => u.id),

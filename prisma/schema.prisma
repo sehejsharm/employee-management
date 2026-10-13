@@ -196,11 +196,13 @@ model User {
   avatarHue      Int       @default(212)
   joinedAt       DateTime?
 
-  passwordHash       String
-  mustChangePassword Boolean   @default(true)
-  passwordChangedAt  DateTime?
-  failedLoginCount   Int       @default(0)
-  lockedUntil        DateTime?
+  passwordHash        String
+  mustChangePassword  Boolean   @default(true)
+  /// New people must add a phone number and location before using the Workspace.
+  mustCompleteProfile Boolean   @default(true)
+  passwordChangedAt   DateTime?
+  failedLoginCount    Int       @default(0)
+  lockedUntil         DateTime?
 
   source     AccountSource @default(MANUAL)
   /// The record id in the HR console. Set only for HR-provisioned accounts.
@@ -434,6 +436,10 @@ model Announcement {
   title     String
   body      String   @db.Text
   pinned    Boolean  @default(false)
+  /// Optional PDF shared with the announcement (e.g. a guide or policy).
+  pdf       Bytes?
+  pdfName   String?
+  pdfSize   Int?
   authorId  String
   author    User     @relation(fields: [authorId], references: [id], onDelete: Restrict)
   createdAt DateTime @default(now())
@@ -610,6 +616,8 @@ model Meeting {
   teamEventId      String?
   htmlLink         String?
   meetUrl          String?
+  /// A block split into back-to-back slots (e.g. 4 × 15-min interviews), each with its own Meet link.
+  slots            MeetingSlot[]
   createdAt        DateTime              @default(now())
   updatedAt        DateTime              @updatedAt
   attendees        MeetingAttendee[]
@@ -617,6 +625,24 @@ model Meeting {
   @@index([organizerId, startAt])
   @@index([hostId, status])
   @@index([startAt])
+}
+
+/// One slot of a multi-slot founder meeting: its own calendar event and Meet link,
+/// usually for one external guest (e.g. an interview candidate).
+model MeetingSlot {
+  id            String   @id @default(cuid())
+  meetingId     String
+  meeting       Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  position      Int
+  startAt       DateTime
+  endAt         DateTime
+  /// Who the slot is for, e.g. the candidate's name. Used in the copyable invite.
+  guestName     String?
+  googleEventId String?
+  meetUrl       String?
+  htmlLink      String?
+
+  @@unique([meetingId, position])
 }
 
 model MeetingAttendee {

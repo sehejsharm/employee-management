@@ -187,7 +187,12 @@ const requestSchema = z.object({
   title: z.string().trim().min(2, "Say what it's about.").max(200),
   description: z.string().trim().max(5000).optional().default(""),
   startAt: z.iso.datetime({ offset: true, message: "Suggest a time." }),
+  /** Length of each slot. With one slot, the length of the meeting. */
   durationMin: z.number().int().min(10).max(4 * 60),
+  /** Back-to-back slots in one block, each with its own Meet link (e.g. 4 interviews of 15 min). */
+  slots: z.number().int().min(1).max(12).optional().default(1),
+  /** Optional name of whoever each slot is for, e.g. the candidate. */
+  guests: z.array(z.string().trim().max(120)).max(12).optional().default([]),
 });
 
 /** Asks a founder for time. Nothing is booked until they accept. */
@@ -201,16 +206,29 @@ export async function requestFounderMeeting(input: z.input<typeof requestSchema>
   if (!founder) return { ok: false, error: "Pick one of the founders." };
   const startAt = new Date(d.startAt);
   if (startAt.getTime() < Date.now() - 5 * MINUTE) return { ok: false, error: "That time has already passed." };
+  if (d.slots * d.durationMin > 8 * 60) return { ok: false, error: "Keep the whole block under 8 hours." };
 
+  const slotMs = d.durationMin * MINUTE;
   const meeting = await db.meeting.create({
     data: {
       title: d.title,
       description: d.description || null,
       startAt,
-      endAt: new Date(startAt.getTime() + d.durationMin * MINUTE),
+      endAt: new Date(startAt.getTime() + d.slots * slotMs),
       status: "REQUESTED",
       organizerId: user.id,
       hostId: founder.id,
+      slots:
+        d.slots > 1
+          ? {
+              create: Array.from({ length: d.slots }, (_, i) => ({
+                position: i + 1,
+                startAt: new Date(startAt.getTime() + i * slotMs),
+                endAt: new Date(startAt.getTime() + (i + 1) * slotMs),
+                guestName: d.guests[i] || null,
+              })),
+            }
+          : undefined,
     },
     select: { id: true },
   });
@@ -219,7 +237,7 @@ export async function requestFounderMeeting(input: z.input<typeof requestSchema>
     kind: "MEETING",
     actorId: user.id,
     title: `${fullName(user)} asked to meet you`,
-    body: `"${d.title}" · ${formatDateTime(startAt, tz)} (${d.durationMin} min)`,
+    body: `"${d.title}" · ${formatDateTime(startAt, tz)} (${d.slots > 1 ? `${d.slots} × ${d.durationMin} min` : `${d.durationMin} min`})`,
     href: `/calendar#request-${meeting.id}`,
   });
   refresh();
@@ -255,6 +273,7 @@ export async function respondToMeetingRequest(meetingId: string, input: z.input<
       status: true,
       hostId: true,
       organizer: { select: { id: true, firstName: true, lastName: true, email: true, calendarEmail: true, status: true } },
+      slots: { orderBy: { position: "asc" }, select: { id: true, position: true, startAt: true, endAt: true, guestName: true } },
     },
   });
   if (!meeting || meeting.status !== "REQUESTED") return { ok: false, error: "That request has already been answered." };
@@ -287,6 +306,12 @@ export async function respondToMeetingRequest(meetingId: string, input: z.input<
   // "Saumitra Rao × Sehej Sharma — topic": who's meeting whom, at a glance on any calendar.
   const pairTitle = `${fullName(meeting.organizer)} × ${fullName(user)} — ${meeting.title}`;
   const details = [meeting.description, `Requested by ${fullName(meeting.organizer)} through the Focus Realm Workspace.`].filter(Boolean).join("\n\n");
+  const attendeeEmails = conn.kind === "TEAM" ? [inviteEmailOf(user), inviteEmailOf(meeting.organizer)] : [inviteEmailOf(meeting.organizer)];
+
+  if (meeting.slots.length > 1) {
+    return acceptSlots({ user, meeting, conn, team, startAt, endAt, pairTitle, details, attendeeEmails, note: d.note, tz });
+  }
+
   let event;
   try {
     event = await createEvent(conn, {
@@ -295,7 +320,7 @@ export async function respondToMeetingRequest(meetingId: string, input: z.input<
       startAt,
       endAt,
       timeZone: tz,
-      attendeeEmails: conn.kind === "TEAM" ? [inviteEmailOf(user), inviteEmailOf(meeting.organizer)] : [inviteEmailOf(meeting.organizer)],
+      attendeeEmails,
       meet: true,
       requestId: meeting.id,
     });
@@ -355,6 +380,113 @@ export async function respondToMeetingRequest(meetingId: string, input: z.input<
   return { ok: true, message: "Accepted — it's on your calendar and they've been invited." };
 }
 
+type Conn = NonNullable<Awaited<ReturnType<typeof teamConnection>>>;
+
+/**
+ * Accepts a multi-slot request: one event per slot on the founder's calendar, each with
+ * its own Meet link so every guest gets a separate call, plus one block on the team calendar.
+ */
+async function acceptSlots(a: {
+  user: Awaited<ReturnType<typeof requireUser>>;
+  meeting: {
+    id: string;
+    title: string;
+    startAt: Date;
+    organizer: { id: string; firstName: string; lastName: string };
+    slots: { id: string; position: number; startAt: Date; endAt: Date; guestName: string | null }[];
+  };
+  conn: Conn;
+  team: Conn | null;
+  startAt: Date;
+  endAt: Date;
+  pairTitle: string;
+  details: string;
+  attendeeEmails: string[];
+  note: string;
+  tz: string;
+}): Promise<ActionResult> {
+  const { meeting, conn, tz } = a;
+  const shift = a.startAt.getTime() - meeting.startAt.getTime();
+  const total = meeting.slots.length;
+  const created: { slotId: string; startAt: Date; endAt: Date; eventId: string; meetUrl: string | null; htmlLink: string | null; label: string }[] = [];
+  try {
+    for (const slot of meeting.slots) {
+      const startAt = new Date(slot.startAt.getTime() + shift);
+      const endAt = new Date(slot.endAt.getTime() + shift);
+      const label = `Slot ${slot.position}/${total}${slot.guestName ? ` — ${slot.guestName}` : ""}`;
+      const event = await createEvent(conn, {
+        title: `${a.pairTitle} · ${label}`,
+        description: a.details,
+        startAt,
+        endAt,
+        timeZone: tz,
+        attendeeEmails: a.attendeeEmails,
+        meet: true,
+        requestId: `${meeting.id}-s${slot.position}`,
+      });
+      created.push({ slotId: slot.id, startAt, endAt, eventId: event.id, meetUrl: meetLinkOf(event), htmlLink: event.htmlLink ?? null, label });
+    }
+  } catch (error) {
+    // All or nothing: don't leave half the slots booked.
+    await Promise.all(created.map((c) => deleteEvent(conn, conn.calendarId, c.eventId).catch(() => undefined)));
+    return googleFailure(error, "Couldn't add the slots to your calendar");
+  }
+
+  let teamEventId: string | null = null;
+  if (conn.kind === "PERSONAL" && a.team && !a.team.lastError) {
+    try {
+      const copy = await createEvent(a.team, {
+        title: `${a.pairTitle} (${total} slots)`,
+        description: [a.details, ...created.map((c) => `${c.label}: ${formatDateTime(c.startAt, tz)}${c.meetUrl ? ` · ${c.meetUrl}` : ""}`)].join("\n\n"),
+        startAt: a.startAt,
+        endAt: a.endAt,
+        timeZone: tz,
+        attendeeEmails: [],
+        meet: false,
+        requestId: `${meeting.id}-team`,
+      });
+      teamEventId = copy.id;
+    } catch (error) {
+      console.error("Couldn't copy the founder meeting to the team calendar", error);
+    }
+  }
+
+  await db.$transaction([
+    ...created.map((c) =>
+      db.meetingSlot.update({
+        where: { id: c.slotId },
+        data: { startAt: c.startAt, endAt: c.endAt, googleEventId: c.eventId, meetUrl: c.meetUrl, htmlLink: c.htmlLink },
+      }),
+    ),
+    db.meeting.update({
+      where: { id: meeting.id },
+      data: {
+        teamEventId,
+        status: "SCHEDULED",
+        startAt: a.startAt,
+        endAt: a.endAt,
+        respondedAt: new Date(),
+        responseNote: a.note || null,
+        calendarKind: conn.kind,
+        googleCalendarId: conn.calendarId,
+        googleEventId: null,
+        htmlLink: created[0]?.htmlLink ?? null,
+        meetUrl: created[0]?.meetUrl ?? null,
+        attendees: { create: [{ userId: meeting.organizer.id }] },
+      },
+    }),
+  ]);
+  await notify([meeting.organizer.id], {
+    kind: "MEETING",
+    actorId: a.user.id,
+    title: `${a.user.firstName} accepted "${meeting.title}" (${total} slots)`,
+    body: `${formatDateTime(a.startAt, tz)}${shift ? " (new time)" : ""} · a separate Meet link for each slot — copy the guest invites from Calendar`,
+    href: "/calendar",
+  });
+  refresh();
+  return { ok: true, message: `Accepted — ${total} slots are on your calendar, each with its own Meet link.` };
+}
+
 /** Cancels a meeting (or withdraws a request) and tells everyone. */
 export async function cancelMeeting(meetingId: string): Promise<ActionResult> {
   const user = await requireUser();
@@ -371,6 +503,7 @@ export async function cancelMeeting(meetingId: string): Promise<ActionResult> {
       googleEventId: true,
       teamEventId: true,
       attendees: { select: { userId: true } },
+      slots: { select: { googleEventId: true } },
     },
   });
   if (!meeting || meeting.status === "CANCELLED" || meeting.status === "DECLINED") return { ok: false, error: "That meeting is already off." };
@@ -385,6 +518,16 @@ export async function cancelMeeting(meetingId: string): Promise<ActionResult> {
       } catch (error) {
         return googleFailure(error, "Couldn't remove it from Google Calendar");
       }
+    }
+  }
+  const slotEvents = meeting.slots.map((s) => s.googleEventId).filter((id): id is string => !!id);
+  if (slotEvents.length && meeting.googleCalendarId) {
+    const conn = meeting.calendarKind === "PERSONAL" && meeting.hostId ? await personalConnection(meeting.hostId) : await teamConnection();
+    if (conn) {
+      const calendarId = meeting.googleCalendarId;
+      const results = await Promise.allSettled(slotEvents.map((id) => deleteEvent(conn, calendarId, id)));
+      const failed = results.find((r) => r.status === "rejected");
+      if (failed) return googleFailure((failed as PromiseRejectedResult).reason, "Couldn't remove every slot from Google Calendar");
     }
   }
   if (meeting.teamEventId) {
@@ -428,7 +571,7 @@ export async function founderAvailability(founderId: string, dayStartIso: string
   if (!conn || conn.lastError || !googleConfig.configured() || Number.isNaN(from.getTime())) return { ok: true, data: { access: "unavailable" } };
   try {
     const busy = await busyTimes(conn, from, new Date(from.getTime() + 24 * 3600_000));
-    return { ok: true, data: { access: "granted", until: latest!.expiresAt!.toISOString(), slots: freeSlots(busy, from, Math.min(Math.max(minutes, 15), 240)) } };
+    return { ok: true, data: { access: "granted", until: latest!.expiresAt!.toISOString(), slots: freeSlots(busy, from, Math.min(Math.max(minutes, 15), 8 * 60)) } };
   } catch {
     return { ok: true, data: { access: "unavailable" } };
   }

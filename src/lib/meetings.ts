@@ -23,6 +23,7 @@ export const meetingSelect = {
   organizer: { select: meetingPersonSelect },
   host: { select: meetingPersonSelect },
   attendees: { select: { user: { select: meetingPersonSelect } } },
+  slots: { orderBy: { position: "asc" }, select: { id: true, position: true, startAt: true, endAt: true, guestName: true, meetUrl: true } },
 } satisfies Prisma.MeetingSelect;
 
 export type MeetingRow = Prisma.MeetingGetPayload<{ select: typeof meetingSelect }>;
@@ -76,12 +77,14 @@ export async function upcomingForDashboard(userId: string, now = new Date()) {
   });
   return rows.map((m) => {
     const people = [m.organizer, ...(m.host ? [m.host] : []), ...m.attendees.map((a) => a.user)].filter((p, i, all) => all.findIndex((x) => x.id === p.id) === i);
+    // A multi-slot block: show the slot that's on now (or next), with its own link.
+    const slot = m.slots.find((s) => s.endAt >= now);
     return {
       id: m.id,
-      title: m.title,
-      startAt: m.startAt.toISOString(),
-      endAt: m.endAt.toISOString(),
-      meetUrl: m.meetUrl,
+      title: slot ? `${m.title} · Slot ${slot.position}/${m.slots.length}${slot.guestName ? ` — ${slot.guestName}` : ""}` : m.title,
+      startAt: (slot?.startAt ?? m.startAt).toISOString(),
+      endAt: (slot?.endAt ?? m.endAt).toISOString(),
+      meetUrl: slot ? slot.meetUrl : m.meetUrl,
       organizer: m.organizer.id === userId ? "you" : `${m.organizer.firstName} ${m.organizer.lastName}`,
       people: people.map((p) => ({ id: p.id, firstName: p.firstName, lastName: p.lastName, avatarHue: p.avatarHue })),
     };

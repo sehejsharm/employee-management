@@ -16,6 +16,8 @@ export interface EventInput {
   requestId: string;
   /** Shown as the event's location, e.g. the Meet link on a copy of a meeting. */
   location?: string | null;
+  /** Private: on a shared calendar others see only "busy", not what it is or who's in it. */
+  private?: boolean;
 }
 
 export function eventBody(input: EventInput) {
@@ -28,6 +30,7 @@ export function eventBody(input: EventInput) {
     attendees: emails.map((email) => ({ email })),
     guestsCanModify: false,
     ...(input.location ? { location: input.location } : {}),
+    ...(input.private ? { visibility: "private" } : {}),
     reminders: { useDefault: true },
     ...(input.meet
       ? { conferenceData: { createRequest: { requestId: input.requestId, conferenceSolutionKey: { type: "hangoutsMeet" } } } }
@@ -42,6 +45,7 @@ export interface GoogleEvent {
   description?: string;
   htmlLink?: string;
   hangoutLink?: string;
+  visibility?: string;
   start?: { dateTime?: string; date?: string };
   end?: { dateTime?: string; date?: string };
   attendees?: { email: string; responseStatus?: string; self?: boolean }[];

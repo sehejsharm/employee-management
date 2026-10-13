@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { CalendarDays, Crown, Inbox, Video } from "lucide-react";
+import { CalendarDays, Inbox, Video } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -169,7 +169,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
           {mine.mine.length > 0 && (
             <section>
               <h2 className="mb-3 flex items-center gap-2 text-[15px] font-semibold">
-                <Crown className="size-4 text-brand" /> Your requests to founders
+                Your requests to founders
               </h2>
               <ul className="space-y-2">
                 {mine.mine.map((m) => (

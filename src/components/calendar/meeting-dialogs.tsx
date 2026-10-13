@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { CalendarPlus, Clock, Crown, Loader2, Video } from "lucide-react";
+import { CalendarPlus, Clock, Loader2, Video } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
@@ -306,7 +306,7 @@ export function RequestFounderDialog({
       <DialogTrigger asChild>
         {trigger ?? (
           <Button variant="soft" disabled={founders.length === 0}>
-            <Crown /> Request time with a founder
+            Request time with a founder
           </Button>
         )}
       </DialogTrigger>

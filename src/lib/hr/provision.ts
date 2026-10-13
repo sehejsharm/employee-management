@@ -13,6 +13,7 @@ import { config } from "@/lib/env";
 import { notify } from "@/lib/notifications";
 import { normaliseEmployeeCode } from "@/lib/employee-code";
 import { fullName } from "@/lib/utils";
+import { fileReportOnOffboarding } from "@/lib/work-report";
 
 /**
  * The HR console's provisioning contract. Every event is one JSON envelope:
@@ -57,6 +58,8 @@ const employeeSchema = z.object({
   phone: z.string().trim().max(32).optional(),
   location: z.string().trim().max(80).optional(),
   startDate: z.string().optional(),
+  /** Last working day (e.g. the end of an internship): their work report is filed that day. */
+  endDate: z.string().optional(),
   credentials: credentialsSchema,
 });
 
@@ -190,6 +193,7 @@ async function upsertEmployee(e: HrEmployee): Promise<HrResult> {
       departmentId: await departmentIdByName(e.department),
       managerId: (await managerIdFor(e)) ?? null,
       joinedAt: parseDate(e.startDate) ?? new Date(),
+      lastDay: parseDate(e.endDate) ?? null,
       source: "HR_CONSOLE",
       externalId: e.externalId,
       credentials: e.credentials,
@@ -264,6 +268,8 @@ async function updateExisting(
   if (managerId && managerId !== existing.id) data.manager = { connect: { id: managerId } };
   const joinedAt = parseDate(e.startDate);
   if (joinedAt) data.joinedAt = joinedAt;
+  const lastDay = parseDate(e.endDate);
+  if (lastDay) data.lastDay = lastDay;
 
   const user = await db.user.update({
     where: { id: existing.id },
@@ -300,6 +306,9 @@ async function setStatus(data: unknown, status: "ACTIVE" | "INACTIVE"): Promise<
     ...(status === "INACTIVE" ? [db.session.deleteMany({ where: { userId: user.id } })] : []),
   ]);
 
+  if (status === "INACTIVE" && user.status !== "INACTIVE") {
+    await fileReportOnOffboarding(user.id, null).catch((e) => console.error("offboarding report failed", e));
+  }
   await audit({
     actorId: null,
     action: status === "INACTIVE" ? "account.offboarded" : "account.restored",

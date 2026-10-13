@@ -55,6 +55,7 @@ export interface NewAccount {
   departmentId?: string | null;
   managerId?: string | null;
   joinedAt?: Date | null;
+  lastDay?: Date | null;
   status?: EmploymentStatus;
   source: AccountSource;
   externalId?: string | null;
@@ -89,6 +90,7 @@ export async function createAccount(input: NewAccount, client: Prisma.Transactio
       departmentId: input.departmentId || null,
       managerId: input.managerId || null,
       joinedAt: input.joinedAt ?? new Date(),
+      lastDay: input.lastDay ?? null,
       status: input.status ?? "ACTIVE",
       source: input.source,
       externalId: input.externalId ?? null,

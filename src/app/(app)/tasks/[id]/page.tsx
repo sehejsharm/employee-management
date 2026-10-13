@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { ChevronLeft, Crown, FileCheck2, ListChecks, MessageCircleQuestion, MessagesSquare, Paperclip } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -19,6 +19,7 @@ import {
 import { NoClearance } from "@/components/clearance/no-clearance";
 import { SubmissionsPanel, SubmitWorkPanel } from "@/components/tasks/submissions";
 import { ReassignDialog } from "@/components/tasks/reassign-dialog";
+import { ExtendDeadlineDialog, MergeTasksDialog } from "@/components/tasks/founder-task-tools";
 import { pickablePeople } from "@/lib/people";
 import { requireUser } from "@/lib/auth/current-user";
 import { clearanceBlock, getClearedIds, pendingClearanceWaitingOn } from "@/lib/clearance";
@@ -36,7 +37,7 @@ import {
   isFounder,
 } from "@/lib/permissions";
 import { assigneeOrder } from "@/lib/tasks/queries";
-import { formatDateTime, timeAgo } from "@/lib/time";
+import { formatDate, formatDateTime, timeAgo } from "@/lib/time";
 import { getTimeZone } from "@/lib/tz.server";
 import { taskRef } from "@/lib/utils";
 
@@ -109,7 +110,12 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
   const tz = await getTimeZone();
   const { id } = await params;
   const task = await load(id);
-  if (!task) notFound();
+  if (!task) {
+    // Merged into another task: follow it there.
+    const merged = await db.task.findUnique({ where: { id }, select: { mergedIntoId: true } });
+    if (merged?.mergedIntoId) redirect(`/tasks/${merged.mergedIntoId}`);
+    notFound();
+  }
 
   const cleared = await getClearedIds(user);
   const access = {
@@ -156,6 +162,31 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
         restrictedToSelf: !canAssignTasks(user),
       }
     : null;
+  // Founders: extend the deadline, or fold other open tasks into this one.
+  const founderTools = isFounder(user) && task.status !== "DONE";
+  const mergeCandidates = founderTools
+    ? (
+        await db.task.findMany({
+          where: { id: { not: task.id }, archivedAt: null, status: { not: "DONE" } },
+          orderBy: { dueAt: "asc" },
+          take: 300,
+          select: {
+            id: true,
+            number: true,
+            title: true,
+            dueAt: true,
+            assignees: { orderBy: assigneeOrder, select: { user: { select: { firstName: true, lastName: true, department: { select: { name: true } } } } } },
+          },
+        })
+      ).map((t) => ({
+        id: t.id,
+        ref: taskRef(t.number),
+        title: t.title,
+        people: t.assignees.map((a) => `${a.user.firstName} ${a.user.lastName}`).join(", "),
+        departments: [...new Set(t.assignees.map((a) => a.user.department?.name).filter(Boolean))].join(", "),
+        due: formatDate(t.dueAt, tz),
+      }))
+    : [];
   const openRequests = task.updateRequests;
   // Keyed on the pending submission, so a task left "In review" with nothing handed in can still be submitted.
   const canSubmit = canSubmitWork(user, access) && task.status !== "DONE" && !task.submissions.some((s) => s.status === "SUBMITTED");
@@ -197,6 +228,8 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {reassignProps && <ReassignDialog {...reassignProps} className="lg:hidden" />}
+          {founderTools && <ExtendDeadlineDialog taskId={task.id} taskRef={ref} dueAt={task.dueAt.toISOString()} className="lg:hidden" />}
+          {founderTools && <MergeTasksDialog taskId={task.id} taskRef={ref} candidates={mergeCandidates} />}
           <TaskActions
             taskId={task.id}
             taskRef={ref}
@@ -341,6 +374,7 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
 
         <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
           <DeadlineCard dueAt={task.dueAt.toISOString()} status={task.status} tz={tz} progress={task.progress} />
+          {founderTools && <ExtendDeadlineDialog taskId={task.id} taskRef={ref} dueAt={task.dueAt.toISOString()} className="hidden w-full lg:inline-flex" />}
           <Card className="p-5">
             <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-brand">
               <Crown className="size-3" /> Lead

@@ -10,6 +10,7 @@ import { wouldCreateCycle } from "@/lib/org";
 import { reportingEdges } from "@/lib/reporting";
 import { notify } from "@/lib/notifications";
 import { fullName, type ActionResult } from "@/lib/utils";
+import { fileReportOnOffboarding } from "@/lib/work-report";
 import { DEPARTMENT_COLOR_KEYS } from "@/components/ui/badge";
 
 /** Moves someone on the org chart: who they report to. `null` makes them top-level. */
@@ -163,6 +164,9 @@ export async function updatePlacement(userId: string, input: z.input<typeof plac
     ...(d.status === "INACTIVE" ? [db.session.deleteMany({ where: { userId } })] : []),
   ]);
 
+  if (d.status === "INACTIVE" && target.status !== "INACTIVE") {
+    await fileReportOnOffboarding(userId, actor.id).catch((e) => console.error("offboarding report failed", e));
+  }
   if (d.status !== target.status) {
     await audit({
       actorId: actor.id,

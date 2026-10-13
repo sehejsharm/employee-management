@@ -18,9 +18,16 @@ import { ChangeEmailDialog } from "@/components/people/change-email-dialog";
 import { isAboveInReportingLine, wouldCreateCycle } from "@/lib/org";
 import { reportingEdges } from "@/lib/reporting";
 import { AdditionalManagersEditor } from "@/components/org/additional-managers";
+import { MeetNowButton, RequestFounderDialog, ScheduleMeetingDialog } from "@/components/calendar/meeting-dialogs";
+import { teamConnection } from "@/lib/google/calendar";
+import { googleConfig } from "@/lib/google/config";
+import { pickablePeople } from "@/lib/people";
+import { Award, CalendarPlus, Crown, FileText } from "lucide-react";
+import { GiveRecognitionDialog, RecognitionCard } from "@/components/recognition/recognition";
+import { recognitionFeed } from "@/lib/recognition-feed";
 import { sharingEmailWith } from "@/lib/shared-email";
 import { db } from "@/lib/db";
-import { ROLE_LABEL, STATUS_LABEL, canAssignTasks, canChangeEmail, canManageOrg, canManagePeople, isFounder } from "@/lib/permissions";
+import { ROLE_LABEL, STATUS_LABEL, canAssignTasks, canChangeEmail, canManageOrg, canManagePeople, isFounder, isLeader } from "@/lib/permissions";
 import { taskRowSelect, taskVisibilityWhere, toClientRow } from "@/lib/tasks/queries";
 import { formatDate, timeAgo } from "@/lib/time";
 import { getTimeZone } from "@/lib/tz.server";
@@ -81,6 +88,14 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
   if (!person) notFound();
 
   const isSelf = viewer.id === person.id;
+  // Meetings: anyone can call or schedule with a colleague once the team calendar is connected; founders take requests.
+  const team = googleConfig.configured() ? await teamConnection() : null;
+  const teamReady = !!team && !team.lastError;
+  const meetable = !isSelf && person.status !== "INACTIVE";
+  const meetPeople = meetable ? await pickablePeople() : [];
+  const recognitions = await recognitionFeed(viewer, { recipientId: person.id }, 6);
+  const recognitionCount = await db.recognition.count({ where: { recipientId: person.id } });
+  const founderConn = meetable && person.role === "FOUNDER" ? await db.googleConnection.findUnique({ where: { userId: person.id }, select: { lastError: true } }) : null;
   const emailSharers = person.status === "INACTIVE" ? [] : await sharingEmailWith(person);
   // Founders, people admins and anyone this person reports to (directly or further up) can change their email.
   const orgEdges = await reportingEdges();
@@ -155,11 +170,54 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
             <p className="mt-0.5 text-[14.5px] text-fg-muted">{person.title ?? ROLE_LABEL[person.role]}</p>
             {person.department && <DepartmentTag name={person.department.name} color={person.department.color} className="mt-1.5" />}
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            {meetable && <MeetNowButton userId={person.id} firstName={person.firstName} disabled={!teamReady} />}
+            {meetable && person.role === "FOUNDER" && (
+              <RequestFounderDialog
+                founders={[{ id: person.id, firstName: person.firstName, lastName: person.lastName, title: person.title, calendarConnected: !!founderConn && !founderConn.lastError }]}
+                initialFounderId={person.id}
+                trigger={
+                  <Button variant="soft">
+                    <Crown /> Request a meeting
+                  </Button>
+                }
+              />
+            )}
+            {meetable && (
+              <ScheduleMeetingDialog
+                people={meetPeople}
+                selfId={viewer.id}
+                initialIds={[person.id]}
+                trigger={
+                  <Button variant="secondary" disabled={!teamReady}>
+                    <CalendarPlus /> Schedule
+                  </Button>
+                }
+              />
+            )}
             {!isSelf && !former && canAssignTasks(viewer) && (
               <Button asChild>
                 <Link href={`/tasks/new?for=${person.id}`}>
                   <Send /> Assign a task
+                </Link>
+              </Button>
+            )}
+            {meetable && (
+              <GiveRecognitionDialog
+                people={[{ id: person.id, name: `${person.firstName} ${person.lastName}`, title: person.title }]}
+                canAward={isLeader(viewer)}
+                initialRecipientId={person.id}
+                trigger={
+                  <Button variant="secondary">
+                    <Award /> Recognise
+                  </Button>
+                }
+              />
+            )}
+            {isFounder(viewer) && !isSelf && (
+              <Button asChild variant="secondary">
+                <Link href={`/people/${person.id}/report`}>
+                  <FileText /> Work report
                 </Link>
               </Button>
             )}
@@ -305,6 +363,26 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
               )}
             </CardBody>
           </Card>
+
+          {recognitions.length > 0 && (
+            <Card>
+              <CardHeader
+                icon={<Award />}
+                title={`Recognition · ${recognitionCount}`}
+                description={isSelf ? "What colleagues have said about your work." : `What colleagues have said about ${person.firstName}'s work.`}
+                action={
+                  <Link href="/announcements?tab=recognition" className="text-[12.5px] font-medium text-brand hover:underline">
+                    The wall →
+                  </Link>
+                }
+              />
+              <CardBody className="space-y-3">
+                {recognitions.map((r) => (
+                  <RecognitionCard key={r.id} r={r} compact />
+                ))}
+              </CardBody>
+            </Card>
+          )}
 
           {admin && (
             <ManageMember

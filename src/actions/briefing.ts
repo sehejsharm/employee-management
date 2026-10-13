@@ -2,7 +2,8 @@
 
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth/current-user";
-import { dayKey, formatLongDate } from "@/lib/time";
+import { dayKey, formatLongDate, startOfDayInZone } from "@/lib/time";
+import { meetingsToday } from "@/lib/meetings";
 import { getTimeZone } from "@/lib/tz.server";
 import { briefingHeadline, groupBriefing, type Briefing } from "@/lib/daily-briefing";
 
@@ -24,7 +25,8 @@ export async function claimDailyBriefing(force = false): Promise<Briefing | null
     if (already) return null;
   }
 
-  const [assigned, toReview, updatesRequested] = await Promise.all([
+  const dayStart = startOfDayInZone(now, tz);
+  const [assigned, toReview, updatesRequested, meetings] = await Promise.all([
     db.task.findMany({
       // Handed in (in review) or finished work no longer needs doing by them.
       where: { archivedAt: null, status: { notIn: ["DONE", "IN_REVIEW"] }, assignees: { some: { userId: user.id } } },
@@ -41,6 +43,7 @@ export async function claimDailyBriefing(force = false): Promise<Briefing | null
     db.updateRequest.count({
       where: { resolvedAt: null, task: { archivedAt: null, status: { not: "DONE" }, assignees: { some: { userId: user.id } } } },
     }),
+    meetingsToday(user.id, now, new Date(dayStart.getTime() + 24 * 3600_000)),
   ]);
 
   const groups = groupBriefing(
@@ -55,7 +58,7 @@ export async function claimDailyBriefing(force = false): Promise<Briefing | null
     tz,
     now,
   );
-  const headline = briefingHeadline(groups, toReview.length, updatesRequested);
+  const headline = briefingHeadline(groups, toReview.length, updatesRequested, meetings.length);
 
   let notificationId: string | null = null;
   if (!force) {
@@ -78,5 +81,14 @@ export async function claimDailyBriefing(force = false): Promise<Briefing | null
     notificationId = created[0].id;
   }
 
-  return { notificationId, day, tz, groups, toReview, updatesRequested, headline };
+  return {
+    notificationId,
+    day,
+    tz,
+    groups,
+    toReview,
+    updatesRequested,
+    meetings: meetings.map((m) => ({ id: m.id, title: m.title, startAt: m.startAt.toISOString(), meetUrl: m.meetUrl })),
+    headline,
+  };
 }

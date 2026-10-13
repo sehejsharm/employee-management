@@ -15,6 +15,9 @@ import { cn } from "@/lib/utils";
 import { NotificationIcon } from "./notification-icon";
 
 const POLL_MS = 60_000;
+
+/** Meeting calls link straight to Google Meet: open those in a new tab, everything else in the app. */
+const isExternal = (href: string) => /^https?:\/\//.test(href);
 const URGENT = new Set(["TASK_DUE_SOON", "TASK_OVERDUE", "UPDATE_REQUESTED"]);
 
 interface FeedState {
@@ -61,14 +64,22 @@ export function NotificationsProvider({ initialUnread, children }: { initialUnre
           const show = URGENT.has(n.kind) ? toast.warning : toast;
           show(n.title, {
             description: n.body ?? undefined,
-            action: n.href ? { label: "Open", onClick: () => router.push(n.href!) } : undefined,
+            action: n.href
+              ? {
+                  label: isExternal(n.href) ? "Join" : "Open",
+                  onClick: () => (isExternal(n.href!) ? window.open(n.href!, "_blank", "noopener") : router.push(n.href!)),
+                }
+              : undefined,
           });
           if (typeof Notification !== "undefined" && Notification.permission === "granted" && document.hidden) {
             try {
               const sys = new Notification(n.title, { body: n.body ?? undefined, icon: "/icon.svg", tag: n.id });
               sys.onclick = () => {
                 window.focus();
-                if (n.href) router.push(n.href);
+                if (n.href) {
+                  if (isExternal(n.href)) window.open(n.href, "_blank", "noopener");
+                  else router.push(n.href);
+                }
               };
             } catch {}
           }
@@ -205,7 +216,12 @@ export function FeedRow({ item, onOpen }: { item: FeedItem; onOpen: () => void }
     </div>
   );
   return item.href ? (
-    <Link href={item.href} onClick={onOpen} className="block">
+    <Link
+      href={item.href}
+      onClick={onOpen}
+      className="block"
+      {...(isExternal(item.href) ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+    >
       {content}
     </Link>
   ) : (

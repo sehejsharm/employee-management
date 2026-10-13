@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { Bell, KeyRound, Palette, Target, UserRound } from "lucide-react";
+import { Bell, CalendarDays, KeyRound, Palette, Target, UserRound } from "lucide-react";
+import { CalendarEmailForm } from "@/components/calendar/calendar-email-form";
 import { PageHeader } from "@/components/app/page-header";
 import { DesktopAlerts } from "@/components/app/desktop-alerts";
 import { AppearanceForm, PasswordForm, ProfileForm, SessionsList } from "@/components/app/settings-forms";
@@ -50,6 +51,16 @@ export default async function SettingsPage() {
                 avatarHue: profile.avatarHue,
               }}
             />
+          </CardBody>
+        </Card>
+        <Card>
+          <CardHeader
+            icon={<CalendarDays />}
+            title="Calendar invites"
+            description="Meeting invitations from Google Calendar go here. Use the address of the calendar you actually check — e.g. a personal Gmail. Leave empty for your work email."
+          />
+          <CardBody>
+            <CalendarEmailForm workEmail={user.email} initial={user.calendarEmail} />
           </CardBody>
         </Card>
         <Card>

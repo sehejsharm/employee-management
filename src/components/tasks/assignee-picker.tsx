@@ -26,6 +26,8 @@ export function AssigneePicker({
   onLeadChange,
   selfId,
   restrictedToSelf,
+  hideLead,
+  placeholder = "Choose who this is for",
 }: {
   people: PickablePerson[];
   value: string[];
@@ -35,6 +37,9 @@ export function AssigneePicker({
   onLeadChange: (id: string) => void;
   selfId: string;
   restrictedToSelf: boolean;
+  /** Plain multi-select: no "who leads" choice (e.g. meeting invitees). */
+  hideLead?: boolean;
+  placeholder?: string;
 }) {
   const [open, setOpen] = React.useState(false);
   const selected = value.map((id) => people.find((p) => p.id === id)).filter(Boolean) as PickablePerson[];
@@ -61,11 +66,11 @@ export function AssigneePicker({
           >
             {selected.length === 0 && (
               <span className="flex items-center gap-2 px-1.5 text-sm text-fg-subtle">
-                <UserPlus className="size-4" /> Choose who this is for
+                <UserPlus className="size-4" /> {placeholder}
               </span>
             )}
             {selected.map((p) => {
-              const isLead = p.id === leadId;
+              const isLead = !hideLead && p.id === leadId;
               return (
                 <span
                   key={p.id}
@@ -150,7 +155,7 @@ export function AssigneePicker({
           </Command>
         </PopoverContent>
       </Popover>
-      {selected.length > 1 && (
+      {selected.length > 1 && !hideLead && (
         <div role="radiogroup" aria-label="Who leads this task" className="mt-2.5 flex flex-wrap gap-1.5">
           {selected.map((p) => {
             const isLead = p.id === leadId;

@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   Bell,
   Building2,
+  CalendarDays,
   CheckSquare,
   LayoutDashboard,
   Megaphone,
@@ -43,6 +44,7 @@ export function navItems(flags: ShellFlags): NavItem[] {
   const items: NavItem[] = [
     { href: "/dashboard", label: "Home", icon: LayoutDashboard, section: "work" },
     { href: "/tasks", label: "Tasks", icon: CheckSquare, section: "work", match: (p) => p.startsWith("/tasks") },
+    { href: "/calendar", label: "Calendar", icon: CalendarDays, section: "work" },
     { href: "/notifications", label: "Inbox", icon: Bell, section: "work" },
     { href: "/org", label: "Org chart", icon: Network, section: "company" },
     { href: "/people", label: "People", icon: Users, section: "company", match: (p) => p.startsWith("/people") },

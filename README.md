@@ -50,6 +50,15 @@ Prisma 7 and PostgreSQL, in the blue-and-white Focus Realm brand
   who uses which email under *People → Who uses which email*, and anyone
   sharing a mailbox sees exactly who they share it with on Home, Settings and
   their profile.
+- **Calendar & Google Meet** — *Meet now* calls anyone on Google Meet; meetings
+  go on one shared team calendar with Meet links and Google invites; anyone can
+  **request time with a founder**, who accepts (or picks another time) and it
+  lands on their own calendar — even a personal Gmail. Setup:
+  [docs/GOOGLE_CALENDAR.md](docs/GOOGLE_CALENDAR.md).
+- **Recognition** — a company-wide wall under *Announcements → Recognition*:
+  kudos from anyone (with a badge), named awards from founders and management
+  (announced to everyone), cheers, and a "most recognised" board. It shows on
+  profiles and in work reports too.
 - **People** directory and profiles, **announcements**, a **⌘K command
   palette**, light and dark themes, and a phone layout with a bottom tab bar.
 
@@ -69,6 +78,17 @@ Prisma 7 and PostgreSQL, in the blue-and-white Focus Realm brand
   reporting line can do it; only founders change a founder's email. The person
   is notified, it's audited, and an email set here isn't overwritten by later
   HR console updates (until someone hands it back to HR).
+- **Extend deadlines (founders)** — one tap from the task page (+1 day, +3
+  days, +1 week or any date) with a reason; everyone on it is told and
+  reminders restart.
+- **Merge tasks (founders)** — fold tasks given to different people, in one
+  team or across teams, into one: everyone joins it, and checklists,
+  documents, submissions and history move across. Old tasks redirect.
+- **Work reports (founders)** — a live report of anyone's work (tasks,
+  on-time rate, first-time acceptance, feedback, recognition) on their
+  profile, downloadable as a PDF. A final copy is filed on their **last day**
+  (set it on the report, or the HR console sends `endDate`) and when they're
+  offboarded, and every founder is notified.
 - **Review submitted work** — accept it or request changes.
 - **Request an update** on tasks you assigned (founders: any task) — assignees
   are notified, the request stays visible until they post a progress update,

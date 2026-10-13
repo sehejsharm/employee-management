@@ -2,13 +2,13 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Crown, FileCheck2, MessageCircleQuestion, Sun } from "lucide-react";
+import { Crown, FileCheck2, MessageCircleQuestion, Sun, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { claimDailyBriefing } from "@/actions/briefing";
 import { markNotificationRead } from "@/actions/notifications";
 import { BRIEFING_LABEL, type Briefing, type BriefingBucket } from "@/lib/daily-briefing";
-import { formatDue } from "@/lib/time";
+import { formatDue, formatTime } from "@/lib/time";
 import { cn, taskRef } from "@/lib/utils";
 import { PriorityIcon } from "@/components/tasks/badges";
 import type { TaskPriorityKey } from "@/components/tasks/meta";
@@ -76,7 +76,7 @@ export function DailyBriefing() {
 
   if (!briefing) return null;
   const now = new Date();
-  const nothing = briefing.groups.length === 0 && briefing.toReview.length === 0;
+  const nothing = briefing.groups.length === 0 && briefing.toReview.length === 0 && briefing.meetings.length === 0;
 
   return (
     <Dialog open={open} onOpenChange={(next) => (next ? setOpen(true) : close())}>
@@ -98,6 +98,29 @@ export function DailyBriefing() {
                 <MessageCircleQuestion className="size-4 shrink-0 text-info" />
                 {briefing.updatesRequested === 1 ? "Someone is waiting for an update from you." : `${briefing.updatesRequested} updates have been requested from you.`}
               </div>
+            )}
+
+            {briefing.meetings.length > 0 && (
+              <section>
+                <h3 className="mb-1.5 flex items-center gap-1.5 text-[11.5px] font-semibold uppercase tracking-wider text-success">
+                  <Video className="size-3.5" /> Meetings today
+                </h3>
+                <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line">
+                  {briefing.meetings.map((m) => (
+                    <li key={m.id} className="flex items-center gap-2.5 px-3 py-2.5">
+                      <span className="w-16 shrink-0 text-[12px] tabular text-fg-muted">{formatTime(new Date(m.startAt), briefing.tz)}</span>
+                      <Link href="/calendar" onClick={close} className="min-w-0 flex-1 truncate text-[13.5px] font-medium hover:text-brand">
+                        {m.title}
+                      </Link>
+                      {m.meetUrl && (
+                        <a href={m.meetUrl} target="_blank" rel="noopener noreferrer" className="shrink-0 text-[12px] font-semibold text-success hover:underline">
+                          Join
+                        </a>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </section>
             )}
 
             {briefing.groups.map((g) => (

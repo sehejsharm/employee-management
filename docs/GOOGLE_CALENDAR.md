@@ -27,7 +27,7 @@ they connect).
 3. **OAuth consent screen** (APIs & Services → OAuth consent screen / "Google Auth Platform"):
    - User type **External** (needed for personal Gmail accounts like the CEO's).
    - App name "Focus Realm Workspace", support email, the Workspace domain under *Authorised domains*.
-   - Privacy policy link: `https://<your workspace domain>/privacy`.
+   - Privacy policy link: `https://<your workspace domain>/privacy`; terms of service link: `https://<your workspace domain>/terms`.
    - Scope: `https://www.googleapis.com/auth/calendar`.
    - **Publishing status → Publish app ("In production").** In *Testing* mode
      Google expires the connection every 7 days. Unverified production apps work

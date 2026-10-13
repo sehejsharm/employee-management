@@ -65,3 +65,25 @@ export async function meetingsToday(userId: string, from: Date, to: Date) {
 export function canCancelMeeting(actor: { id: string; role: string }, m: { organizerId: string; hostId: string | null }) {
   return actor.role === "FOUNDER" || m.organizerId === actor.id || m.hostId === actor.id;
 }
+
+/** The next week of scheduled meetings someone is in, for the dashboard. */
+export async function upcomingForDashboard(userId: string, now = new Date()) {
+  const rows = await db.meeting.findMany({
+    where: { AND: [involving(userId), { status: "SCHEDULED", endAt: { gte: now }, startAt: { lte: new Date(now.getTime() + 7 * 24 * 3600_000) } }] },
+    orderBy: { startAt: "asc" },
+    take: 8,
+    select: meetingSelect,
+  });
+  return rows.map((m) => {
+    const people = [m.organizer, ...(m.host ? [m.host] : []), ...m.attendees.map((a) => a.user)].filter((p, i, all) => all.findIndex((x) => x.id === p.id) === i);
+    return {
+      id: m.id,
+      title: m.title,
+      startAt: m.startAt.toISOString(),
+      endAt: m.endAt.toISOString(),
+      meetUrl: m.meetUrl,
+      organizer: m.organizer.id === userId ? "you" : `${m.organizer.firstName} ${m.organizer.lastName}`,
+      people: people.map((p) => ({ id: p.id, firstName: p.firstName, lastName: p.lastName, avatarHue: p.avatarHue })),
+    };
+  });
+}

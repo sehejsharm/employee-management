@@ -24,6 +24,8 @@ import { FocusEditor, NextDeadline, StatCard, WelcomeToast } from "@/components/
 import { TaskRow } from "@/components/tasks/task-row";
 import { SharedEmailNotice } from "@/components/people/shared-email-notice";
 import { sharingEmailWith } from "@/lib/shared-email";
+import { UpcomingMeetings } from "@/components/calendar/upcoming-meetings";
+import { upcomingForDashboard } from "@/lib/meetings";
 import { requireUser } from "@/lib/auth/current-user";
 import { getClearedIds } from "@/lib/clearance";
 import { founderPulse, memberDashboard, missionControl } from "@/lib/dashboard";
@@ -42,7 +44,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const leader = isLeader(user);
   const view = leader && params.view !== "me" ? "team" : "me";
   const now = new Date();
-  const emailSharers = await sharingEmailWith(user);
+  const [emailSharers, meetings] = await Promise.all([sharingEmailWith(user), upcomingForDashboard(user.id)]);
 
   return (
     <>
@@ -94,6 +96,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       <FadeIn delay={0.05} className="mb-6">
         <FocusEditor initial={user.focus} />
       </FadeIn>
+      {meetings.length > 0 && (
+        <FadeIn delay={0.08} className="mb-6">
+          <UpcomingMeetings meetings={meetings} tz={tz} />
+        </FadeIn>
+      )}
       {view === "team" ? <LeaderView tz={tz} /> : <MemberView tz={tz} />}
     </>
   );

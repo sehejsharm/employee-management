@@ -145,12 +145,13 @@ export function ScheduleMeetingDialog({
   const [duration, setDuration] = React.useState(30);
   const [ids, setIds] = React.useState<string[]>(initialIds);
   const [meet, setMeet] = React.useState(true);
+  const [isPrivate, setIsPrivate] = React.useState(true);
   const [pending, startTransition] = React.useTransition();
 
   const save = () =>
     startTransition(async () => {
       if (!start) return void toast.error("Pick when it starts.");
-      const res = await scheduleMeeting({ title, description, startAt: new Date(start).toISOString(), durationMin: duration, attendeeIds: ids, meet });
+      const res = await scheduleMeeting({ title, description, startAt: new Date(start).toISOString(), durationMin: duration, attendeeIds: ids, meet, private: isPrivate });
       if (!res.ok) return void toast.error(res.error);
       toast.success(res.message);
       setOpen(false);
@@ -216,6 +217,15 @@ export function ScheduleMeetingDialog({
           <label className="flex cursor-pointer items-center gap-2.5 text-[13.5px]">
             <input type="checkbox" checked={meet} onChange={(e) => setMeet(e.target.checked)} className="h-4 w-4 accent-[var(--brand)]" />
             <Video className="size-4 text-success" /> Add a Google Meet link
+          </label>
+          <label className="flex cursor-pointer items-start gap-2.5 text-[13.5px]">
+            <input type="checkbox" checked={isPrivate} onChange={(e) => setIsPrivate(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--brand)]" />
+            <span>
+              Only people invited can see it
+              <span className="block text-[12px] text-fg-subtle">
+                On the shared team calendar everyone else just sees &quot;busy&quot;. Untick for team-wide meetings everyone should see.
+              </span>
+            </span>
           </label>
         </div>
         <DialogFooter>

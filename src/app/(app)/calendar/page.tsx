@@ -61,6 +61,21 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     const now = new Date();
     agenda = await listEvents(team, now, new Date(now.getTime() + 14 * 24 * 3600_000)).catch(() => null);
   }
+  // Private meetings on the shared calendar show only to the people in them.
+  if (agenda?.some((e) => e.visibility === "private")) {
+    const mineIds = new Set(
+      (
+        await db.meeting.findMany({
+          where: {
+            OR: [{ googleEventId: { in: agenda.map((e) => e.id) } }, { teamEventId: { in: agenda.map((e) => e.id) } }],
+            AND: [{ OR: [{ organizerId: user.id }, { hostId: user.id }, { attendees: { some: { userId: user.id } } }] }],
+          },
+          select: { googleEventId: true, teamEventId: true },
+        })
+      ).flatMap((m) => [m.googleEventId, m.teamEventId]),
+    );
+    agenda = agenda.filter((e) => e.visibility !== "private" || mineIds.has(e.id));
+  }
   const agendaByDay = new Map<string, GoogleEvent[]>();
   for (const e of agenda ?? []) {
     const { start } = eventTimes(e);

@@ -63,6 +63,8 @@ const scheduleSchema = z.object({
   durationMin: z.number().int().min(10, "At least 10 minutes.").max(8 * 60, "At most 8 hours."),
   attendeeIds: z.array(z.string().min(1)).min(1, "Invite at least one person.").max(50),
   meet: z.boolean().optional().default(true),
+  /** Only the people invited can see it; on the shared calendar everyone else sees "busy". */
+  private: z.boolean().optional().default(true),
 });
 
 /**
@@ -85,7 +87,7 @@ export async function scheduleMeeting(input: z.input<typeof scheduleSchema>): Pr
   if (!people) return { ok: false, error: "One of the people invited is no longer active." };
   if (people.length === 0) return { ok: false, error: "Invite at least one other person." };
 
-  return createScheduled({ user, title: d.title, description: d.description, startAt, endAt, people, meet: d.meet, instant: false });
+  return createScheduled({ user, title: d.title, description: d.description, startAt, endAt, people, meet: d.meet, instant: false, isPrivate: d.private });
 }
 
 async function createScheduled({
@@ -97,6 +99,7 @@ async function createScheduled({
   people,
   meet,
   instant,
+  isPrivate,
 }: {
   user: Awaited<ReturnType<typeof requireUser>>;
   title: string;
@@ -106,6 +109,7 @@ async function createScheduled({
   people: NonNullable<Awaited<ReturnType<typeof activePeople>>>;
   meet: boolean;
   instant: boolean;
+  isPrivate: boolean;
 }): Promise<ActionResult<{ id: string; meetUrl: string | null }>> {
   const team = await usableTeamCalendar();
   if ("error" in team) return { ok: false, error: team.error! };
@@ -121,6 +125,7 @@ async function createScheduled({
       attendeeEmails: [inviteEmailOf(user), ...people.map(inviteEmailOf)],
       meet,
       requestId: id,
+      private: isPrivate,
     });
   } catch (error) {
     return googleFailure(error, "Couldn't add it to the team calendar");
@@ -173,6 +178,7 @@ export async function meetNow(userIds: string[]): Promise<ActionResult<{ id: str
     people,
     meet: true,
     instant: true,
+    isPrivate: true,
   });
 }
 

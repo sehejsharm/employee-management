@@ -43,7 +43,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     db.user.findMany({
       where: { role: "FOUNDER", status: { not: "INACTIVE" }, id: { not: user.id } },
       orderBy: { firstName: "asc" },
-      select: { id: true, firstName: true, lastName: true, title: true, googleConnection: { select: { lastError: true } } },
+      select: { id: true, firstName: true, lastName: true, title: true, meetingNotes: true, googleConnection: { select: { lastError: true } } },
     }),
     founder
       ? db.availabilityRequest.findMany({
@@ -108,6 +108,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     lastName: f.lastName,
     title: f.title,
     calendarConnected: !!f.googleConnection && !f.googleConnection.lastError,
+    meetingNotes: f.meetingNotes,
   }));
 
   return (

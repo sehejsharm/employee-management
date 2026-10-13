@@ -10,6 +10,20 @@ import { AssigneePicker, type PickablePerson } from "@/components/tasks/assignee
 import { toLocalInput } from "@/components/tasks/due-picker";
 import { askFounderAvailability, founderAvailability, meetNow, requestFounderMeeting, scheduleMeeting, type AvailabilityAccess } from "@/actions/meetings";
 import { cn } from "@/lib/utils";
+import { MeetingNotesCallout } from "@/components/calendar/meeting-notes";
+
+/** Notes from any founders among the picked people. */
+function FoundersNotes({ people, ids }: { people: PickablePerson[]; ids: string[] }) {
+  const founders = people.filter((p) => ids.includes(p.id) && p.meetingNotes);
+  if (!founders.length) return null;
+  return (
+    <div className="space-y-2">
+      {founders.map((f) => (
+        <MeetingNotesCallout key={f.id} firstName={f.firstName} notes={f.meetingNotes} />
+      ))}
+    </div>
+  );
+}
 
 const DURATIONS = [15, 30, 45, 60, 90, 120];
 
@@ -99,6 +113,7 @@ export function MeetNowDialog({ people, selfId, disabled }: { people: PickablePe
           hideLead
           placeholder="Who do you want to call?"
         />
+        <FoundersNotes people={people} ids={ids} />
         <DialogFooter>
           <DialogClose asChild>
             <Button variant="secondary">Cancel</Button>
@@ -197,6 +212,7 @@ export function ScheduleMeetingDialog({
               placeholder="Invite people"
             />
           </Field>
+          <FoundersNotes people={people} ids={ids} />
           <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_160px]">
             <Field label="Starts">
               <Input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} />
@@ -248,6 +264,8 @@ export interface FounderOption {
   title: string | null;
   /** Their own Google Calendar is connected. */
   calendarConnected: boolean;
+  /** "Before you meet me" notes. */
+  meetingNotes?: string | null;
 }
 
 /** Ask a founder for time. Their free slots show only once they have agreed to share them. */
@@ -360,6 +378,7 @@ export function RequestFounderDialog({
               ))}
             </NativeSelect>
           </Field>
+          {founder && <MeetingNotesCallout firstName={founder.firstName} notes={founder.meetingNotes} />}
           <Field label="What's it about">
             <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Feedback on the partnership deck" maxLength={200} />
           </Field>

@@ -21,6 +21,7 @@ import {
 import { freeSlots, meetLinkOf } from "@/lib/google/events";
 import { canCancelMeeting, inviteEmailOf } from "@/lib/meetings";
 import { isFounder } from "@/lib/permissions";
+import { MEETING_NOTES_MAX, notesBlock } from "@/lib/meeting-notes";
 import { formatDateTime } from "@/lib/time";
 import { getTimeZone } from "@/lib/tz.server";
 import { fullName, type ActionResult } from "@/lib/utils";
@@ -54,6 +55,16 @@ async function activePeople(ids: string[]) {
     select: { id: true, firstName: true, lastName: true, email: true, calendarEmail: true, role: true },
   });
   return people.length === unique.length ? people : null;
+}
+
+/** "Before you meet …" blocks for the founders among these people, for invite descriptions. */
+async function foundersNotes(ids: string[]): Promise<string[]> {
+  const founders = await db.user.findMany({
+    where: { id: { in: [...new Set(ids)] }, role: "FOUNDER", meetingNotes: { not: null } },
+    orderBy: { firstName: "asc" },
+    select: { firstName: true, meetingNotes: true },
+  });
+  return founders.map((f) => notesBlock(f.firstName, f.meetingNotes)).filter((b): b is string => !!b);
 }
 
 const scheduleSchema = z.object({
@@ -114,11 +125,12 @@ async function createScheduled({
   const team = await usableTeamCalendar();
   if ("error" in team) return { ok: false, error: team.error! };
   const id = randomUUID();
+  const notes = await foundersNotes([user.id, ...people.map((p) => p.id)]);
   let event;
   try {
     event = await createEvent(team.conn, {
       title,
-      description: [description, `Arranged by ${fullName(user)} in the Focus Realm Workspace.`].filter(Boolean).join("\n\n"),
+      description: [description, ...notes, `Arranged by ${fullName(user)} in the Focus Realm Workspace.`].filter(Boolean).join("\n\n"),
       startAt,
       endAt,
       timeZone: await getTimeZone(),
@@ -305,7 +317,8 @@ export async function respondToMeetingRequest(meetingId: string, input: z.input<
 
   // "Saumitra Rao × Sehej Sharma — topic": who's meeting whom, at a glance on any calendar.
   const pairTitle = `${fullName(meeting.organizer)} × ${fullName(user)} — ${meeting.title}`;
-  const details = [meeting.description, `Requested by ${fullName(meeting.organizer)} through the Focus Realm Workspace.`].filter(Boolean).join("\n\n");
+  const [founderNotes] = await foundersNotes([user.id]);
+  const details = [meeting.description, founderNotes, `Requested by ${fullName(meeting.organizer)} through the Focus Realm Workspace.`].filter(Boolean).join("\n\n");
   const attendeeEmails = conn.kind === "TEAM" ? [inviteEmailOf(user), inviteEmailOf(meeting.organizer)] : [inviteEmailOf(meeting.organizer)];
 
   if (meeting.slots.length > 1) {
@@ -373,7 +386,7 @@ export async function respondToMeetingRequest(meetingId: string, input: z.input<
     kind: "MEETING",
     actorId: user.id,
     title: `${user.firstName} accepted "${meeting.title}"`,
-    body: `${formatDateTime(startAt, tz)}${startAt.getTime() !== meeting.startAt.getTime() ? " (new time)" : ""}${meetUrl ? " · Google Meet" : ""}`,
+    body: `${formatDateTime(startAt, tz)}${startAt.getTime() !== meeting.startAt.getTime() ? " (new time)" : ""}${meetUrl ? " · Google Meet" : ""}${founderNotes ? ` · Read ${user.firstName}'s notes before you join` : ""}`,
     href: "/calendar",
   });
   refresh();
@@ -679,4 +692,18 @@ export async function setCalendarEmail(input: z.input<typeof calendarEmailSchema
   await db.user.update({ where: { id: user.id }, data: { calendarEmail: email || null } });
   refresh();
   return { ok: true, message: email ? `Calendar invites will go to ${email}.` : "Calendar invites will go to your work email." };
+}
+
+const meetingNotesSchema = z.object({ notes: z.string().max(MEETING_NOTES_MAX, `Keep it under ${MEETING_NOTES_MAX} characters.`) });
+
+/** Founders: the "Before you meet me" notes shown to everyone who meets them and added to their invites. */
+export async function setMeetingNotes(input: z.input<typeof meetingNotesSchema>): Promise<ActionResult> {
+  const user = await requireUser();
+  if (!isFounder(user)) return { ok: false, error: "Only founders can set meeting notes." };
+  const parsed = meetingNotesSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  const notes = parsed.data.notes.replace(/\r\n/g, "\n").trim();
+  await db.user.update({ where: { id: user.id }, data: { meetingNotes: notes || null } });
+  refresh();
+  return { ok: true, message: notes ? "Saved — everyone meeting you will see these notes." : "Notes removed." };
 }

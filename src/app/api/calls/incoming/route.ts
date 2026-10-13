@@ -29,11 +29,20 @@ export async function GET() {
       id: true,
       meetUrl: true,
       createdAt: true,
-      organizer: { select: { id: true, firstName: true, lastName: true, avatarHue: true, title: true } },
+      organizer: { select: { id: true, firstName: true, lastName: true, avatarHue: true, title: true, role: true, meetingNotes: true } },
     },
   });
   return NextResponse.json(
-    { calls: calls.filter((c) => c.meetUrl).map((c) => ({ ...c, createdAt: c.createdAt.toISOString(), ringUntil: new Date(c.createdAt.getTime() + RING_MS).toISOString() })) },
+    {
+      calls: calls
+        .filter((c) => c.meetUrl)
+        .map(({ organizer: { role, meetingNotes, ...organizer }, ...c }) => ({
+          ...c,
+          organizer: { ...organizer, meetingNotes: role === "FOUNDER" ? meetingNotes : null },
+          createdAt: c.createdAt.toISOString(),
+          ringUntil: new Date(c.createdAt.getTime() + RING_MS).toISOString(),
+        })),
+    },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

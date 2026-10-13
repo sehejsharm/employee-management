@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
-import { Bell, CalendarDays, KeyRound, Palette, Target, UserRound } from "lucide-react";
+import { Bell, CalendarDays, ClipboardCheck, KeyRound, Palette, Target, UserRound } from "lucide-react";
 import { CalendarEmailForm } from "@/components/calendar/calendar-email-form";
+import { MeetingNotesForm } from "@/components/calendar/meeting-notes-form";
+import { isFounder } from "@/lib/permissions";
 import { PageHeader } from "@/components/app/page-header";
 import { DesktopAlerts } from "@/components/app/desktop-alerts";
 import { AppearanceForm, PasswordForm, ProfileForm, SessionsList } from "@/components/app/settings-forms";
@@ -17,7 +19,7 @@ export const metadata: Metadata = { title: "Settings" };
 export default async function SettingsPage() {
   const user = await requireUser();
   const [profile, sessions, currentHash, emailSharers] = await Promise.all([
-    db.user.findUniqueOrThrow({ where: { id: user.id }, select: { phone: true, location: true, bio: true, avatarHue: true, focus: true } }),
+    db.user.findUniqueOrThrow({ where: { id: user.id }, select: { phone: true, location: true, bio: true, avatarHue: true, focus: true, meetingNotes: true } }),
     db.session.findMany({
       where: { userId: user.id, expiresAt: { gt: new Date() } },
       orderBy: { createdAt: "desc" },
@@ -63,6 +65,18 @@ export default async function SettingsPage() {
             <CalendarEmailForm workEmail={user.email} initial={user.calendarEmail} />
           </CardBody>
         </Card>
+        {isFounder(user) && (
+          <Card>
+            <CardHeader
+              icon={<ClipboardCheck />}
+              title="Before you meet me"
+              description="How you like meetings to run. Everyone sees these when they request time, schedule or call you — and they're added to your Google invites and guest invites."
+            />
+            <CardBody>
+              <MeetingNotesForm firstName={user.firstName} initial={profile.meetingNotes} />
+            </CardBody>
+          </Card>
+        )}
         <Card>
           <CardHeader icon={<Palette />} title="Appearance" />
           <CardBody>

@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 /** Where someone's Google Calendar invites go: their calendar email (e.g. a founder's Gmail), else their work email. */
 export const inviteEmailOf = (u: { email: string; calendarEmail: string | null }) => u.calendarEmail || u.email;
 
-export const meetingPersonSelect = { id: true, firstName: true, lastName: true, avatarHue: true, title: true, role: true } as const;
+export const meetingPersonSelect = { id: true, firstName: true, lastName: true, avatarHue: true, title: true, role: true, meetingNotes: true } as const;
 
 export const meetingSelect = {
   id: true,

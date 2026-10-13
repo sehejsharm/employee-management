@@ -4,12 +4,13 @@ import * as React from "react";
 import { PhoneOff, Video } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { MeetingNotesCallout } from "@/components/calendar/meeting-notes";
 
 interface IncomingCall {
   id: string;
   meetUrl: string;
   ringUntil: string;
-  organizer: { id: string; firstName: string; lastName: string; avatarHue: number; title: string | null };
+  organizer: { id: string; firstName: string; lastName: string; avatarHue: number; title: string | null; meetingNotes: string | null };
 }
 
 const POLL_MS = 5_000;
@@ -145,6 +146,7 @@ export function IncomingCallWatcher() {
           {call.organizer.firstName} {call.organizer.lastName} is inviting you to a call right now
         </h2>
         {call.organizer.title && <p className="mt-0.5 text-[13px] text-fg-muted">{call.organizer.title}</p>}
+        <MeetingNotesCallout firstName={call.organizer.firstName} notes={call.organizer.meetingNotes} className="mt-4 text-left" />
         <div className="mt-6 grid grid-cols-2 gap-3">
           <Button variant="secondary" size="lg" onClick={close}>
             <PhoneOff /> Not now

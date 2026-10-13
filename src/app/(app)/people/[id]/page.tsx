@@ -19,6 +19,7 @@ import { isAboveInReportingLine, wouldCreateCycle } from "@/lib/org";
 import { reportingEdges } from "@/lib/reporting";
 import { AdditionalManagersEditor } from "@/components/org/additional-managers";
 import { MeetNowButton, RequestFounderDialog, ScheduleMeetingDialog } from "@/components/calendar/meeting-dialogs";
+import { MeetingNotesCallout } from "@/components/calendar/meeting-notes";
 import { teamConnection } from "@/lib/google/calendar";
 import { googleConfig } from "@/lib/google/config";
 import { pickablePeople } from "@/lib/people";
@@ -58,6 +59,7 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
       phone: true,
       location: true,
       bio: true,
+      meetingNotes: true,
       focus: true,
       focusUpdatedAt: true,
       avatarHue: true,
@@ -174,7 +176,7 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
             {meetable && <MeetNowButton userId={person.id} firstName={person.firstName} disabled={!teamReady} />}
             {meetable && person.role === "FOUNDER" && (
               <RequestFounderDialog
-                founders={[{ id: person.id, firstName: person.firstName, lastName: person.lastName, title: person.title, calendarConnected: !!founderConn && !founderConn.lastError }]}
+                founders={[{ id: person.id, firstName: person.firstName, lastName: person.lastName, title: person.title, calendarConnected: !!founderConn && !founderConn.lastError, meetingNotes: person.meetingNotes }]}
                 initialFounderId={person.id}
                 trigger={
                   <Button variant="soft">
@@ -233,6 +235,7 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
       <div className="grid gap-6 lg:grid-cols-[340px_minmax(0,1fr)]">
         <div className="space-y-6">
           <SharedEmailNotice email={person.email} others={emailSharers} self={isSelf} name={person.firstName} />
+          {person.role === "FOUNDER" && !former && <MeetingNotesCallout firstName={person.firstName} notes={person.meetingNotes} self={isSelf} />}
           <Card>
             <CardBody className="space-y-3.5 pt-5 text-[13.5px]">
               <Detail icon={<Hash />} label="Employee ID" value={<span className="font-mono">{person.employeeCode}</span>} />

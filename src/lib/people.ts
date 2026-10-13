@@ -15,6 +15,7 @@ export async function pickablePeople(): Promise<PickablePerson[]> {
       avatarHue: true,
       role: true,
       status: true,
+      meetingNotes: true,
       department: { select: { name: true } },
     },
   });
@@ -27,5 +28,6 @@ export async function pickablePeople(): Promise<PickablePerson[]> {
     roleLabel: ROLE_LABEL[p.role],
     department: p.department?.name ?? null,
     onLeave: p.status === "ON_LEAVE",
+    meetingNotes: p.role === "FOUNDER" ? p.meetingNotes : null,
   }));
 }

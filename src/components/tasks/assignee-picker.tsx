@@ -16,6 +16,8 @@ export interface PickablePerson {
   roleLabel: string;
   department: string | null;
   onLeave: boolean;
+  /** Founders' "Before you meet me" notes. */
+  meetingNotes?: string | null;
 }
 
 export function AssigneePicker({

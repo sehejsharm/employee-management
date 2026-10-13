@@ -173,6 +173,9 @@ model User {
   /// Where Google Calendar invites go, if not their work email — e.g. a
   /// founder's personal Gmail. Set automatically when they connect Google.
   calendarEmail      String?
+  /// Founders: what people should know before meeting them ("join 2 minutes early",
+  /// "camera on"…). Shown when scheduling with them and added to their invites.
+  meetingNotes       String?          @db.Text
   /// Last working day (e.g. the end of an internship). The work report is filed that day.
   lastDay            DateTime?
   firstName          String

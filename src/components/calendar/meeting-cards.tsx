@@ -12,6 +12,8 @@ import { toLocalInput } from "@/components/tasks/due-picker";
 import { answerAvailabilityRequest, cancelMeeting, disconnectGoogle, respondToMeetingRequest, shareTeamCalendar } from "@/actions/meetings";
 import { formatDate, formatTime } from "@/lib/time";
 import { useNow } from "@/lib/hooks";
+import { notesBlock } from "@/lib/meeting-notes";
+import { MeetingNotesCallout } from "@/components/calendar/meeting-notes";
 import { cn } from "@/lib/utils";
 
 export interface MeetingPerson {
@@ -20,6 +22,9 @@ export interface MeetingPerson {
   lastName: string;
   avatarHue: number;
   title: string | null;
+  role?: string;
+  /** Founders' "Before you meet me" notes. */
+  meetingNotes?: string | null;
 }
 
 export interface ClientMeeting {
@@ -45,8 +50,18 @@ export interface ClientMeeting {
  * A polished invite to paste into an email or WhatsApp for someone outside the
  * company: who they're meeting, when (with the time zone), and how to join.
  */
+/** Everyone in a meeting, host first, without repeats. */
+function meetingPeople(m: Pick<ClientMeeting, "organizer" | "host" | "attendees">) {
+  return [m.host, m.organizer, ...m.attendees].filter((p, i, all): p is MeetingPerson => !!p && all.findIndex((x) => x?.id === p.id) === i);
+}
+
+/** Founders in a meeting who have "Before you meet me" notes. */
+function foundersWithNotes(people: MeetingPerson[]) {
+  return people.filter((p) => p.role === "FOUNDER" && p.meetingNotes?.trim());
+}
+
 export function guestInvite(
-  m: Pick<ClientMeeting, "title" | "description" | "organizer" | "host">,
+  m: Pick<ClientMeeting, "title" | "description" | "organizer" | "host" | "attendees">,
   call: { startAt: string; endAt: string; meetUrl: string; guestName?: string | null },
   tz: string,
 ) {
@@ -57,7 +72,8 @@ export function guestInvite(
   const t = (d: Date) => new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", minute: "2-digit" }).format(d);
   const zone = new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "long" }).formatToParts(s).find((p) => p.type === "timeZoneName")?.value ?? tz;
   const name = (p: MeetingPerson) => `${p.firstName} ${p.lastName}${p.title ? ` (${p.title})` : ""}`;
-  const team = [m.host, m.organizer].filter((p, i, all): p is MeetingPerson => !!p && all.findIndex((x) => x?.id === p.id) === i);
+  const team = meetingPeople(m);
+  const notes = foundersWithNotes(team).map((f) => notesBlock(f.firstName, f.meetingNotes)!);
   return [
     `Dear ${call.guestName?.trim() || "Guest"},`,
     "",
@@ -66,7 +82,7 @@ export function guestInvite(
     `Topic: ${m.title}`,
     `Date: ${date}`,
     `Time: ${t(s)} – ${t(e)} (${zone})`,
-    `With: ${team.map(name).join(", ")}`,
+    `With: ${team.slice(0, 6).map(name).join(", ")}${team.length > 6 ? ` and ${team.length - 6} more` : ""}`,
     "",
     `Join with Google Meet: ${call.meetUrl}`,
     "",
@@ -74,6 +90,7 @@ export function guestInvite(
     "• Open the link above a couple of minutes before the start — on a laptop (Chrome works best) or the Google Meet app on your phone.",
     "• No Google account is needed. If asked, enter your name and click “Ask to join”; we'll let you in.",
     "• Please check your camera and microphone beforehand and join from a quiet place.",
+    ...notes.flatMap((n) => ["", n]),
     ...(m.description ? ["", m.description.trim()] : []),
     "",
     "If you need to reschedule, simply reply to this message.",
@@ -156,6 +173,9 @@ export function MeetingCard({ meeting, tz, selfId }: { meeting: ClientMeeting; t
             </span>
           </div>
           {meeting.description && <p className="mt-2 line-clamp-2 whitespace-pre-wrap text-[12.5px] text-fg-subtle">{meeting.description}</p>}
+          {foundersWithNotes(others).map((f) => (
+            <MeetingNotesCallout key={f.id} firstName={f.firstName} notes={f.meetingNotes} className="mt-3" />
+          ))}
           {meeting.slots.length > 1 && (
             <ol className="mt-3 divide-y divide-line rounded-xl border border-line">
               {meeting.slots.map((slot) => {

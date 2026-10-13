@@ -11,6 +11,7 @@ import { isAboveInReportingLine, wouldCreateCycle } from "@/lib/org";
 import { reportingEdges } from "@/lib/reporting";
 import { notify } from "@/lib/notifications";
 import { fullName, type ActionResult } from "@/lib/utils";
+import { fileReportOnOffboarding } from "@/lib/work-report";
 
 const ROLES = ["FOUNDER", "MANAGER", "EMPLOYEE", "INTERN"] as const;
 
@@ -134,6 +135,9 @@ export async function updateMember(userId: string, input: z.input<typeof accessS
     ...(d.status === "INACTIVE" ? [db.session.deleteMany({ where: { userId } })] : []),
   ]);
 
+  if (d.status === "INACTIVE" && target.status !== "INACTIVE") {
+    await fileReportOnOffboarding(userId, actor.id).catch((e) => console.error("offboarding report failed", e));
+  }
   const changes: string[] = [];
   if (d.role !== target.role) changes.push(`role ${ROLE_LABEL[target.role]} → ${ROLE_LABEL[d.role]}`);
   if (d.status !== target.status) changes.push(`status ${target.status.toLowerCase()} → ${d.status.toLowerCase()}`);

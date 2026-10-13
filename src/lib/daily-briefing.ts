@@ -38,6 +38,8 @@ export interface Briefing {
   toReview: { id: string; number: number; title: string }[];
   /** Tasks where someone asked you for an update. */
   updatesRequested: number;
+  /** Meetings on your calendar today. */
+  meetings: { id: string; title: string; startAt: string; meetUrl: string | null }[];
   headline: string;
 }
 
@@ -63,7 +65,7 @@ export function groupBriefing(tasks: BriefingTask[], tz: string, now: Date) {
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 /** One line for the inbox: "2 overdue · 3 due today · 1 tomorrow". */
-export function briefingHeadline(groups: Briefing["groups"], toReview: number, updatesRequested: number) {
+export function briefingHeadline(groups: Briefing["groups"], toReview: number, updatesRequested: number, meetings = 0) {
   const count = (b: BriefingBucket) => groups.find((g) => g.bucket === b)?.tasks.length ?? 0;
   const parts = [
     count("overdue") && `${count("overdue")} overdue`,
@@ -73,6 +75,7 @@ export function briefingHeadline(groups: Briefing["groups"], toReview: number, u
     count("week") && `${count("week")} later this week`,
     toReview && `${plural(toReview, "submission")} to review`,
     updatesRequested && `${plural(updatesRequested, "update")} requested`,
+    meetings && `${plural(meetings, "meeting")} today`,
   ].filter(Boolean);
   if (parts.length) return parts.join(" · ");
   return count("later") ? "Nothing due this week — a clear runway." : "Nothing on your plate right now.";

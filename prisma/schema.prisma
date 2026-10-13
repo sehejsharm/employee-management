@@ -76,6 +76,8 @@ enum ActivityKind {
   WORK_SUBMITTED
   WORK_ACCEPTED
   CHANGES_REQUESTED
+  /// Other tasks were folded into this one (or this one into another).
+  MERGED
 }
 
 /// Who leads a task and who follows: one LEAD answers for it, FOLLOWERs work alongside.
@@ -113,6 +115,38 @@ enum NotificationKind {
   CLEARANCE
   /// The once-a-day summary of what is due, shown on the first visit of each day.
   DAILY_BRIEFING
+  /// Meetings: invites, calls, requests to meet a founder and their answers.
+  MEETING
+  /// Someone was recognised: kudos to them, or an award announced to everyone.
+  RECOGNITION
+}
+
+/// KUDOS: praise from anyone. AWARD: a named award from founders or management, announced company-wide.
+enum RecognitionKind {
+  KUDOS
+  AWARD
+}
+
+/// PERSONAL: someone's own Google calendar (founders connect theirs so people
+/// can request time with them). TEAM: the one shared company calendar.
+enum GoogleConnectionKind {
+  PERSONAL
+  TEAM
+}
+
+/// Why a work report was filed.
+enum WorkReportReason {
+  LAST_DAY
+  OFFBOARDED
+  MANUAL
+}
+
+enum MeetingStatus {
+  /// Asked of a founder; not on any calendar until they accept.
+  REQUESTED
+  SCHEDULED
+  DECLINED
+  CANCELLED
 }
 
 model Department {
@@ -127,20 +161,25 @@ model Department {
 }
 
 model User {
-  id           String           @id @default(cuid())
+  id                 String           @id @default(cuid())
   /// The login ID, e.g. FR-0042. Stored upper-case. The only way to sign in.
-  employeeCode String           @unique
+  employeeCode       String           @unique
   /// Stored lower-case. NOT unique: several people can share one mailbox, so
   /// it is never used to sign in or to match HR records.
-  email        String
+  email              String
   /// Set when a founder or the person's manager changed the email in the
   /// Workspace. While set, HR console updates leave the email alone.
   emailSetManuallyAt DateTime?
-  firstName    String
-  lastName     String
-  title        String?
-  role         Role             @default(EMPLOYEE)
-  status       EmploymentStatus @default(ACTIVE)
+  /// Where Google Calendar invites go, if not their work email — e.g. a
+  /// founder's personal Gmail. Set automatically when they connect Google.
+  calendarEmail      String?
+  /// Last working day (e.g. the end of an internship). The work report is filed that day.
+  lastDay            DateTime?
+  firstName          String
+  lastName           String
+  title              String?
+  role               Role             @default(EMPLOYEE)
+  status             EmploymentStatus @default(ACTIVE)
 
   /// Granular grants for management. Founders implicitly have all of them.
   canAssignTasks  Boolean @default(false)
@@ -168,14 +207,24 @@ model User {
   externalId String?       @unique
 
   /// The main manager: places the person on the org chart tree.
-  managerId String?
-  manager   User?   @relation("ReportingLine", fields: [managerId], references: [id], onDelete: SetNull)
-  reports   User[]  @relation("ReportingLine")
+  managerId          String?
+  manager            User?               @relation("ReportingLine", fields: [managerId], references: [id], onDelete: SetNull)
+  reports            User[]              @relation("ReportingLine")
   /// Anyone else this person also reports to (a second boss).
   additionalManagers AdditionalManager[] @relation("AdditionalManagerReport")
   additionalReports  AdditionalManager[] @relation("AdditionalManagerBoss")
+
+  googleConnection     GoogleConnection?  @relation("GoogleConnectionOwner")
+  googleConnected      GoogleConnection[] @relation("GoogleConnectionConnector")
+  meetingsOrganised    Meeting[]          @relation("MeetingOrganizer")
+  meetingsHosted       Meeting[]          @relation("MeetingHost")
+  meetingInvites       MeetingAttendee[]
+  workReports          WorkReport[]       @relation("WorkReportSubject")
+  recognitionsReceived Recognition[]      @relation("RecognitionRecipient")
+  recognitionsGiven    Recognition[]      @relation("RecognitionGiver")
+  recognitionCheers    RecognitionCheer[]
   /// Order among siblings on the org chart.
-  orgOrder  Int     @default(0)
+  orgOrder             Int                @default(0)
 
   departmentId String?
   department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
@@ -225,19 +274,23 @@ model Session {
 }
 
 model Task {
-  id          String       @id @default(cuid())
+  id           String       @id @default(cuid())
   /// Human-friendly sequence number, shown as T-123.
-  number      Int          @unique @default(autoincrement())
-  title       String
-  description String?      @db.Text
-  status      TaskStatus   @default(TODO)
-  priority    TaskPriority @default(MEDIUM)
+  number       Int          @unique @default(autoincrement())
+  title        String
+  description  String?      @db.Text
+  status       TaskStatus   @default(TODO)
+  priority     TaskPriority @default(MEDIUM)
   /// The deadline: a date AND a time, stored in UTC.
-  dueAt       DateTime
+  dueAt        DateTime
   /// 0–100, set by assignees when they post a progress update.
-  progress    Int          @default(0)
-  completedAt DateTime?
-  archivedAt  DateTime?
+  progress     Int          @default(0)
+  completedAt  DateTime?
+  archivedAt   DateTime?
+  /// Set when this task was merged into another: its page sends people there.
+  mergedIntoId String?
+  mergedInto   Task?        @relation("TaskMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull)
+  mergedFrom   Task[]       @relation("TaskMerge")
 
   createdById String
   createdBy   User   @relation("TaskCreator", fields: [createdById], references: [id], onDelete: Restrict)
@@ -500,4 +553,120 @@ model AdditionalManager {
 
   @@id([userId, managerId])
   @@index([managerId])
+}
+
+/// A Google account connected through OAuth. Tokens are encrypted at rest
+/// (AES-256-GCM, src/lib/google/crypto.ts) and never sent to the browser.
+model GoogleConnection {
+  id                   String               @id @default(cuid())
+  kind                 GoogleConnectionKind
+  /// PERSONAL: whose calendar this is. TEAM: null.
+  userId               String?              @unique
+  user                 User?                @relation("GoogleConnectionOwner", fields: [userId], references: [id], onDelete: Cascade)
+  /// "team" for the TEAM connection, so there can only ever be one.
+  teamKey              String?              @unique
+  connectedById        String
+  connectedBy          User                 @relation("GoogleConnectionConnector", fields: [connectedById], references: [id], onDelete: Cascade)
+  googleEmail          String
+  /// The calendar events go on: "primary" for a personal one, the shared team calendar's id for TEAM.
+  calendarId           String               @default("primary")
+  calendarName         String?
+  refreshToken         String
+  accessToken          String?
+  accessTokenExpiresAt DateTime?
+  /// Set when Google refuses the stored token: someone has to connect again.
+  lastError            String?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+}
+
+/// A meeting arranged through the Workspace. Lives on Google Calendar (with a
+/// Google Meet link) once scheduled; a request to a founder lives here only
+/// until they answer.
+model Meeting {
+  id               String                @id @default(cuid())
+  title            String
+  description      String?               @db.Text
+  startAt          DateTime
+  endAt            DateTime
+  status           MeetingStatus         @default(SCHEDULED)
+  /// "Meet now": an instant call rather than a scheduled meeting.
+  instant          Boolean               @default(false)
+  organizerId      String
+  organizer        User                  @relation("MeetingOrganizer", fields: [organizerId], references: [id], onDelete: Cascade)
+  /// For a request: the founder being asked. They decide, and it goes on their calendar.
+  hostId           String?
+  host             User?                 @relation("MeetingHost", fields: [hostId], references: [id], onDelete: SetNull)
+  /// The founder's answer when declining.
+  responseNote     String?
+  respondedAt      DateTime?
+  /// Which calendar it went on, and the Google event.
+  calendarKind     GoogleConnectionKind?
+  googleCalendarId String?
+  googleEventId    String?
+  htmlLink         String?
+  meetUrl          String?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  attendees        MeetingAttendee[]
+
+  @@index([organizerId, startAt])
+  @@index([hostId, status])
+  @@index([startAt])
+}
+
+model MeetingAttendee {
+  meetingId String
+  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([meetingId, userId])
+  @@index([userId])
+}
+
+/// A saved copy of someone's work report — filed on their last day, when they're
+/// offboarded, or by a founder. The live report is always computed fresh; this
+/// keeps exactly what it said at the time.
+model WorkReport {
+  id            String           @id @default(cuid())
+  userId        String
+  user          User             @relation("WorkReportSubject", fields: [userId], references: [id], onDelete: Cascade)
+  reason        WorkReportReason
+  generatedById String?
+  data          Json
+  createdAt     DateTime         @default(now())
+
+  @@index([userId, createdAt])
+}
+
+/// Praise or an award for someone, shown on the company-wide recognition wall.
+model Recognition {
+  id          String             @id @default(cuid())
+  kind        RecognitionKind    @default(KUDOS)
+  /// A key from src/lib/recognition.ts (star, teamwork, above, …).
+  badge       String
+  /// The award's name, e.g. "Intern of the Month". Awards only.
+  title       String?
+  message     String             @db.Text
+  recipientId String
+  recipient   User               @relation("RecognitionRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  giverId     String
+  giver       User               @relation("RecognitionGiver", fields: [giverId], references: [id], onDelete: Cascade)
+  createdAt   DateTime           @default(now())
+  cheers      RecognitionCheer[]
+
+  @@index([createdAt])
+  @@index([recipientId, createdAt])
+}
+
+/// A colleague adding their applause to a recognition.
+model RecognitionCheer {
+  recognitionId String
+  recognition   Recognition @relation(fields: [recognitionId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+
+  @@id([recognitionId, userId])
 }

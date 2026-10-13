@@ -2,6 +2,7 @@ import {
   ArrowRight,
   BadgeCheck,
   CalendarClock,
+  Combine,
   Crown,
   FileCheck2,
   Flag,
@@ -151,11 +152,22 @@ export function ActivityFeed({ entries, tz }: { entries: FeedEntry[]; tz: string
             );
             break;
           }
+          case "MERGED": {
+            icon = <Combine />;
+            const merged = (meta.merged as { ref: string; title: string }[] | undefined) ?? [];
+            text = (
+              <>
+                merged <span className="font-medium text-fg">{merged.map((m) => m.ref).join(", ")}</span> into this task
+                {Number(meta.added) > 0 && <> and added {String(meta.added)} {Number(meta.added) === 1 ? "person" : "people"}</>}
+              </>
+            );
+            break;
+          }
           case "DUE_CHANGED":
             icon = <CalendarClock />;
             text = (
               <>
-                moved the deadline to{" "}
+                {meta.extended ? "extended the deadline to" : "moved the deadline to"}{" "}
                 <span className="font-medium text-fg" suppressHydrationWarning>
                   {formatDateTime(new Date(String(meta.to)), tz)}
                 </span>
@@ -223,6 +235,7 @@ export function ActivityFeed({ entries, tz }: { entries: FeedEntry[]; tz: string
             </span>
             <p className="ml-1.5 flex flex-wrap items-center gap-x-1.5 text-[13px] text-fg-muted">
               <Name actor={e.actor} /> {text} <When date={e.createdAt} tz={tz} />
+              {e.body && <span className="basis-full text-[12.5px] text-fg-subtle">“{e.body}”</span>}
             </p>
           </li>
         );

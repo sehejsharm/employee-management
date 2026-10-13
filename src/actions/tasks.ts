@@ -13,6 +13,7 @@ import {
   canRequestUpdate,
   canReviewWork,
   canSubmitWork,
+  isFounder,
   isInvolved,
   type Actor,
   type TaskAccessContext,
@@ -839,4 +840,144 @@ async function sendBack(user: CurrentUser, task: LoadedTask, submissionId: strin
   });
   refresh();
   return { ok: true, message: "Sent back with your notes. Reminders are back on." };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Founders: extend deadlines, merge tasks                                     */
+/* -------------------------------------------------------------------------- */
+
+const extendSchema = z.object({
+  dueAt: z.iso.datetime({ offset: true, message: "Pick the new deadline." }),
+  reason: z.string().trim().max(500).optional().default(""),
+});
+
+/**
+ * A founder gives more time. Unlike a plain edit, it's recorded as an
+ * extension (with the reason) and the people doing the work are told.
+ * Reminders restart for the new deadline.
+ */
+export async function extendDeadline(taskId: string, input: z.input<typeof extendSchema>): Promise<ActionResult> {
+  const user = await requireUser();
+  if (!isFounder(user)) return { ok: false, error: "Only founders can extend deadlines." };
+  const parsed = extendSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
+  const task = await loadTask(taskId);
+  if (!task) return { ok: false, error: "That task no longer exists." };
+  if (task.status === "DONE") return { ok: false, error: "That task is already done." };
+  const dueAt = new Date(parsed.data.dueAt);
+  if (dueAt.getTime() <= task.dueAt.getTime()) return { ok: false, error: "An extension has to be later than the current deadline." };
+
+  await db.$transaction([
+    db.task.update({ where: { id: taskId }, data: { dueAt } }),
+    db.taskActivity.create({
+      data: {
+        taskId,
+        actorId: user.id,
+        kind: "DUE_CHANGED",
+        body: parsed.data.reason || null,
+        meta: { from: task.dueAt.toISOString(), to: dueAt.toISOString(), extended: true },
+      },
+    }),
+  ]);
+  await notify(participants(task), {
+    kind: "TASK_STATUS",
+    actorId: user.id,
+    taskId,
+    href: `/tasks/${taskId}`,
+    title: `${user.firstName} extended the deadline on ${taskRef(task.number)}`,
+    body: parsed.data.reason ? `${task.title} — “${parsed.data.reason}”` : task.title,
+  });
+  refresh();
+  return { ok: true, message: "Deadline extended — everyone on it has been told." };
+}
+
+const PRIORITY_RANK = { LOW: 0, MEDIUM: 1, HIGH: 2, URGENT: 3 } as const;
+
+const mergeSchema = z.object({
+  sourceIds: z.array(z.string().min(1)).min(1, "Pick at least one task to merge in.").max(10),
+  /** Take the latest deadline of all the tasks (default: keep this task's). */
+  latestDeadline: z.boolean().optional().default(false),
+});
+
+/**
+ * Folds other tasks into this one — e.g. the same work assigned separately to
+ * people in one team or across teams. Everyone on any of them ends up on this
+ * task (the lead stays); checklists, documents, submissions and history move
+ * across; the other tasks close and send anyone who opens them here.
+ */
+export async function mergeTasks(targetId: string, input: z.input<typeof mergeSchema>): Promise<ActionResult> {
+  const user = await requireUser();
+  if (!isFounder(user)) return { ok: false, error: "Only founders can merge tasks." };
+  const parsed = mergeSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
+  const sourceIds = [...new Set(parsed.data.sourceIds)].filter((id) => id !== targetId);
+  if (sourceIds.length === 0) return { ok: false, error: "Pick another task to merge in." };
+
+  const taskSelect = {
+    id: true,
+    number: true,
+    title: true,
+    description: true,
+    priority: true,
+    dueAt: true,
+    status: true,
+    createdById: true,
+    assignees: { select: { userId: true, role: true } },
+    _count: { select: { checklist: true } },
+  } as const;
+  const [target, sources] = await Promise.all([
+    db.task.findFirst({ where: { id: targetId, archivedAt: null }, select: taskSelect }),
+    db.task.findMany({ where: { id: { in: sourceIds }, archivedAt: null }, select: taskSelect }),
+  ]);
+  if (!target) return { ok: false, error: "That task no longer exists." };
+  if (sources.length !== sourceIds.length) return { ok: false, error: "One of those tasks no longer exists." };
+
+  const have = new Set(target.assignees.map((a) => a.userId));
+  const newcomers = [...new Set(sources.flatMap((t) => t.assignees.map((a) => a.userId)))].filter((id) => !have.has(id));
+  const priority = [target, ...sources].reduce((p, t) => (PRIORITY_RANK[t.priority] > PRIORITY_RANK[p] ? t.priority : p), target.priority);
+  const dueAt = parsed.data.latestDeadline ? new Date(Math.max(...[target, ...sources].map((t) => t.dueAt.getTime()))) : target.dueAt;
+  const refs = sources.map((t) => taskRef(t.number));
+  const description = [
+    target.description ?? "",
+    ...sources.map((t) => `— Merged from ${taskRef(t.number)}: ${t.title}${t.description ? `\n${t.description}` : ""}`),
+  ]
+    .filter(Boolean)
+    .join("\n\n")
+    .slice(0, 20000);
+  const now = new Date();
+
+  await db.$transaction([
+    db.task.update({ where: { id: targetId }, data: { description, priority, dueAt } }),
+    db.taskAssignee.createMany({ data: newcomers.map((userId) => ({ taskId: targetId, userId, role: "FOLLOWER" as const })), skipDuplicates: true }),
+    // Checklists keep their order, after this task's own items.
+    ...sources.map((t, i) =>
+      db.checklistItem.updateMany({ where: { taskId: t.id }, data: { taskId: targetId, position: { increment: (i + 1) * 1000 + target._count.checklist } } }),
+    ),
+    db.attachment.updateMany({ where: { taskId: { in: sourceIds } }, data: { taskId: targetId } }),
+    db.submission.updateMany({ where: { taskId: { in: sourceIds } }, data: { taskId: targetId } }),
+    db.taskActivity.updateMany({ where: { taskId: { in: sourceIds } }, data: { taskId: targetId } }),
+    db.updateRequest.updateMany({ where: { taskId: { in: sourceIds } }, data: { taskId: targetId } }),
+    db.notification.updateMany({ where: { taskId: { in: sourceIds } }, data: { taskId: targetId, href: `/tasks/${targetId}` } }),
+    db.task.updateMany({ where: { id: { in: sourceIds } }, data: { archivedAt: now, mergedIntoId: targetId } }),
+    db.taskActivity.create({
+      data: {
+        taskId: targetId,
+        actorId: user.id,
+        kind: "MERGED",
+        meta: { merged: sources.map((t) => ({ ref: taskRef(t.number), title: t.title })), added: newcomers.length },
+      },
+    }),
+  ]);
+
+  const everyone = [target.createdById, ...target.assignees.map((a) => a.userId), ...sources.flatMap((t) => [t.createdById, ...t.assignees.map((a) => a.userId)])];
+  await notify(everyone, {
+    kind: "TASK_STATUS",
+    actorId: user.id,
+    taskId: targetId,
+    href: `/tasks/${targetId}`,
+    title: `${user.firstName} merged ${refs.join(", ")} into ${taskRef(target.number)}`,
+    body: `${target.title} — one task now, with everyone on it.`,
+  });
+  refresh();
+  return { ok: true, message: `Merged ${refs.join(", ")} into ${taskRef(target.number)}.` };
 }

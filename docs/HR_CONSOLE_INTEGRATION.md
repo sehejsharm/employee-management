@@ -219,6 +219,7 @@ Sign in at    https://workspace.focusrealm.com/login
 | `fullName` *or* `firstName`/`lastName` | Required to create. |
 | `role` | `INTERN` (default), `EMPLOYEE` or `MANAGER`. `FOUNDER` is refused unless the Workspace sets `HR_ALLOW_FOUNDER_PROVISIONING=true`. |
 | `title`, `department`, `phone`, `location`, `startDate` | Optional. Unknown departments are created. |
+| `endDate` | Optional. Last working day (e.g. the end of an internship) — their work report is filed that day. |
 | `managerEmail` / `managerEmployeeCode` | Optional. Places them on the org chart. Prefer `managerEmployeeCode`: an email is only used when exactly one current person has it. |
 | `employeeCode` | Optional. Omit it and the Workspace assigns the next `FR-0001`-style id. If it matches an account a founder added by hand, that account is linked to this HR record. |
 | `credentials` | Optional. Omit it (recommended) and the Workspace generates a strong temporary password and returns it once. Or send `passwordHash` (bcrypt — the plaintext never leaves HR), or `password` (hashed on arrival, never stored or logged). |

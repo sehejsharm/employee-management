@@ -45,3 +45,13 @@ describe("Google Calendar payloads", () => {
     expect(() => openToken(parts.join("."))).toThrow();
   });
 });
+
+describe("founder free slots", () => {
+  it("offers working-hour slots that avoid busy blocks and the past", async () => {
+    const { freeSlots } = await import("@/lib/google/events");
+    const day = new Date("2026-10-14T00:00:00Z");
+    const busy = [{ start: "2026-10-14T10:00:00Z", end: "2026-10-14T11:00:00Z" }];
+    const slots = freeSlots(busy, day, 60, new Date("2026-10-14T08:45:00Z"), [9, 13]);
+    expect(slots.map((s) => s.slice(11, 16))).toEqual(["09:00", "11:00", "11:30", "12:00"]);
+  });
+});

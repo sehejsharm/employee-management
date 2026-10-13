@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { toLocalInput } from "@/components/tasks/due-picker";
-import { cancelMeeting, disconnectGoogle, respondToMeetingRequest, shareTeamCalendar } from "@/actions/meetings";
+import { answerAvailabilityRequest, cancelMeeting, disconnectGoogle, respondToMeetingRequest, shareTeamCalendar } from "@/actions/meetings";
 import { formatDate, formatTime } from "@/lib/time";
 import { useNow } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
@@ -250,7 +250,7 @@ export function GoogleConnections({
       <div className="rounded-xl border border-line p-3.5">
         <div className="text-[13px] font-semibold">Your calendar</div>
         <p className="mt-0.5 text-[12.5px] text-fg-muted">
-          People request time with you here; accepted meetings land on it and your busy times guide their requests.
+          People request time with you here and accepted meetings land on it. Your free time stays private — people only see open slots after you approve their request.
         </p>
         {personal ? (
           <div className="mt-3 flex flex-wrap items-center gap-2 text-[12.5px]">
@@ -318,5 +318,39 @@ export function GoogleConnections({
         )}
       </div>
     </div>
+  );
+}
+
+/** Someone asking this founder to see when they're free. */
+export function AvailabilityAsk({
+  ask,
+}: {
+  ask: { id: string; purpose: string; meetings: number; slotMinutes: number; requester: MeetingPerson };
+}) {
+  const [pending, run] = useAction();
+  return (
+    <li className="rounded-2xl border border-info/25 bg-info-soft/40 p-4">
+      <div className="flex items-start gap-3">
+        <Avatar person={ask.requester} size="md" />
+        <div className="min-w-0 flex-1">
+          <p className="text-[13.5px]">
+            <span className="font-semibold">
+              {ask.requester.firstName} {ask.requester.lastName}
+            </span>{" "}
+            is asking to see when you&apos;re free — {ask.meetings} meeting{ask.meetings === 1 ? "" : "s"} of {ask.slotMinutes} min
+          </p>
+          <p className="mt-1 whitespace-pre-wrap text-[13px] text-fg-muted">“{ask.purpose}”</p>
+          <p className="mt-1 text-[12px] text-fg-subtle">They&apos;d see open slots only (never what your events are), for 14 days.</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button size="sm" loading={pending} onClick={() => run(() => answerAvailabilityRequest(ask.id, { approve: true }))}>
+              <Check /> Share my free time
+            </Button>
+            <Button size="sm" variant="ghost" loading={pending} onClick={() => run(() => answerAvailabilityRequest(ask.id, { approve: false }))}>
+              <X /> Decline
+            </Button>
+          </div>
+        </div>
+      </div>
+    </li>
   );
 }

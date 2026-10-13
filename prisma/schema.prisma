@@ -214,17 +214,19 @@ model User {
   additionalManagers AdditionalManager[] @relation("AdditionalManagerReport")
   additionalReports  AdditionalManager[] @relation("AdditionalManagerBoss")
 
-  googleConnection     GoogleConnection?  @relation("GoogleConnectionOwner")
-  googleConnected      GoogleConnection[] @relation("GoogleConnectionConnector")
-  meetingsOrganised    Meeting[]          @relation("MeetingOrganizer")
-  meetingsHosted       Meeting[]          @relation("MeetingHost")
+  googleConnection     GoogleConnection?     @relation("GoogleConnectionOwner")
+  googleConnected      GoogleConnection[]    @relation("GoogleConnectionConnector")
+  meetingsOrganised    Meeting[]             @relation("MeetingOrganizer")
+  meetingsHosted       Meeting[]             @relation("MeetingHost")
   meetingInvites       MeetingAttendee[]
-  workReports          WorkReport[]       @relation("WorkReportSubject")
-  recognitionsReceived Recognition[]      @relation("RecognitionRecipient")
-  recognitionsGiven    Recognition[]      @relation("RecognitionGiver")
+  workReports          WorkReport[]          @relation("WorkReportSubject")
+  recognitionsReceived Recognition[]         @relation("RecognitionRecipient")
+  recognitionsGiven    Recognition[]         @relation("RecognitionGiver")
   recognitionCheers    RecognitionCheer[]
+  availabilityAsked    AvailabilityRequest[] @relation("AvailabilityRequester")
+  availabilityAskedOf  AvailabilityRequest[] @relation("AvailabilityFounder")
   /// Order among siblings on the org chart.
-  orgOrder             Int                @default(0)
+  orgOrder             Int                   @default(0)
 
   departmentId String?
   department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
@@ -604,6 +606,8 @@ model Meeting {
   calendarKind     GoogleConnectionKind?
   googleCalendarId String?
   googleEventId    String?
+  /// Copy of a founder meeting on the shared team calendar (the real event lives on the founder's own calendar).
+  teamEventId      String?
   htmlLink         String?
   meetUrl          String?
   createdAt        DateTime              @default(now())
@@ -669,4 +673,33 @@ model RecognitionCheer {
   createdAt     DateTime    @default(now())
 
   @@id([recognitionId, userId])
+}
+
+enum AvailabilityRequestStatus {
+  PENDING
+  APPROVED
+  DECLINED
+}
+
+/// Someone asking a founder to see when they're free, saying why and how much time
+/// they need. Founders' free time stays private until they approve.
+model AvailabilityRequest {
+  id          String                    @id @default(cuid())
+  requesterId String
+  requester   User                      @relation("AvailabilityRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  founderId   String
+  founder     User                      @relation("AvailabilityFounder", fields: [founderId], references: [id], onDelete: Cascade)
+  purpose     String                    @db.Text
+  /// How many meetings they want, and how long each.
+  meetings    Int
+  slotMinutes Int
+  status      AvailabilityRequestStatus @default(PENDING)
+  note        String?
+  decidedAt   DateTime?
+  /// An approval lets them see open slots until then.
+  expiresAt   DateTime?
+  createdAt   DateTime                  @default(now())
+
+  @@index([founderId, status])
+  @@index([requesterId, founderId])
 }

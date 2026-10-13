@@ -14,6 +14,8 @@ export interface EventInput {
   meet: boolean;
   /** Ties the Meet request to our meeting, so a retry never makes a second link. */
   requestId: string;
+  /** Shown as the event's location, e.g. the Meet link on a copy of a meeting. */
+  location?: string | null;
 }
 
 export function eventBody(input: EventInput) {
@@ -25,6 +27,7 @@ export function eventBody(input: EventInput) {
     end: { dateTime: input.endAt.toISOString(), timeZone: input.timeZone },
     attendees: emails.map((email) => ({ email })),
     guestsCanModify: false,
+    ...(input.location ? { location: input.location } : {}),
     reminders: { useDefault: true },
     ...(input.meet
       ? { conferenceData: { createRequest: { requestId: input.requestId, conferenceSolutionKey: { type: "hangoutsMeet" } } } }
@@ -66,4 +69,28 @@ export function clashes(busy: { start: string; end: string }[], startAt: Date, e
 /** "Add to my Google Calendar" link for a shared calendar. */
 export function subscribeUrl(calendarId: string) {
   return `https://calendar.google.com/calendar/u/0/r?cid=${encodeURIComponent(calendarId)}`;
+}
+
+/**
+ * Open slots of `minutes` in a working day, given busy blocks. `dayStart` is the
+ * asker's local midnight; working hours are counted from it. Slots start on the
+ * half hour and never in the past.
+ */
+export function freeSlots(
+  busy: { start: string; end: string }[],
+  dayStart: Date,
+  minutes: number,
+  now = new Date(),
+  hours: [number, number] = [9, 19],
+) {
+  const step = 30 * 60_000;
+  const len = minutes * 60_000;
+  const open = dayStart.getTime() + hours[0] * 3600_000;
+  const close = dayStart.getTime() + hours[1] * 3600_000;
+  const slots: string[] = [];
+  for (let t = open; t + len <= close; t += step) {
+    if (t < now.getTime()) continue;
+    if (clashes(busy, new Date(t), new Date(t + len)).length === 0) slots.push(new Date(t).toISOString());
+  }
+  return slots;
 }

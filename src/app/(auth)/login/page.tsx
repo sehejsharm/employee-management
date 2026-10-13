@@ -14,7 +14,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   if (status !== "ready") return <SetupNotice status={status} setupOpen={setupTokenConfigured()} />;
 
   const user = await getCurrentUser();
-  if (user) redirect(user.mustChangePassword ? "/welcome" : "/dashboard");
+  if (user) redirect(user.mustChangePassword ? "/welcome" : user.mustCompleteProfile ? "/complete-profile" : "/dashboard");
   const { next } = await searchParams;
   return <LoginForm next={next ?? ""} />;
 }

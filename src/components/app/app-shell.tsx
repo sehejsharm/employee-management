@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { CommandPalette, usePalette } from "./command-palette";
 import { DailyBriefing, OPEN_BRIEFING_EVENT } from "./daily-briefing";
 import { NotificationBell, NotificationsProvider } from "./notification-bell";
+import { IncomingCallWatcher } from "./incoming-call";
 import { SECTION_LABEL, navItems, type NavItem, type ShellFlags, type ShellUser } from "./nav";
 import { ThemeToggle } from "./theme-toggle";
 
@@ -57,6 +58,7 @@ export function AppShell({
           <MobileNav nav={nav} user={user} />
         </div>
         <DailyBriefing />
+        <IncomingCallWatcher />
       </CommandPalette>
     </NotificationsProvider>
   );

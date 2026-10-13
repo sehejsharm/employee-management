@@ -13,7 +13,7 @@ import { SETUP_LOCK_KEY, setupTokenMatches } from "@/lib/setup";
 
 export interface AuthFormState {
   error?: string;
-  field?: "identifier" | "password" | "confirm" | "token" | "firstName" | "email";
+  field?: "identifier" | "password" | "confirm" | "token" | "firstName" | "email" | "phone" | "location";
 }
 
 const UNREACHABLE = "We can't reach the workspace right now. Try again in a minute — if it keeps happening, tell a founder.";
@@ -63,7 +63,7 @@ export async function login(_: AuthFormState, formData: FormData): Promise<AuthF
   try {
     const result = await authenticate(identifier, password, remember);
     if (!("mustChangePassword" in result)) return result;
-    destination = result.mustChangePassword ? "/welcome" : next;
+    destination = result.mustChangePassword ? "/welcome" : result.mustCompleteProfile ? "/complete-profile" : next;
   } catch (error) {
     // Database down, paused or not migrated: keep the form and say so, rather than losing the page.
     console.error("Sign-in failed: database unavailable", error);
@@ -72,10 +72,10 @@ export async function login(_: AuthFormState, formData: FormData): Promise<AuthF
   redirect(destination);
 }
 
-async function authenticate(identifier: string, password: string, remember: boolean): Promise<AuthFormState | { mustChangePassword: boolean }> {
+async function authenticate(identifier: string, password: string, remember: boolean): Promise<AuthFormState | { mustChangePassword: boolean; mustCompleteProfile: boolean }> {
   const user = await db.user.findUnique({
     where: { employeeCode: normaliseEmployeeCode(identifier) },
-    select: { id: true, passwordHash: true, status: true, lockedUntil: true, failedLoginCount: true, mustChangePassword: true },
+    select: { id: true, passwordHash: true, status: true, lockedUntil: true, failedLoginCount: true, mustChangePassword: true, mustCompleteProfile: true },
   });
 
   if (user?.lockedUntil && user.lockedUntil > new Date()) {
@@ -106,7 +106,7 @@ async function authenticate(identifier: string, password: string, remember: bool
 
   await db.user.update({ where: { id: user.id }, data: { failedLoginCount: 0, lockedUntil: null } });
   await startSession(user.id, remember);
-  return { mustChangePassword: user.mustChangePassword };
+  return { mustChangePassword: user.mustChangePassword, mustCompleteProfile: user.mustCompleteProfile };
 }
 
 export async function logout() {
@@ -135,6 +135,24 @@ export async function choosePassword(_: AuthFormState, formData: FormData): Prom
   });
   await revokeAllSessions(user.id, await currentSessionTokenHash());
   await audit({ actorId: user.id, action: "account.password_set", targetType: "user", targetId: user.id, summary: "Chose a password on first sign-in" });
+  redirect("/dashboard?welcome=1");
+}
+
+export async function completeProfile(_: AuthFormState, formData: FormData): Promise<AuthFormState> {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+  if (user.mustChangePassword) redirect("/welcome");
+
+  const phone = String(formData.get("phone") ?? "").trim();
+  const location = String(formData.get("location") ?? "").trim();
+  const digits = phone.replace(/\D/g, "");
+  if (!/^\+?[\d\s().-]+$/.test(phone) || digits.length < 7 || digits.length > 15 || phone.length > 32) {
+    return { error: "Enter a valid phone number, e.g. +91 98765 43210.", field: "phone" };
+  }
+  if (location.length < 2 || location.length > 80) return { error: "Enter your city or location.", field: "location" };
+
+  await db.user.update({ where: { id: user.id }, data: { phone, location, mustCompleteProfile: false } });
+  await audit({ actorId: user.id, action: "account.profile_completed", targetType: "user", targetId: user.id, summary: "Added phone and location on first sign-in" });
   redirect("/dashboard?welcome=1");
 }
 

@@ -98,6 +98,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     organizer: m.organizer,
     host: m.host,
     attendees: m.attendees.map((a) => a.user),
+    slots: m.slots.map((sl) => ({ ...sl, startAt: sl.startAt.toISOString(), endAt: sl.endAt.toISOString() })),
     canCancel: canCancelMeeting(user, { organizerId: m.organizer.id, hostId: m.host?.id ?? null }),
   });
   const notice = params.google ? GOOGLE_NOTICE[params.google] : null;

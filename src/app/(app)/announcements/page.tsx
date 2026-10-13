@@ -5,7 +5,7 @@ import { GiveRecognitionDialog, RecognitionCard } from "@/components/recognition
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { mostRecognised, recognitionFeed } from "@/lib/recognition-feed";
 import { PageHeader } from "@/components/app/page-header";
-import { AnnouncementMenu, NewAnnouncement } from "@/components/app/announcement-client";
+import { AnnouncementMenu, AnnouncementPdf, NewAnnouncement } from "@/components/app/announcement-client";
 import { Stagger, StaggerItem } from "@/components/motion";
 import { Avatar } from "@/components/ui/avatar";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -15,7 +15,7 @@ import { db } from "@/lib/db";
 import { isFounder, isLeader } from "@/lib/permissions";
 import { formatDateTime, timeAgo } from "@/lib/time";
 import { getTimeZone } from "@/lib/tz.server";
-import { cn } from "@/lib/utils";
+import { cn, formatBytes } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Announcements" };
 
@@ -53,6 +53,8 @@ export default async function AnnouncementsPage({ searchParams }: { searchParams
       title: true,
       body: true,
       pinned: true,
+      pdfName: true,
+      pdfSize: true,
       createdAt: true,
       authorId: true,
       author: { select: { firstName: true, lastName: true, title: true, avatarHue: true } },
@@ -104,6 +106,7 @@ export default async function AnnouncementsPage({ searchParams }: { searchParams
                 </div>
                 <h2 className="mt-4 text-[19px] font-semibold tracking-[-0.015em]">{a.title}</h2>
                 <RichText text={a.body} className="mt-2 text-fg-muted" />
+                {a.pdfName && <AnnouncementPdf id={a.id} name={a.pdfName} size={formatBytes(a.pdfSize ?? 0)} />}
               </article>
             </StaggerItem>
           ))}

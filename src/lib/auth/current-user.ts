@@ -37,6 +37,7 @@ export const getCurrentUser = cache(async () => {
           avatarHue: true,
           focus: true,
           mustChangePassword: true,
+          mustCompleteProfile: true,
           managerId: true,
           department: { select: { id: true, name: true, color: true } },
         },
@@ -58,6 +59,7 @@ export async function requireUser(): Promise<CurrentUser & Actor> {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   if (user.mustChangePassword) redirect("/welcome");
+  if (user.mustCompleteProfile) redirect("/complete-profile");
   return user;
 }
 

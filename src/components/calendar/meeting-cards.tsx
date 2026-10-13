@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { CalendarCheck2, Check, ExternalLink, Link2, LogOut, Share2, Video, X } from "lucide-react";
+import { CalendarCheck2, Check, Copy, ExternalLink, Link2, LogOut, Share2, Video, X } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar, AvatarStack } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -36,7 +36,73 @@ export interface ClientMeeting {
   organizer: MeetingPerson;
   host: MeetingPerson | null;
   attendees: MeetingPerson[];
+  /** Multi-slot blocks: one call per slot, each with its own Meet link. */
+  slots: { id: string; position: number; startAt: string; endAt: string; guestName: string | null; meetUrl: string | null }[];
   canCancel: boolean;
+}
+
+/**
+ * A polished invite to paste into an email or WhatsApp for someone outside the
+ * company: who they're meeting, when (with the time zone), and how to join.
+ */
+export function guestInvite(
+  m: Pick<ClientMeeting, "title" | "description" | "organizer" | "host">,
+  call: { startAt: string; endAt: string; meetUrl: string; guestName?: string | null },
+  tz: string,
+) {
+  const s = new Date(call.startAt);
+  const e = new Date(call.endAt);
+  const minutes = Math.round((e.getTime() - s.getTime()) / 60_000);
+  const date = new Intl.DateTimeFormat("en-GB", { timeZone: tz, weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(s);
+  const t = (d: Date) => new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", minute: "2-digit" }).format(d);
+  const zone = new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "long" }).formatToParts(s).find((p) => p.type === "timeZoneName")?.value ?? tz;
+  const name = (p: MeetingPerson) => `${p.firstName} ${p.lastName}${p.title ? ` (${p.title})` : ""}`;
+  const team = [m.host, m.organizer].filter((p, i, all): p is MeetingPerson => !!p && all.findIndex((x) => x?.id === p.id) === i);
+  return [
+    `Dear ${call.guestName?.trim() || "Guest"},`,
+    "",
+    `Thank you for your time. You are invited to a ${minutes}-minute video call with Focus Realm.`,
+    "",
+    `Topic: ${m.title}`,
+    `Date: ${date}`,
+    `Time: ${t(s)} – ${t(e)} (${zone})`,
+    `With: ${team.map(name).join(", ")}`,
+    "",
+    `Join with Google Meet: ${call.meetUrl}`,
+    "",
+    "How to join:",
+    "• Open the link above a couple of minutes before the start — on a laptop (Chrome works best) or the Google Meet app on your phone.",
+    "• No Google account is needed. If asked, enter your name and click “Ask to join”; we'll let you in.",
+    "• Please check your camera and microphone beforehand and join from a quiet place.",
+    ...(m.description ? ["", m.description.trim()] : []),
+    "",
+    "If you need to reschedule, simply reply to this message.",
+    "",
+    "We look forward to speaking with you.",
+    "",
+    "Warm regards,",
+    `${m.organizer.firstName} ${m.organizer.lastName}`,
+    "Focus Realm",
+  ].join("\n");
+}
+
+function CopyInvite({ text, label = "Copy guest invite" }: { text: string; label?: string }) {
+  return (
+    <Button
+      variant="secondary"
+      size="sm"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+          toast.success("Invite copied — paste it into an email or WhatsApp.");
+        } catch {
+          window.prompt("Copy the invite:", text);
+        }
+      }}
+    >
+      <Copy /> {label}
+    </Button>
+  );
 }
 
 function when(m: { startAt: string; endAt: string }, tz: string) {
@@ -90,9 +156,42 @@ export function MeetingCard({ meeting, tz, selfId }: { meeting: ClientMeeting; t
             </span>
           </div>
           {meeting.description && <p className="mt-2 line-clamp-2 whitespace-pre-wrap text-[12.5px] text-fg-subtle">{meeting.description}</p>}
+          {meeting.slots.length > 1 && (
+            <ol className="mt-3 divide-y divide-line rounded-xl border border-line">
+              {meeting.slots.map((slot) => {
+                const slotLive = !!now && new Date(slot.startAt).getTime() - 5 * 60_000 <= now && new Date(slot.endAt).getTime() >= now;
+                return (
+                  <li key={slot.id} className="flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-center">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[13px] font-medium">
+                        Slot {slot.position}
+                        {slot.guestName ? ` — ${slot.guestName}` : ""}
+                      </div>
+                      <div className="text-[12px] text-fg-muted" suppressHydrationWarning>
+                        {formatTime(new Date(slot.startAt), tz)}–{formatTime(new Date(slot.endAt), tz)}
+                      </div>
+                    </div>
+                    {slot.meetUrl && (
+                      <div className="flex flex-wrap gap-2">
+                        <CopyInvite text={guestInvite(meeting, { ...slot, meetUrl: slot.meetUrl }, tz)} label="Copy invite" />
+                        <Button asChild variant={slotLive ? "primary" : "soft"} size="sm">
+                          <a href={slot.meetUrl} target="_blank" rel="noopener noreferrer">
+                            <Video /> {slotLive ? "Join now" : "Meet link"}
+                          </a>
+                        </Button>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+          )}
         </div>
         <div className="flex shrink-0 flex-wrap gap-2 sm:flex-col sm:items-stretch">
-          {meeting.meetUrl && (
+          {meeting.meetUrl && meeting.slots.length <= 1 && !meeting.instant && (
+            <CopyInvite text={guestInvite(meeting, { startAt: meeting.startAt, endAt: meeting.endAt, meetUrl: meeting.meetUrl }, tz)} />
+          )}
+          {meeting.meetUrl && meeting.slots.length <= 1 && (
             <Button asChild variant={live ? "primary" : "soft"} size="sm">
               <a href={meeting.meetUrl} target="_blank" rel="noopener noreferrer">
                 <Video /> {live ? "Join now" : "Meet link"}
@@ -145,7 +244,7 @@ export function RequestToAnswer({ meeting, tz }: { meeting: ClientMeeting; tz: s
           </p>
           <h3 className="mt-0.5 text-[15px] font-semibold leading-snug">{meeting.title}</h3>
           <p className="mt-0.5 text-[13px] text-fg-muted" suppressHydrationWarning>
-            Suggested: {when(meeting, tz)} ({minutes} min)
+            Suggested: {when(meeting, tz)} ({meeting.slots.length > 1 ? `${meeting.slots.length} slots × ${minutes / meeting.slots.length} min, each its own Meet link` : `${minutes} min`})
           </p>
           {meeting.description && <p className="mt-2 whitespace-pre-wrap text-[12.5px] text-fg-muted">{meeting.description}</p>}
           <div className="mt-3 flex flex-wrap gap-2">

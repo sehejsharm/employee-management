@@ -266,6 +266,9 @@ export function RequestFounderDialog({
   const [description, setDescription] = React.useState("");
   const [start, setStart] = React.useState("");
   const [duration, setDuration] = React.useState(30);
+  const [slots, setSlots] = React.useState(1);
+  const [guests, setGuests] = React.useState<string[]>([]);
+  const block = duration * slots;
   const [availability, setAvailability] = React.useState<AvailabilityAccess | null>(null);
   const [checking, setChecking] = React.useState(false);
   const [asking, setAsking] = React.useState(false);
@@ -282,7 +285,7 @@ export function RequestFounderDialog({
     // Runs in a timeout so the loading flag isn't set synchronously inside the effect.
     const t = window.setTimeout(() => {
       setChecking(true);
-      founderAvailability(founderId, dayStart.toISOString(), duration)
+      founderAvailability(founderId, dayStart.toISOString(), block)
         .then((res) => live && setAvailability(res.ok ? res.data! : null))
         .finally(() => live && setChecking(false));
     }, 0);
@@ -290,7 +293,7 @@ export function RequestFounderDialog({
       live = false;
       window.clearTimeout(t);
     };
-  }, [open, founderId, day, duration, reload]);
+  }, [open, founderId, day, block, reload]);
 
   const startAt = start ? new Date(start) : null;
   const time = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
@@ -308,12 +311,22 @@ export function RequestFounderDialog({
   const send = () =>
     startTransition(async () => {
       if (!startAt) return void toast.error("Suggest a time.");
-      const res = await requestFounderMeeting({ founderId, title, description, startAt: startAt.toISOString(), durationMin: duration });
+      const res = await requestFounderMeeting({
+        founderId,
+        title,
+        description,
+        startAt: startAt.toISOString(),
+        durationMin: duration,
+        slots,
+        guests: Array.from({ length: slots }, (_, i) => (guests[i] ?? "").trim()),
+      });
       if (!res.ok) return void toast.error(res.error);
       toast.success(res.message);
       setOpen(false);
       setTitle("");
       setDescription("");
+      setSlots(1);
+      setGuests([]);
     });
 
   return (
@@ -350,11 +363,21 @@ export function RequestFounderDialog({
           <Field label="What's it about">
             <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Feedback on the partnership deck" maxLength={200} />
           </Field>
-          <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_160px]">
+          <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_110px_150px]">
             <Field label="Suggested time">
               <Input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} />
             </Field>
-            <Field label="Length">
+            <Field label="Slots">
+              <Input
+                type="number"
+                min={1}
+                max={12}
+                value={slots}
+                onChange={(e) => setSlots(Math.max(1, Math.min(12, Math.floor(Number(e.target.value)) || 1)))}
+                aria-describedby="slots-hint"
+              />
+            </Field>
+            <Field label={slots > 1 ? "Each slot" : "Length"}>
               <NativeSelect value={duration} onChange={(e) => setDuration(Number(e.target.value))}>
                 {DURATIONS.filter((m) => m <= 120).map((m) => (
                   <option key={m} value={m}>
@@ -364,6 +387,38 @@ export function RequestFounderDialog({
               </NativeSelect>
             </Field>
           </div>
+          {slots > 1 && (
+            <div id="slots-hint" className="rounded-xl border border-brand/20 bg-brand-soft/40 px-3 py-2.5 text-[12.5px]">
+              <div className="font-medium text-fg">
+                Blocks {block < 60 ? `${block} min` : `${Math.floor(block / 60)} h${block % 60 ? ` ${block % 60} min` : ""}`} with {founder?.firstName ?? "them"}: {slots} back-to-back calls, each with its own Google Meet link.
+              </div>
+              <p className="mt-0.5 text-fg-muted">Once accepted, copy a ready-made invite for each guest from the Calendar page. Name the guests now (optional):</p>
+              <ol className="mt-2 grid gap-1.5 sm:grid-cols-2">
+                {Array.from({ length: slots }, (_, i) => {
+                  const at = startAt ? new Date(startAt.getTime() + i * duration * 60_000) : null;
+                  return (
+                    <li key={i} className="flex items-center gap-2">
+                      <span className="w-[70px] shrink-0 text-[11.5px] tabular text-fg-subtle">{at ? time(at.toISOString()) : `Slot ${i + 1}`}</span>
+                      <Input
+                        value={guests[i] ?? ""}
+                        onChange={(e) =>
+                          setGuests((g) => {
+                            const next = [...g];
+                            next[i] = e.target.value;
+                            return next;
+                          })
+                        }
+                        placeholder={`Guest ${i + 1}, e.g. candidate's name`}
+                        maxLength={120}
+                        className="h-8 text-[12.5px]"
+                        aria-label={`Guest for slot ${i + 1}`}
+                      />
+                    </li>
+                  );
+                })}
+              </ol>
+            </div>
+          )}
           <div className="rounded-xl border border-line bg-surface-sunken/60 px-3 py-2.5 text-[12.5px] text-fg-muted">
             {checking || !availability ? (
               <span className="inline-flex items-center gap-1.5">
@@ -372,7 +427,7 @@ export function RequestFounderDialog({
             ) : availability.access === "granted" ? (
               <div>
                 <div className="mb-1.5 font-medium text-fg">
-                  {founder?.firstName}&apos;s open {duration}-minute slots that day — tap one:
+                  {founder?.firstName}&apos;s open {block}-minute windows that day — tap one:
                 </div>
                 {availability.slots.length === 0 ? (
                   <span>None that day. Try another date.</span>

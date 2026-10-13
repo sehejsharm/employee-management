@@ -3,7 +3,7 @@ import { CalendarDays, Inbox, Video } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { GoogleConnections, MeetingCard, MyRequest, RequestToAnswer, type ClientMeeting } from "@/components/calendar/meeting-cards";
+import { AvailabilityAsk, GoogleConnections, MeetingCard, MyRequest, RequestToAnswer, type ClientMeeting } from "@/components/calendar/meeting-cards";
 import { MeetNowDialog, RequestFounderDialog, ScheduleMeetingDialog } from "@/components/calendar/meeting-dialogs";
 import { requireUser } from "@/lib/auth/current-user";
 import { db } from "@/lib/db";
@@ -35,7 +35,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const founder = isFounder(user);
   const configured = googleConfig.configured();
 
-  const [team, personal, mine, people, founders] = await Promise.all([
+  const [team, personal, mine, people, founders, availabilityAsks] = await Promise.all([
     teamConnection(),
     founder ? personalConnection(user.id) : null,
     meetingsFor(user.id),
@@ -45,6 +45,13 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       orderBy: { firstName: "asc" },
       select: { id: true, firstName: true, lastName: true, title: true, googleConnection: { select: { lastError: true } } },
     }),
+    founder
+      ? db.availabilityRequest.findMany({
+          where: { founderId: user.id, status: "PENDING" },
+          orderBy: { createdAt: "asc" },
+          select: { id: true, purpose: true, meetings: true, slotMinutes: true, requester: { select: { id: true, firstName: true, lastName: true, avatarHue: true, title: true } } },
+        })
+      : [],
   ]);
   const teamReady = configured && !!team && !team.lastError;
 
@@ -134,6 +141,19 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
                 />
               </CardBody>
             </Card>
+          )}
+
+          {availabilityAsks.length > 0 && (
+            <section>
+              <h2 className="mb-3 flex items-center gap-2 text-[15px] font-semibold">
+                <Inbox className="size-4 text-info" /> Asking to see your free time · {availabilityAsks.length}
+              </h2>
+              <ul className="space-y-3">
+                {availabilityAsks.map((a) => (
+                  <AvailabilityAsk key={a.id} ask={a} />
+                ))}
+              </ul>
+            </section>
           )}
 
           {mine.toAnswer.length > 0 && (

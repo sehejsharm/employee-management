@@ -8,7 +8,7 @@ import { Dialog, DialogClose, DialogContent, DialogFooter, DialogTrigger } from 
 import { Field, Input, NativeSelect, Textarea } from "@/components/ui/input";
 import { AssigneePicker, type PickablePerson } from "@/components/tasks/assignee-picker";
 import { toLocalInput } from "@/components/tasks/due-picker";
-import { founderBusyTimes, meetNow, requestFounderMeeting, scheduleMeeting } from "@/actions/meetings";
+import { askFounderAvailability, founderAvailability, meetNow, requestFounderMeeting, scheduleMeeting, type AvailabilityAccess } from "@/actions/meetings";
 import { cn } from "@/lib/utils";
 
 const DURATIONS = [15, 30, 45, 60, 90, 120];
@@ -236,11 +236,11 @@ export interface FounderOption {
   firstName: string;
   lastName: string;
   title: string | null;
-  /** Their own Google Calendar is connected: busy times can be shown. */
+  /** Their own Google Calendar is connected. */
   calendarConnected: boolean;
 }
 
-/** Ask a founder for time. Shows when they're busy that day, if their calendar is connected. */
+/** Ask a founder for time. Their free slots show only once they have agreed to share them. */
 export function RequestFounderDialog({
   founders,
   initialFounderId,
@@ -256,8 +256,11 @@ export function RequestFounderDialog({
   const [description, setDescription] = React.useState("");
   const [start, setStart] = React.useState("");
   const [duration, setDuration] = React.useState(30);
-  const [busy, setBusy] = React.useState<{ start: string; end: string }[] | null>(null);
+  const [availability, setAvailability] = React.useState<AvailabilityAccess | null>(null);
   const [checking, setChecking] = React.useState(false);
+  const [asking, setAsking] = React.useState(false);
+  const [ask, setAsk] = React.useState({ purpose: "", meetings: 1, slotMinutes: 30 as 15 | 30 | 45 | 60 | 90 });
+  const [reload, setReload] = React.useState(0);
   const [pending, startTransition] = React.useTransition();
   const founder = founders.find((f) => f.id === founderId);
   const day = start.slice(0, 10);
@@ -269,20 +272,28 @@ export function RequestFounderDialog({
     // Runs in a timeout so the loading flag isn't set synchronously inside the effect.
     const t = window.setTimeout(() => {
       setChecking(true);
-      founderBusyTimes(founderId, dayStart.toISOString())
-        .then((res) => live && setBusy(res.ok ? (res.data?.busy ?? null) : null))
+      founderAvailability(founderId, dayStart.toISOString(), duration)
+        .then((res) => live && setAvailability(res.ok ? res.data! : null))
         .finally(() => live && setChecking(false));
     }, 0);
     return () => {
       live = false;
       window.clearTimeout(t);
     };
-  }, [open, founderId, day]);
+  }, [open, founderId, day, duration, reload]);
 
   const startAt = start ? new Date(start) : null;
-  const endAt = startAt ? new Date(startAt.getTime() + duration * 60_000) : null;
-  const clash = !!(busy && startAt && endAt && busy.some((b) => new Date(b.start) < endAt && new Date(b.end) > startAt));
   const time = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const pickSlot = (iso: string) => setStart(toLocalInput(new Date(iso)));
+
+  const sendAsk = () =>
+    startTransition(async () => {
+      const res = await askFounderAvailability({ founderId, ...ask });
+      if (!res.ok) return void toast.error(res.error);
+      toast.success(res.message);
+      setAsking(false);
+      setReload((n) => n + 1);
+    });
 
   const send = () =>
     startTransition(async () => {
@@ -344,23 +355,89 @@ export function RequestFounderDialog({
             </Field>
           </div>
           <div className="rounded-xl border border-line bg-surface-sunken/60 px-3 py-2.5 text-[12.5px] text-fg-muted">
-            {checking ? (
+            {checking || !availability ? (
               <span className="inline-flex items-center gap-1.5">
-                <Loader2 className="size-3.5 animate-spin" /> Checking {founder?.firstName}&apos;s calendar…
+                <Loader2 className="size-3.5 animate-spin" /> Checking…
               </span>
-            ) : busy === null ? (
+            ) : availability.access === "granted" ? (
+              <div>
+                <div className="mb-1.5 font-medium text-fg">
+                  {founder?.firstName}&apos;s open {duration}-minute slots that day — tap one:
+                </div>
+                {availability.slots.length === 0 ? (
+                  <span>None that day. Try another date.</span>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {availability.slots.map((iso) => {
+                      const on = startAt?.getTime() === new Date(iso).getTime();
+                      return (
+                        <button
+                          key={iso}
+                          type="button"
+                          onClick={() => pickSlot(iso)}
+                          className={cn(
+                            "rounded-full border px-2.5 py-1 text-[12px] font-medium tabular transition",
+                            on ? "border-brand bg-brand text-white" : "border-line bg-surface text-fg hover:border-brand/40 hover:text-brand",
+                          )}
+                        >
+                          {time(iso)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            ) : availability.access === "pending" ? (
               <span>
                 <Clock className="mr-1 inline size-3.5" />
-                {founder?.calendarConnected ? "Couldn't read their calendar right now." : `${founder?.firstName ?? "They"} hasn't connected a calendar, so busy times can't be shown.`}
+                You&apos;ve asked to see when {founder?.firstName} is free — waiting for an answer. You can still suggest a time.
               </span>
-            ) : busy.length === 0 ? (
-              <span className="text-success">{founder?.firstName} looks free all that day.</span>
+            ) : availability.access === "unavailable" ? (
+              <span>{founder?.firstName}&apos;s calendar isn&apos;t connected right now — suggest a time and they&apos;ll confirm.</span>
+            ) : asking ? (
+              <div className="space-y-2">
+                <div className="font-medium text-fg">Ask {founder?.firstName} to see when they&apos;re free</div>
+                <Input
+                  value={ask.purpose}
+                  onChange={(e) => setAsk((a) => ({ ...a, purpose: e.target.value }))}
+                  placeholder="What the meetings are for"
+                  maxLength={1000}
+                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={ask.meetings}
+                    onChange={(e) => setAsk((a) => ({ ...a, meetings: Math.max(1, Math.min(50, Number(e.target.value) || 1)) }))}
+                    className="w-20"
+                    aria-label="How many meetings"
+                  />
+                  <span>meeting(s) of</span>
+                  <NativeSelect
+                    value={ask.slotMinutes}
+                    onChange={(e) => setAsk((a) => ({ ...a, slotMinutes: Number(e.target.value) as 15 | 30 | 45 | 60 | 90 }))}
+                    className="w-28"
+                    aria-label="Meeting length"
+                  >
+                    {[15, 30, 45, 60, 90].map((m) => (
+                      <option key={m} value={m}>
+                        {m} min
+                      </option>
+                    ))}
+                  </NativeSelect>
+                  <Button size="sm" onClick={sendAsk} loading={pending} disabled={ask.purpose.trim().length < 5}>
+                    Ask
+                  </Button>
+                </div>
+              </div>
             ) : (
               <span>
-                <span className={cn("font-medium", clash ? "text-danger" : "text-fg")}>
-                  {clash ? `${founder?.firstName} is busy then. ` : `${founder?.firstName} is free then. `}
-                </span>
-                Busy that day: {busy.map((b) => `${time(b.start)}–${time(b.end)}`).join(", ")}
+                {availability.access === "declined" ? `${founder?.firstName} didn't share their availability last time. ` : `${founder?.firstName}'s calendar is private. `}
+                <button type="button" onClick={() => setAsking(true)} className="font-medium text-brand hover:underline">
+                  Ask to see when they&apos;re free
+                </button>{" "}
+                — or just suggest a time below.
               </span>
             )}
           </div>

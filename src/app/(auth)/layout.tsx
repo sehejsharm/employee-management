@@ -11,6 +11,10 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           © {new Date().getFullYear()} Focus Realm · Internal workspace — authorised personnel only ·{" "}
           <a href="/privacy" className="underline-offset-2 hover:text-fg hover:underline">
             Privacy
+          </a>{" "}
+          ·{" "}
+          <a href="/terms" className="underline-offset-2 hover:text-fg hover:underline">
+            Terms
           </a>
         </footer>
       </main>

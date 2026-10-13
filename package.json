@@ -18,7 +18,7 @@
     "db:studio": "prisma studio",
     "create-founder": "tsx scripts/create-founder.ts",
     "hr:simulate": "tsx scripts/hr-simulate.ts",
-    "privacy:md": "tsx scripts/privacy-md.ts"
+    "legal:md": "tsx scripts/legal-md.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

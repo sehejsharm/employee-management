@@ -8,7 +8,7 @@ import { NextResponse, type NextRequest } from "next/server";
  */
 const SESSION_COOKIES = ["__Host-fr_session", "fr_session"];
 
-const PUBLIC_PREFIXES = ["/login", "/setup", "/privacy"];
+const PUBLIC_PREFIXES = ["/login", "/setup", "/privacy", "/terms"];
 
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;

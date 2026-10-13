@@ -1,6 +1,6 @@
 /**
  * The Workspace privacy policy. One source for the public /privacy page and
- * docs/PRIVACY_POLICY.md (npm run privacy:md regenerates the Markdown).
+ * docs/PRIVACY_POLICY.md (npm run legal:md regenerates the Markdown).
  * Keep it true to what the code does — update it when data handling changes.
  */
 
@@ -116,14 +116,19 @@ export function policySections(contact: string): PolicySection[] {
   ];
 }
 
-/** Markdown version, for docs/PRIVACY_POLICY.md. */
-export function policyMarkdown(contact: string) {
-  const out = [`# Focus Realm Workspace — Privacy Policy`, "", `_Last updated: ${POLICY_UPDATED}_`, ""];
-  for (const s of policySections(contact)) {
+/** Markdown version of a legal page. */
+export function legalMarkdown(title: string, updated: string, sections: PolicySection[]) {
+  const out = [`# Focus Realm Workspace — ${title}`, "", `_Last updated: ${updated}_`, ""];
+  for (const s of sections) {
     out.push(`## ${s.title}`, "");
     for (const p of s.body ?? []) out.push(p, "");
     for (const l of s.list ?? []) out.push(`- ${l}`);
     if (s.list) out.push("");
   }
   return out.join("\n");
+}
+
+/** Who to write to about privacy or the terms: PRIVACY_CONTACT_EMAIL, or the founders. */
+export function legalContact() {
+  return process.env.PRIVACY_CONTACT_EMAIL?.trim() || "the Focus Realm founders";
 }

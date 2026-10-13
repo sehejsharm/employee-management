@@ -22,7 +22,7 @@ import { MeetNowButton, RequestFounderDialog, ScheduleMeetingDialog } from "@/co
 import { teamConnection } from "@/lib/google/calendar";
 import { googleConfig } from "@/lib/google/config";
 import { pickablePeople } from "@/lib/people";
-import { Award, CalendarPlus, Crown, FileText } from "lucide-react";
+import { Award, CalendarPlus, FileText } from "lucide-react";
 import { GiveRecognitionDialog, RecognitionCard } from "@/components/recognition/recognition";
 import { recognitionFeed } from "@/lib/recognition-feed";
 import { sharingEmailWith } from "@/lib/shared-email";
@@ -178,7 +178,7 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
                 initialFounderId={person.id}
                 trigger={
                   <Button variant="soft">
-                    <Crown /> Request a meeting
+                    Request a meeting
                   </Button>
                 }
               />

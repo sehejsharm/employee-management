@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { closeOutAfterLeaving } from "@/lib/offboarding";
 import { db } from "@/lib/db";
 import { Prisma } from "@/generated/prisma/client";
 import {
@@ -308,6 +309,7 @@ async function setStatus(data: unknown, status: "ACTIVE" | "INACTIVE"): Promise<
 
   if (status === "INACTIVE" && user.status !== "INACTIVE") {
     await fileReportOnOffboarding(user.id, null).catch((e) => console.error("offboarding report failed", e));
+    await closeOutAfterLeaving(user.id);
   }
   await audit({
     actorId: null,

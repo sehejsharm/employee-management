@@ -18,6 +18,8 @@ export interface PickablePerson {
   onLeave: boolean;
   /** Founders' "Before you meet me" notes. */
   meetingNotes?: string | null;
+  /** Their calendar invites go to an inbox other people share (e.g. interns@). */
+  sharedInbox?: boolean;
 }
 
 export function AssigneePicker({

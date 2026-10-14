@@ -91,7 +91,8 @@ export function guestInvite(
     "• No Google account is needed. If asked, enter your name and click “Ask to join”; we'll let you in.",
     "• Please check your camera and microphone beforehand and join from a quiet place.",
     ...notes.flatMap((n) => ["", n]),
-    ...(m.description ? ["", m.description.trim()] : []),
+    // The meeting's own description is written for colleagues (often notes for the founder),
+    // so it never goes into an invite for someone outside the company.
     "",
     "If you need to reschedule, simply reply to this message.",
     "",

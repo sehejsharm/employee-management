@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
     return back("google=team-connected");
   } catch (error) {
     console.error("Google connect failed", error);
-    const message = error instanceof GoogleError ? error.message : "Google didn't respond.";
-    return back(`google=failed&reason=${encodeURIComponent(message.slice(0, 200))}`);
+    const reason = error instanceof GoogleError ? (error.reconnect ? "auth" : "calendar") : "network";
+    return back(`google=failed&reason=${reason}`);
   }
 }

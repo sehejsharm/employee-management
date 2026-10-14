@@ -1,5 +1,6 @@
 "use server";
 
+import { closeOutAfterLeaving } from "@/lib/offboarding";
 import { refresh } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
@@ -137,6 +138,7 @@ export async function updateMember(userId: string, input: z.input<typeof accessS
 
   if (d.status === "INACTIVE" && target.status !== "INACTIVE") {
     await fileReportOnOffboarding(userId, actor.id).catch((e) => console.error("offboarding report failed", e));
+    await closeOutAfterLeaving(userId);
   }
   const changes: string[] = [];
   if (d.role !== target.role) changes.push(`role ${ROLE_LABEL[target.role]} → ${ROLE_LABEL[d.role]}`);

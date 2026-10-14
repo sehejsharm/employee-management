@@ -18,7 +18,7 @@ const DISMISSED_KEY = "fr-dismissed-calls";
 
 function dismissed(): string[] {
   try {
-    return JSON.parse(sessionStorage.getItem(DISMISSED_KEY) || "[]");
+    return JSON.parse(localStorage.getItem(DISMISSED_KEY) || "[]");
   } catch {
     return [];
   }
@@ -26,7 +26,7 @@ function dismissed(): string[] {
 
 function dismiss(id: string) {
   try {
-    sessionStorage.setItem(DISMISSED_KEY, JSON.stringify([...dismissed(), id].slice(-20)));
+    localStorage.setItem(DISMISSED_KEY, JSON.stringify([...dismissed(), id].slice(-20)));
   } catch {}
 }
 
@@ -88,10 +88,18 @@ export function IncomingCallWatcher() {
     };
     const first = window.setTimeout(check, 0);
     const id = window.setInterval(check, POLL_MS);
+    // Answered or dismissed in another tab: stop ringing here too.
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== DISMISSED_KEY) return;
+      const skip = dismissed();
+      setCall((cur) => (cur && skip.includes(cur.id) ? null : cur));
+    };
+    window.addEventListener("storage", onStorage);
     return () => {
       live = false;
       window.clearTimeout(first);
       window.clearInterval(id);
+      window.removeEventListener("storage", onStorage);
     };
   }, []);
 

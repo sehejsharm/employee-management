@@ -28,6 +28,13 @@ const GOOGLE_NOTICE: Record<string, { tone: "success" | "danger"; text: string }
   failed: { tone: "danger", text: "Google didn't accept the connection." },
 };
 
+/** Why a Google connection failed — fixed messages only, so a crafted link can't put its own text in the banner. */
+const GOOGLE_REASON: Record<string, string> = {
+  auth: "Google rejected the sign-in or the permissions. Try again and allow calendar access.",
+  calendar: "Google accepted the sign-in but the calendar couldn't be set up. Try again in a minute.",
+  network: "Google didn't respond. Try again in a minute.",
+};
+
 export default async function CalendarPage({ searchParams }: { searchParams: Promise<{ google?: string; reason?: string }> }) {
   const user = await requireUser();
   const tz = await getTimeZone();
@@ -63,24 +70,23 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   }
   // Private meetings on the shared calendar show only to the people in them.
   if (agenda?.some((e) => e.visibility === "private")) {
-    const mineIds = new Set(
-      (
-        await db.meeting.findMany({
-          where: {
-            OR: [{ googleEventId: { in: agenda.map((e) => e.id) } }, { teamEventId: { in: agenda.map((e) => e.id) } }],
-            AND: [{ OR: [{ organizerId: user.id }, { hostId: user.id }, { attendees: { some: { userId: user.id } } }] }],
-          },
-          select: { googleEventId: true, teamEventId: true },
-        })
-      ).flatMap((m) => [m.googleEventId, m.teamEventId]),
-    );
+    const ids = agenda.map((e) => e.id);
+    const mine = await db.meeting.findMany({
+      where: {
+        OR: [{ googleEventId: { in: ids } }, { teamEventId: { in: ids } }, { slots: { some: { googleEventId: { in: ids } } } }],
+        AND: [{ OR: [{ organizerId: user.id }, { hostId: user.id }, { attendees: { some: { userId: user.id } } }] }],
+      },
+      select: { googleEventId: true, teamEventId: true, slots: { select: { googleEventId: true } } },
+    });
+    const mineIds = new Set(mine.flatMap((m) => [m.googleEventId, m.teamEventId, ...m.slots.map((s) => s.googleEventId)]));
     agenda = agenda.filter((e) => e.visibility !== "private" || mineIds.has(e.id));
   }
   const agendaByDay = new Map<string, GoogleEvent[]>();
   for (const e of agenda ?? []) {
-    const { start } = eventTimes(e);
+    const { start, allDay } = eventTimes(e);
     if (!start) continue;
-    const key = dayKey(start, tz);
+    // All-day events belong to their calendar date everywhere, not to a converted instant.
+    const key = allDay && e.start?.date ? e.start.date : dayKey(start, tz);
     agendaByDay.set(key, [...(agendaByDay.get(key) ?? []), e]);
   }
 
@@ -132,7 +138,9 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
           className={`mb-6 rounded-xl border px-4 py-3 text-[13.5px] ${notice.tone === "success" ? "border-success/25 bg-success-soft text-success" : "border-danger/25 bg-danger-soft text-danger"}`}
         >
           {notice.text}
-          {params.reason && <span className="mt-0.5 block text-[12.5px] opacity-80">{params.reason}</span>}
+          {params.google === "failed" && params.reason && GOOGLE_REASON[params.reason] && (
+            <span className="mt-0.5 block text-[12.5px] opacity-80">{GOOGLE_REASON[params.reason]}</span>
+          )}
         </div>
       )}
 
@@ -232,7 +240,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
                   {[...agendaByDay.entries()].map(([day, events]) => (
                     <div key={day}>
                       <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">
-                        {formatDate(eventTimes(events[0]).start!, tz, { weekday: true })}
+                        {formatDate(new Date(`${day}T12:00:00Z`), "UTC", { weekday: true })}
                       </div>
                       <ul className="space-y-1.5">
                         {events.map((e) => {

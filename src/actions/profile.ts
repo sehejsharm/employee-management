@@ -1,5 +1,6 @@
 "use server";
 
+import { isValidPhone } from "@/lib/phone";
 import { refresh } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
@@ -33,6 +34,11 @@ export async function updateProfile(input: z.input<typeof profileSchema>): Promi
   const parsed = profileSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
   const d = parsed.data;
+  if (d.phone && !isValidPhone(d.phone)) return { ok: false, error: "Enter a valid phone number, e.g. +91 98765 43210." };
+  // Phone and location are required details: they can be changed, not removed.
+  const current = await db.user.findUnique({ where: { id: user.id }, select: { phone: true, location: true } });
+  if (!d.phone && current?.phone) return { ok: false, error: "Your phone number is required — change it rather than removing it." };
+  if (!d.location && current?.location) return { ok: false, error: "Your location is required — change it rather than removing it." };
   await db.user.update({
     where: { id: user.id },
     data: { phone: d.phone || null, location: d.location || null, bio: d.bio || null, avatarHue: d.avatarHue },

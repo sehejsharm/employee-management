@@ -1,5 +1,6 @@
 "use server";
 
+import { isValidPhone } from "@/lib/phone";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
@@ -166,8 +167,7 @@ export async function completeProfile(_: AuthFormState, formData: FormData): Pro
 
   const phone = String(formData.get("phone") ?? "").trim();
   const location = String(formData.get("location") ?? "").trim();
-  const digits = phone.replace(/\D/g, "");
-  if (!/^\+?[\d\s().-]+$/.test(phone) || digits.length < 7 || digits.length > 15 || phone.length > 32) {
+  if (!isValidPhone(phone)) {
     return { error: "Enter a valid phone number, e.g. +91 98765 43210.", field: "phone" };
   }
   if (location.length < 2 || location.length > 80) return { error: "Enter your city or location.", field: "location" };

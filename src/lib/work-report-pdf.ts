@@ -35,6 +35,9 @@ export async function workReportPdf(data: WorkReportData, opts: { tz: string; ti
   // Helvetica only speaks WinAnsi: swap anything else for a close ASCII cousin.
   const clean = (text: string) =>
     text
+      // Line breaks and tabs become spaces (the PDF draws each field on one wrapped line).
+      .replace(/\s+/g, " ")
+      .replace(/₹/g, "Rs.")
       .replace(/[↔→]/g, "-")
       .replace(/[‘’]/g, "'")
       .replace(/[“”]/g, '"')

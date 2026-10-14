@@ -128,8 +128,8 @@ async function rawApi<T>(token: string, method: string, path: string, body?: unk
   if (res.status === 204) return undefined as T;
   const json = (await res.json().catch(() => ({}))) as { error?: { message?: string } } & T;
   if (!res.ok) {
-    // 410: already deleted — fine for deletes.
-    if (res.status === 410 && method === "DELETE") return undefined as T;
+    // 404/410: already gone (deleted, or never on this calendar) — fine for deletes.
+    if ((res.status === 410 || res.status === 404) && method === "DELETE") return undefined as T;
     throw new GoogleError(json.error?.message || `Google Calendar error ${res.status}.`, res.status === 401);
   }
   return json;
@@ -188,13 +188,33 @@ export async function ensureTeamCalendar(conn: GoogleConnection, timeZone: strin
   return { id: created.id, name };
 }
 
-/** Lets each email see the team calendar (read-only) so it can be added in Google Calendar. */
-export async function shareCalendar(conn: GoogleConnection, emails: string[]) {
-  const existing = await api<{ items?: { scope?: { type?: string; value?: string } }[] }>(conn, "GET", `${cal(conn.calendarId)}/acl`);
+/**
+ * Lets each email see the team calendar (read-only) so it can be added in Google Calendar.
+ * With `prune`, also removes read access from any address not in the list — so people who
+ * left, or a calendar email someone has since changed, stop seeing the calendar. Owner and
+ * writer rules are never touched.
+ */
+export async function shareCalendar(conn: GoogleConnection, emails: string[], opts: { prune?: boolean; add?: boolean } = {}) {
+  const existing = await api<{ items?: { id?: string; role?: string; scope?: { type?: string; value?: string } }[] }>(conn, "GET", `${cal(conn.calendarId)}/acl`);
+  const wanted = new Set(emails.map((e) => e.toLowerCase()));
   const already = new Set((existing.items ?? []).map((r) => r.scope?.value?.toLowerCase()).filter(Boolean));
+  let removed = 0;
+  if (opts.prune) {
+    for (const rule of existing.items ?? []) {
+      const email = rule.scope?.value?.toLowerCase();
+      if (!rule.id || rule.role !== "reader" || rule.scope?.type !== "user" || !email || wanted.has(email)) continue;
+      try {
+        await api(conn, "DELETE", `${cal(conn.calendarId)}/acl/${encodeURIComponent(rule.id)}`);
+        already.delete(email);
+        removed += 1;
+      } catch (e) {
+        console.error("Couldn't remove team-calendar access", email, e);
+      }
+    }
+  }
   let shared = 0;
   const failed: string[] = [];
-  for (const email of [...new Set(emails.map((e) => e.toLowerCase()))]) {
+  for (const email of opts.add === false ? [] : wanted) {
     if (already.has(email)) continue;
     try {
       await api(conn, "POST", `${cal(conn.calendarId)}/acl?sendNotifications=false`, { role: "reader", scope: { type: "user", value: email } });
@@ -203,7 +223,7 @@ export async function shareCalendar(conn: GoogleConnection, emails: string[]) {
       failed.push(email);
     }
   }
-  return { shared, alreadyShared: already.size, failed };
+  return { shared, alreadyShared: already.size, failed, removed };
 }
 
 /** Tells Google to forget our access, best effort. */

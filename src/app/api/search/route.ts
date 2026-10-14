@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
           {
             OR: [
               { title: { contains: q, mode: "insensitive" } },
-              ...(Number.isInteger(numeric) && numeric > 0 ? [{ number: numeric }] : []),
+              ...(Number.isSafeInteger(numeric) && numeric > 0 && numeric <= 2_147_483_647 ? [{ number: numeric }] : []),
             ],
           },
         ],

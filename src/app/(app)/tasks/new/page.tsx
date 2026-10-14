@@ -3,7 +3,7 @@ import { PageHeader } from "@/components/app/page-header";
 import { TaskForm } from "@/components/tasks/task-form";
 import { requireUser } from "@/lib/auth/current-user";
 import { config } from "@/lib/env";
-import { canAssignTasks } from "@/lib/permissions";
+import { canAssignTasks, isFounder } from "@/lib/permissions";
 import { pickablePeople } from "@/lib/people";
 
 export const metadata: Metadata = { title: "New task" };
@@ -28,6 +28,7 @@ export default async function NewTaskPage({ searchParams }: { searchParams: Prom
         canAssignOthers={canAssign}
         maxUploadBytes={config.maxUploadBytes()}
         presetAssignee={preset}
+        canRepeat={isFounder(user)}
       />
     </>
   );

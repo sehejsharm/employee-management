@@ -22,6 +22,9 @@ import { notify } from "@/lib/notifications";
 import { config } from "@/lib/env";
 import { formatBytes, fullName, safeHttpUrl, taskRef, type ActionResult } from "@/lib/utils";
 import type { TaskStatus } from "@/generated/prisma/enums";
+import { createNextOccurrence, firstDue, MAX_OCCURRENCES, REPEAT_LABEL, seriesDueDates } from "@/lib/task-series";
+import { getTimeZone } from "@/lib/tz.server";
+import { formatDate } from "@/lib/time";
 
 /* -------------------------------------------------------------------------- */
 /* Helpers                                                                    */
@@ -92,30 +95,35 @@ function pickLead(ids: string[], leadId: string | undefined) {
   return leadId && ids.includes(leadId) ? leadId : ids[0];
 }
 
-/** Assignees must be real, current people. Former employees can't be given work. */
-async function validateAssignees(user: Actor, ids: string[]) {
+/**
+ * Assignees must be real, current people. Only the people being *added* are checked:
+ * someone already on the task stays editable (and removable) after they leave, and an
+ * editor without assigning rights can still edit a task others were added to.
+ */
+async function validateAssignees(user: Actor, ids: string[], existing: string[] = []) {
   const unique = [...new Set(ids)];
   if (unique.length === 0) return { error: "Assign the task to at least one person." } as const;
   if (unique.length > 25) return { error: "A task can have at most 25 assignees." } as const;
-  if (!canAssignTasks(user) && unique.some((id) => id !== user.id)) {
+  const added = unique.filter((id) => !existing.includes(id));
+  if (!canAssignTasks(user) && added.some((id) => id !== user.id)) {
     return { error: "You can create tasks for yourself. Ask a founder to give you assigning rights for others." } as const;
   }
   const found = await db.user.findMany({
-    where: { id: { in: unique }, status: { not: "INACTIVE" } },
+    where: { id: { in: added }, status: { not: "INACTIVE" } },
     select: { id: true },
   });
-  if (found.length !== unique.length) return { error: "One of the selected people is no longer active." } as const;
+  if (found.length !== added.length) return { error: "One of the selected people is no longer active." } as const;
   return { ids: unique } as const;
 }
 
 const linkSchema = z.object({
-  title: z.string().trim().max(160).optional().default(""),
-  url: z.string().trim().min(1, "Add a URL.").max(2000),
+  title: z.string().trim().max(160, "Link labels can be up to 160 characters.").optional().default(""),
+  url: z.string().trim().min(1, "Add a URL.").max(2000, "That link is too long."),
 });
 
 const noteSchema = z.object({
-  title: z.string().trim().min(1, "Give the note a title.").max(160),
-  content: z.string().trim().min(1, "The note is empty.").max(20000),
+  title: z.string().trim().min(1, "Give the note a title.").max(160, "Note titles can be up to 160 characters."),
+  content: z.string().trim().min(1, "The note is empty.").max(20000, "Notes can be up to 20,000 characters."),
 });
 
 /* -------------------------------------------------------------------------- */
@@ -132,7 +140,18 @@ const taskSchema = z.object({
   leadId: z.string().min(1).optional(),
   links: z.array(linkSchema).max(20).optional().default([]),
   notes: z.array(noteSchema).max(20).optional().default([]),
-  checklist: z.array(z.string().trim().min(1).max(300)).max(50).optional().default([]),
+  checklist: z
+    .array(z.string().trim().min(1, "A checklist step is empty.").max(300, "Checklist steps can be up to 300 characters."))
+    .max(50, "At most 50 checklist steps.")
+    .optional()
+    .default([]),
+  /** Founders only: repeat the task, e.g. every day for 30 days. */
+  repeat: z
+    .object({
+      frequency: z.enum(["DAILY", "WEEKDAYS", "WEEKLY"]),
+      count: z.number().int().min(2, "Repeat at least twice.").max(MAX_OCCURRENCES, `At most ${MAX_OCCURRENCES} times.`),
+    })
+    .optional(),
 });
 
 export type TaskInput = z.input<typeof taskSchema>;
@@ -178,6 +197,40 @@ export async function createTask(input: TaskInput): Promise<ActionResult<{ id: s
     links.push({ title: l.title || new URL(url).hostname, url });
   }
 
+  if (data.repeat) {
+    if (!isFounder(user)) return { ok: false, error: "Only founders can set up repeating tasks." };
+    const tz = await getTimeZone();
+    const first = firstDue(due, data.repeat.frequency, tz);
+    const series = await db.taskSeries.create({
+      data: {
+        createdById: user.id,
+        title: data.title,
+        description: data.description || null,
+        priority: data.priority,
+        assigneeIds: assignees.ids,
+        leadId: lead,
+        checklist: data.checklist,
+        attachments: [
+          ...links.map((l) => ({ kind: "LINK", title: l.title, url: l.url })),
+          ...data.notes.map((n) => ({ kind: "NOTE", title: n.title, content: n.content })),
+        ],
+        frequency: data.repeat.frequency,
+        total: data.repeat.count,
+        nextDueAt: first,
+        timeZone: tz,
+      },
+      select: { id: true },
+    });
+    const firstTask = await createNextOccurrence(series.id, new Date(), { force: true });
+    if (!firstTask) return { ok: false, error: "Couldn't create the first task. Try again." };
+    const dates = seriesDueDates(first, data.repeat.frequency, data.repeat.count, tz);
+    return {
+      ok: true,
+      data: { id: firstTask.id },
+      message: `Repeats ${REPEAT_LABEL[data.repeat.frequency]}, ${data.repeat.count} times (${formatDate(dates[0], tz)} → ${formatDate(dates[dates.length - 1], tz)}). Each one appears ahead of its deadline.`,
+    };
+  }
+
   const task = await db.task.create({
     data: {
       title: data.title,
@@ -213,14 +266,23 @@ export async function updateTask(taskId: string, input: z.input<typeof editSchem
   if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
   const data = parsed.data;
 
-  const assignees = await validateAssignees(user, data.assigneeIds);
+  const assignees = await validateAssignees(
+    user,
+    data.assigneeIds,
+    task.assignees.map((a) => a.userId),
+  );
   if ("error" in assignees) return { ok: false, error: assignees.error! };
 
   const current = await db.task.findUniqueOrThrow({
     where: { id: taskId },
-    select: { title: true, description: true, priority: true, dueAt: true },
+    select: { title: true, description: true, priority: true, dueAt: true, status: true },
   });
   const due = new Date(data.dueAt);
+  if (due.getTime() !== current.dueAt.getTime()) {
+    // A finished task's deadline is part of its record; moving it would rewrite who was on time.
+    if (current.status === "DONE") return { ok: false, error: "This task is done — its deadline can't change any more." };
+    if (due.getTime() < Date.now() - 5 * 60 * 1000) return { ok: false, error: "The deadline is in the past." };
+  }
   const before = new Set(task.assignees.map((a) => a.userId));
   const added = assignees.ids.filter((id) => !before.has(id));
   const removed = [...before].filter((id) => !assignees.ids.includes(id));
@@ -583,8 +645,10 @@ export async function removeAttachment(attachmentId: string): Promise<ActionResu
   if (attachment.submissionId) return { ok: false, error: "Proof that's been submitted stays with the submission." };
   const task = await loadTask(attachment.taskId);
   if (!task) return { ok: false, error: "That task no longer exists." };
-  if (attachment.createdById !== user.id && !canEditTask(user, ctx(task))) {
-    return { ok: false, error: "Only whoever added it, or the task's owner, can remove this." };
+  // Your own material only while you're still on the task; the owner can always tidy up.
+  const ownAndStillOn = attachment.createdById === user.id && canContribute(user, ctx(task));
+  if (!ownAndStillOn && !canEditTask(user, ctx(task))) {
+    return { ok: false, error: "Only whoever added it (while still on the task), or the task's owner, can remove this." };
   }
 
   await db.$transaction([
@@ -687,7 +751,10 @@ export async function submitWork(taskId: string, formData: FormData): Promise<Ac
     if (!PROOF_EXTENSIONS.test(f.name)) return { ok: false, error: `${f.name}: attach a document — PDF, Word, a spreadsheet, slides or a screenshot.` };
   }
 
-  if (summary.length < MIN_WRITEUP && links.length === 0 && files.length === 0) {
+  // Founders' word is enough: a short note such as "Done" hands their work in. Everyone else needs proof.
+  if (isFounder(user)) {
+    if (!summary && links.length === 0 && files.length === 0) return { ok: false, error: 'Write a short note — even just "Done".' };
+  } else if (summary.length < MIN_WRITEUP && links.length === 0 && files.length === 0) {
     return {
       ok: false,
       error: `Add proof of the work: a written account (at least ${MIN_WRITEUP} characters), a document (Word, PDF…) or a link.`,
@@ -931,6 +998,11 @@ export async function mergeTasks(targetId: string, input: z.input<typeof mergeSc
   ]);
   if (!target) return { ok: false, error: "That task no longer exists." };
   if (sources.length !== sourceIds.length) return { ok: false, error: "One of those tasks no longer exists." };
+  // Work waiting for review has to be decided first, or it would land on the merged task half-reviewed.
+  const inReview = sources.filter((t) => t.status === "IN_REVIEW");
+  if (inReview.length) {
+    return { ok: false, error: `${inReview.map((t) => taskRef(t.number)).join(", ")} has work waiting for review — accept it or send it back first.` };
+  }
 
   const have = new Set(target.assignees.map((a) => a.userId));
   const newcomers = [...new Set(sources.flatMap((t) => t.assignees.map((a) => a.userId)))].filter((id) => !have.has(id));
@@ -969,15 +1041,38 @@ export async function mergeTasks(targetId: string, input: z.input<typeof mergeSc
     }),
   ]);
 
-  const everyone = [target.createdById, ...target.assignees.map((a) => a.userId), ...sources.flatMap((t) => [t.createdById, ...t.assignees.map((a) => a.userId)])];
-  await notify(everyone, {
+  // People on the merged task (and founders) can open it; whoever assigned a source task
+  // but isn't on the merged one gets a plain note instead of a link they can't open.
+  const onTarget = new Set([target.createdById, ...target.assignees.map((a) => a.userId), ...newcomers]);
+  const sourceCreators = [...new Set(sources.map((t) => t.createdById))].filter((id) => !onTarget.has(id));
+  const founderIds = new Set(
+    (await db.user.findMany({ where: { id: { in: sourceCreators }, role: "FOUNDER" }, select: { id: true } })).map((u) => u.id),
+  );
+  const title = `${user.firstName} merged ${refs.join(", ")} into ${taskRef(target.number)}`;
+  await notify([...onTarget, ...sourceCreators.filter((id) => founderIds.has(id))], {
     kind: "TASK_STATUS",
     actorId: user.id,
     taskId: targetId,
     href: `/tasks/${targetId}`,
-    title: `${user.firstName} merged ${refs.join(", ")} into ${taskRef(target.number)}`,
+    title,
     body: `${target.title} — one task now, with everyone on it.`,
   });
+  await notify(
+    sourceCreators.filter((id) => !founderIds.has(id)),
+    { kind: "TASK_STATUS", actorId: user.id, title, body: `The work you assigned now lives in ${taskRef(target.number)}, which you're not on. Ask ${user.firstName} if you need to follow it.` },
+  );
   refresh();
   return { ok: true, message: `Merged ${refs.join(", ")} into ${taskRef(target.number)}.` };
+}
+
+/** Stops a repeating task: no further occurrences are created. Ones already created stay as they are. */
+export async function stopTaskSeries(seriesId: string): Promise<ActionResult> {
+  const user = await requireUser();
+  const series = await db.taskSeries.findUnique({ where: { id: seriesId }, select: { createdById: true, stoppedAt: true, created: true, total: true } });
+  if (!series) return { ok: false, error: "That repeating task is gone." };
+  if (series.createdById !== user.id && !isFounder(user)) return { ok: false, error: "Only whoever set it up, or a founder, can stop it." };
+  if (series.stoppedAt || series.created >= series.total) return { ok: true, message: "It has already stopped repeating." };
+  await db.taskSeries.update({ where: { id: seriesId }, data: { stoppedAt: new Date(), nextDueAt: null } });
+  refresh();
+  return { ok: true, message: `Stopped — no more after ${series.created} of ${series.total}.` };
 }

@@ -18,7 +18,7 @@ export function DropdownMenuContent({
 }: React.ComponentProps<typeof M.Content>) {
   return (
     <M.Portal>
-      <M.Content align={align} sideOffset={sideOffset} className={cn(panel, className)} {...props} />
+      <M.Content align={align} sideOffset={sideOffset} collisionPadding={8} className={cn(panel, "max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto", className)} {...props} />
     </M.Portal>
   );
 }
@@ -62,7 +62,7 @@ export function PopoverContent({
 }: React.ComponentProps<typeof P.Content>) {
   return (
     <P.Portal>
-      <P.Content align={align} sideOffset={sideOffset} className={cn(panel, "p-0", className)} {...props} />
+      <P.Content align={align} sideOffset={sideOffset} collisionPadding={8} className={cn(panel, "flex max-h-[var(--radix-popover-content-available-height)] flex-col p-0", className)} {...props} />
     </P.Portal>
   );
 }

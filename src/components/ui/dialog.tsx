@@ -30,7 +30,7 @@ export function DialogContent({
       <D.Overlay className="fixed inset-0 z-50 bg-scrim backdrop-blur-[3px] data-[state=closed]:animate-[fade-out_150ms_ease-in] data-[state=open]:animate-[fade-in_200ms_ease-out]" />
       <D.Content
         className={cn(
-          "fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-1.5rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-lg outline-none",
+          "fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100dvh-2rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] w-[calc(100vw-1.5rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-lg outline-none",
           "data-[state=open]:animate-[dialog-in_260ms_cubic-bezier(0.16,1,0.3,1)] data-[state=closed]:animate-[dialog-out_150ms_ease-in]",
           width,
           className,
@@ -46,7 +46,7 @@ export function DialogContent({
             )}
           </div>
           {!hideClose && (
-            <D.Close className="-mr-1.5 -mt-0.5 rounded-lg p-1.5 text-fg-subtle transition hover:bg-surface-hover hover:text-fg" aria-label="Close">
+            <D.Close className="-mr-2.5 -mt-1.5 rounded-lg p-2.5 text-fg-subtle transition hover:bg-surface-hover hover:text-fg" aria-label="Close">
               <X className="size-4" />
             </D.Close>
           )}
@@ -83,7 +83,7 @@ export function SheetContent({
       <D.Content
         className={cn(
           "fixed z-50 flex flex-col overflow-hidden border-line bg-surface shadow-lg outline-none",
-          "inset-x-0 bottom-0 max-h-[88dvh] rounded-t-3xl border-t sm:inset-y-0 sm:left-auto sm:right-0 sm:max-h-none sm:w-[440px] sm:rounded-none sm:border-l sm:border-t-0",
+          "inset-x-0 bottom-0 max-h-[88dvh] rounded-t-3xl border-t sm:inset-y-0 sm:left-auto sm:right-0 sm:max-h-none sm:w-[min(440px,100vw)] sm:rounded-none sm:border-l sm:border-t-0 sm:pr-[env(safe-area-inset-right)]",
           "data-[state=open]:animate-[sheet-in-up_320ms_cubic-bezier(0.16,1,0.3,1)] sm:data-[state=open]:animate-[sheet-in-right_320ms_cubic-bezier(0.16,1,0.3,1)]",
           className,
         )}
@@ -98,11 +98,11 @@ export function SheetContent({
               <D.Description className="sr-only">{typeof title === "string" ? title : "Panel"}</D.Description>
             )}
           </div>
-          <D.Close className="-mr-1.5 rounded-lg p-1.5 text-fg-subtle transition hover:bg-surface-hover hover:text-fg" aria-label="Close">
+          <D.Close className="-mr-2.5 -mt-1 rounded-lg p-2.5 text-fg-subtle transition hover:bg-surface-hover hover:text-fg" aria-label="Close">
             <X className="size-4" />
           </D.Close>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-5">{children}</div>
       </D.Content>
     </D.Portal>
   );

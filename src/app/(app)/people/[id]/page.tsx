@@ -19,6 +19,7 @@ import { isAboveInReportingLine, wouldCreateCycle } from "@/lib/org";
 import { reportingEdges } from "@/lib/reporting";
 import { AdditionalManagersEditor } from "@/components/org/additional-managers";
 import { MeetNowButton, RequestFounderDialog, ScheduleMeetingDialog } from "@/components/calendar/meeting-dialogs";
+import { MeetingNotesCallout } from "@/components/calendar/meeting-notes";
 import { teamConnection } from "@/lib/google/calendar";
 import { googleConfig } from "@/lib/google/config";
 import { pickablePeople } from "@/lib/people";
@@ -31,6 +32,9 @@ import { ROLE_LABEL, STATUS_LABEL, canAssignTasks, canChangeEmail, canManageOrg,
 import { taskRowSelect, taskVisibilityWhere, toClientRow } from "@/lib/tasks/queries";
 import { formatDate, timeAgo } from "@/lib/time";
 import { getTimeZone } from "@/lib/tz.server";
+
+/** "Meet now" keeps ringing people's phones for up to 90 seconds after the call starts (src/lib/calls.ts). */
+export const maxDuration = 120;
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
@@ -58,6 +62,7 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
       phone: true,
       location: true,
       bio: true,
+      meetingNotes: true,
       focus: true,
       focusUpdatedAt: true,
       avatarHue: true,
@@ -157,9 +162,10 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
           <div className="absolute inset-0 bg-brand-gradient" />
           <div className="absolute inset-0 opacity-25 [background-image:radial-gradient(circle_at_1px_1px,white_1px,transparent_0)] [background-size:18px_18px]" />
         </div>
-        <div className="flex flex-col gap-4 px-5 pb-5 sm:flex-row sm:items-end sm:px-8 sm:pb-6">
+        {/* Wraps: when the actions don't fit beside the name they drop to their own row, so the name is never squeezed. */}
+        <div className="flex flex-col gap-4 px-5 pb-5 sm:flex-row sm:flex-wrap sm:items-end sm:px-8 sm:pb-6">
           <Avatar person={person} size="xl" ring className="-mt-12 ring-4 sm:-mt-14" dimmed={former} />
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 sm:min-w-[14rem]">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-[24px] font-semibold tracking-[-0.02em] sm:text-[28px]">
                 {person.firstName} {person.lastName}
@@ -170,11 +176,11 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
             <p className="mt-0.5 text-[14.5px] text-fg-muted">{person.title ?? ROLE_LABEL[person.role]}</p>
             {person.department && <DepartmentTag name={person.department.name} color={person.department.color} className="mt-1.5" />}
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 sm:ml-auto sm:justify-end">
             {meetable && <MeetNowButton userId={person.id} firstName={person.firstName} disabled={!teamReady} />}
             {meetable && person.role === "FOUNDER" && (
               <RequestFounderDialog
-                founders={[{ id: person.id, firstName: person.firstName, lastName: person.lastName, title: person.title, calendarConnected: !!founderConn && !founderConn.lastError }]}
+                founders={[{ id: person.id, firstName: person.firstName, lastName: person.lastName, title: person.title, calendarConnected: !!founderConn && !founderConn.lastError, meetingNotes: person.meetingNotes }]}
                 initialFounderId={person.id}
                 trigger={
                   <Button variant="soft">
@@ -230,9 +236,10 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[340px_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[340px_minmax(0,1fr)]">
         <div className="space-y-6">
           <SharedEmailNotice email={person.email} others={emailSharers} self={isSelf} name={person.firstName} />
+          {person.role === "FOUNDER" && !former && <MeetingNotesCallout firstName={person.firstName} notes={person.meetingNotes} self={isSelf} />}
           <Card>
             <CardBody className="space-y-3.5 pt-5 text-[13.5px]">
               <Detail icon={<Hash />} label="Employee ID" value={<span className="font-mono">{person.employeeCode}</span>} />

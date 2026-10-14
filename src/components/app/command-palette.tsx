@@ -102,7 +102,7 @@ export function CommandPalette({ nav, canCreate, children }: { nav: NavItem[]; c
                   value={query}
                   onValueChange={setQuery}
                   placeholder="Search tasks, people, or jump to…"
-                  className="h-14 flex-1 bg-transparent text-[15px] text-fg outline-none placeholder:text-fg-subtle"
+                  className="h-14 min-w-0 flex-1 bg-transparent text-base text-fg outline-none placeholder:text-fg-subtle"
                 />
                 {loading && query.trim() && <span className="h-4 w-4 animate-spin rounded-full border-2 border-line border-t-brand" />}
                 <Kbd>esc</Kbd>

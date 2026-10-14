@@ -79,7 +79,7 @@ export default async function LeadershipPage() {
       const [ownCount, delegatedCount, overdue] = await Promise.all([
         db.task.count({ where: { archivedAt: null, status: { not: "DONE" }, assignees: { some: { userId: l.id } } } }),
         db.task.count({ where: { archivedAt: null, status: { not: "DONE" }, createdById: l.id, assignees: { some: { userId: { not: l.id } } } } }),
-        db.task.count({ where: { archivedAt: null, status: { not: "DONE" }, dueAt: { lt: now }, assignees: { some: { userId: l.id } } } }),
+        db.task.count({ where: { archivedAt: null, status: { notIn: ["DONE", "IN_REVIEW"] }, dueAt: { lt: now }, assignees: { some: { userId: l.id } } } }),
       ]);
       return { leader: l, own, delegated, doneWeek, ownCount, delegatedCount, overdue };
     }),
@@ -142,7 +142,7 @@ function Section({ title, boards, detailed, tz, meId }: { title: string; boards:
   return (
     <section className="mb-10">
       <h2 className="mb-4 text-[12.5px] font-semibold uppercase tracking-[0.14em] text-fg-subtle">{title}</h2>
-      <Stagger className="grid gap-5 lg:grid-cols-2 2xl:grid-cols-3">
+      <Stagger className="grid grid-cols-1 gap-5 lg:grid-cols-2 2xl:grid-cols-3">
         {boards.map((b) => (
           <StaggerItem key={b.leader.id}>
             <LeaderCard board={b} detailed={detailed} tz={tz} isMe={b.leader.id === meId} />

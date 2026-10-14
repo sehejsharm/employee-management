@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { closeOutAfterLeaving } from "@/lib/offboarding";
 import { db } from "@/lib/db";
 import { Prisma } from "@/generated/prisma/client";
 import {
@@ -14,6 +15,10 @@ import { notify } from "@/lib/notifications";
 import { normaliseEmployeeCode } from "@/lib/employee-code";
 import { fullName } from "@/lib/utils";
 import { fileReportOnOffboarding } from "@/lib/work-report";
+import { wouldCreateCycle } from "@/lib/org";
+import { defaultGrants } from "@/lib/permissions";
+import type { Role } from "@/generated/prisma/enums";
+import { reportingEdges } from "@/lib/reporting";
 
 /**
  * The HR console's provisioning contract. Every event is one JSON envelope:
@@ -126,9 +131,10 @@ async function managerIdFor(e: HrEmployee) {
   if (e.managerEmployeeCode) {
     const m = await db.user.findUnique({
       where: { employeeCode: normaliseEmployeeCode(e.managerEmployeeCode) },
-      select: { id: true },
+      select: { id: true, status: true },
     });
-    if (m) return m.id;
+    // Someone who has left can't be a manager.
+    if (m && m.status !== "INACTIVE") return m.id;
   }
   if (e.managerEmail) {
     // Emails can be shared, so an email only identifies a manager when exactly one current person uses it.
@@ -256,7 +262,11 @@ async function updateExisting(
   // Shared emails are fine: the employee ID, not the email, identifies the account.
   // An email a founder or manager set in the Workspace wins over the HR console's.
   if (e.email && e.email.toLowerCase() !== existing.email && !existing.emailSetManuallyAt) data.email = e.email.toLowerCase();
-  if (e.role) data.role = e.role;
+  if (e.role && e.role !== existing.role) {
+    // A new role brings that role's default powers: a demoted manager loses admin rights,
+    // a promoted one can assign work.
+    Object.assign(data, { role: e.role, ...defaultGrants(e.role as Role) });
+  }
   if (e.title !== undefined) data.title = e.title || null;
   if (e.phone !== undefined) data.phone = e.phone || null;
   if (e.location !== undefined) data.location = e.location || null;
@@ -264,8 +274,18 @@ async function updateExisting(
     const departmentId = await departmentIdByName(e.department);
     data.department = departmentId ? { connect: { id: departmentId } } : { disconnect: true };
   }
+  const warnings: string[] = [];
   const managerId = await managerIdFor(e);
-  if (managerId && managerId !== existing.id) data.manager = { connect: { id: managerId } };
+  if ((e.managerEmployeeCode || e.managerEmail) && !managerId) {
+    warnings.push("Manager not found among current people; reporting line left unchanged.");
+  } else if (managerId && managerId !== existing.id) {
+    // Never create a loop (A reports to B while B reports to A).
+    if (wouldCreateCycle(await reportingEdges(), existing.id, managerId)) {
+      warnings.push("That manager reports (directly or indirectly) to this person; reporting line left unchanged.");
+    } else {
+      data.manager = { connect: { id: managerId } };
+    }
+  }
   const joinedAt = parseDate(e.startDate);
   if (joinedAt) data.joinedAt = joinedAt;
   const lastDay = parseDate(e.endDate);
@@ -289,6 +309,7 @@ async function updateExisting(
       ok: true,
       action,
       user: publicUser(user),
+      ...(warnings.length ? { warnings } : {}),
       ...(generated ? { credentials: { loginId: user.employeeCode, email: user.email, temporaryPassword: generated } } : {}),
     },
   };
@@ -302,12 +323,22 @@ async function setStatus(data: unknown, status: "ACTIVE" | "INACTIVE"): Promise<
   if (user.role === "FOUNDER") throw new HrEventError("Founder accounts cannot be changed through the HR integration.", 403);
 
   await db.$transaction([
-    db.user.update({ where: { id: user.id }, data: { status } }),
+    db.user.update({
+      where: { id: user.id },
+      // Leaving ends their work period (HR's leftOn date, else today) unless a last day is already set.
+      data: {
+        status,
+        ...(status === "INACTIVE" && user.status !== "INACTIVE"
+          ? { lastDay: user.lastDay ?? parseDate(ref.data.leftOn) ?? new Date() }
+          : {}),
+      },
+    }),
     ...(status === "INACTIVE" ? [db.session.deleteMany({ where: { userId: user.id } })] : []),
   ]);
 
   if (status === "INACTIVE" && user.status !== "INACTIVE") {
     await fileReportOnOffboarding(user.id, null).catch((e) => console.error("offboarding report failed", e));
+    await closeOutAfterLeaving(user.id);
   }
   await audit({
     actorId: null,
@@ -385,8 +416,24 @@ export async function handleHrEvent(raw: unknown): Promise<HrResult> {
     return { status: 200, body: { ok: true, duplicate: true, eventId, ...(user ? { user: publicUser(user) } : {}) } };
   }
 
+  // A delivery that's still being applied must not be applied twice in parallel (e.g. two
+  // different temporary passwords from one credentials reset). Claim the row atomically:
+  // only a failed attempt, or one stuck in flight for over two minutes, can be retried.
+  if (prior) {
+    const claimed = await db.integrationEvent.updateMany({
+      where: {
+        eventId,
+        OR: [{ status: "failed" }, { status: "received", updatedAt: { lt: new Date(Date.now() - 2 * 60_000) } }],
+      },
+      data: { status: "received", error: null },
+    });
+    if (claimed.count === 0) {
+      return { status: 409, body: { ok: false, error: "This event is still being applied. Retry in a minute.", eventId } };
+    }
+  }
+
   const record = prior
-    ? await db.integrationEvent.update({ where: { eventId }, data: { status: "received", error: null } })
+    ? await db.integrationEvent.findUnique({ where: { eventId } })
     : await db.integrationEvent
         .create({ data: { source: "hr-console", eventId, type, status: "received", summary: summarise(type, data) as never } })
         .catch((error: unknown) => {

@@ -121,7 +121,7 @@ export function MissionControl({ data, tz, scopeLabel }: { data: MissionData; tz
           </div>
         </motion.header>
 
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.5fr)_minmax(0,1.2fr)]">
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.5fr)_minmax(0,1.2fr)]">
           {/* The next deadline and the headline numbers */}
           <div className="grid grid-cols-2 content-start gap-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-1">
             <HudPanel title="Next deadline" icon={<Timer />} className="col-span-2 lg:row-span-2 xl:col-span-1 xl:row-span-1" delay={0.05}>
@@ -185,7 +185,7 @@ export function MissionControl({ data, tz, scopeLabel }: { data: MissionData; tz
           </HudPanel>
         </div>
 
-        <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+        <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
           <HudPanel title="Throughput" eyebrow="Completed vs assigned · last 14 days" icon={<TrendingUp />} delay={0.24}>
             <ThroughputChart series={data.series} />
           </HudPanel>
@@ -194,7 +194,7 @@ export function MissionControl({ data, tz, scopeLabel }: { data: MissionData; tz
           </HudPanel>
         </div>
 
-        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)_minmax(0,1fr)]">
+        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)_minmax(0,1fr)]">
           <HudPanel title="Workload" eyebrow="Open tasks per person" icon={<UsersRound />} delay={0.36}>
             <Workload crew={data.crew} />
           </HudPanel>

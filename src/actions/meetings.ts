@@ -7,6 +7,8 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth/current-user";
 import { audit } from "@/lib/audit";
 import { notify } from "@/lib/notifications";
+import { inBackground } from "@/lib/push";
+import { ringCall } from "@/lib/calls";
 import { googleConfig } from "@/lib/google/config";
 import {
   GoogleError,
@@ -21,11 +23,23 @@ import {
 import { freeSlots, meetLinkOf } from "@/lib/google/events";
 import { canCancelMeeting, inviteEmailOf } from "@/lib/meetings";
 import { isFounder } from "@/lib/permissions";
-import { formatDateTime } from "@/lib/time";
+import { MEETING_NOTES_MAX, notesBlock } from "@/lib/meeting-notes";
+import { formatDateTime, startOfDayInZone } from "@/lib/time";
+import { config } from "@/lib/env";
 import { getTimeZone } from "@/lib/tz.server";
 import { fullName, type ActionResult } from "@/lib/utils";
 
 const MINUTE = 60_000;
+
+/**
+ * A meeting time for a notification someone else reads: in the company's time zone
+ * with the zone named ("Oct 21, 7:30 PM GMT+5:30"), never the sender's local time.
+ */
+function noticeTime(date: Date) {
+  const tz = config.timeZone();
+  const zone = new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "short" }).formatToParts(date).find((p) => p.type === "timeZoneName")?.value;
+  return `${formatDateTime(date, tz)}${zone ? ` ${zone}` : ""}`;
+}
 
 function googleFailure(error: unknown, what: string): { ok: false; error: string } {
   if (error instanceof GoogleError) {
@@ -54,6 +68,16 @@ async function activePeople(ids: string[]) {
     select: { id: true, firstName: true, lastName: true, email: true, calendarEmail: true, role: true },
   });
   return people.length === unique.length ? people : null;
+}
+
+/** "Before you meet …" blocks for the founders among these people, for invite descriptions. */
+async function foundersNotes(ids: string[]): Promise<string[]> {
+  const founders = await db.user.findMany({
+    where: { id: { in: [...new Set(ids)] }, role: "FOUNDER", meetingNotes: { not: null } },
+    orderBy: { firstName: "asc" },
+    select: { firstName: true, meetingNotes: true },
+  });
+  return founders.map((f) => notesBlock(f.firstName, f.meetingNotes)).filter((b): b is string => !!b);
 }
 
 const scheduleSchema = z.object({
@@ -114,11 +138,12 @@ async function createScheduled({
   const team = await usableTeamCalendar();
   if ("error" in team) return { ok: false, error: team.error! };
   const id = randomUUID();
+  const notes = await foundersNotes([user.id, ...people.map((p) => p.id)]);
   let event;
   try {
     event = await createEvent(team.conn, {
       title,
-      description: [description, `Arranged by ${fullName(user)} in the Focus Realm Workspace.`].filter(Boolean).join("\n\n"),
+      description: [description, ...notes, `Arranged by ${fullName(user)} in the Focus Realm Workspace.`].filter(Boolean).join("\n\n"),
       startAt,
       endAt,
       timeZone: await getTimeZone(),
@@ -151,13 +176,15 @@ async function createScheduled({
     },
   });
 
-  const tz = await getTimeZone();
   await notify(
     people.map((p) => p.id),
     instant
       ? { kind: "MEETING", actorId: user.id, title: `${user.firstName} is calling you on Google Meet`, body: "Join now — the call has started.", href: meetUrl ?? "/calendar" }
-      : { kind: "MEETING", actorId: user.id, title: `${user.firstName} invited you to "${title}"`, body: `${formatDateTime(startAt, tz)}${meetUrl ? " · Google Meet" : ""}`, href: "/calendar" },
+      : { kind: "MEETING", actorId: user.id, title: `${user.firstName} invited you to "${title}"`, body: `${noticeTime(startAt)}${meetUrl ? " · Google Meet" : ""}`, href: "/calendar" },
+    // A call rings their phones on its own (below) instead of a plain notification.
+    { push: !instant },
   );
+  if (instant && meetUrl) inBackground(() => ringCall(id));
   refresh();
   return { ok: true, data: { id, meetUrl }, message: instant ? "Call started." : "Meeting scheduled — invitations are on their way." };
 }
@@ -232,12 +259,11 @@ export async function requestFounderMeeting(input: z.input<typeof requestSchema>
     },
     select: { id: true },
   });
-  const tz = await getTimeZone();
   await notify([founder.id], {
     kind: "MEETING",
     actorId: user.id,
     title: `${fullName(user)} asked to meet you`,
-    body: `"${d.title}" · ${formatDateTime(startAt, tz)} (${d.slots > 1 ? `${d.slots} × ${d.durationMin} min` : `${d.durationMin} min`})`,
+    body: `"${d.title}" · ${noticeTime(startAt)} (${d.slots > 1 ? `${d.slots} × ${d.durationMin} min` : `${d.durationMin} min`})`,
     href: `/calendar#request-${meeting.id}`,
   });
   refresh();
@@ -281,7 +307,12 @@ export async function respondToMeetingRequest(meetingId: string, input: z.input<
   const tz = await getTimeZone();
 
   if (!d.accept) {
-    await db.meeting.update({ where: { id: meetingId }, data: { status: "DECLINED", responseNote: d.note || null, respondedAt: new Date() } });
+    // Only a request nobody has started answering can be declined (see the claim below).
+    const declined = await db.meeting.updateMany({
+      where: { id: meetingId, status: "REQUESTED", respondedAt: null },
+      data: { status: "DECLINED", responseNote: d.note || null, respondedAt: new Date() },
+    });
+    if (declined.count === 0) return { ok: false, error: "That request has already been answered." };
     await notify([meeting.organizer.id], {
       kind: "MEETING",
       actorId: user.id,
@@ -302,14 +333,24 @@ export async function respondToMeetingRequest(meetingId: string, input: z.input<
   const team = await teamConnection();
   const conn = own && !own.lastError ? own : team && !team.lastError ? team : null;
   if (!conn) return { ok: false, error: "Connect your Google Calendar (or the team calendar) on the Calendar page first." };
+  if (meeting.organizer.status === "INACTIVE") return { ok: false, error: `${meeting.organizer.firstName} has left Focus Realm — decline this request instead.` };
+
+  // Claim the request before talking to Google, so a withdrawal, a decline or a second
+  // accept from another tab can't race this one (and nobody gets two invitations).
+  const claimed = await db.meeting.updateMany({ where: { id: meetingId, status: "REQUESTED", respondedAt: null }, data: { respondedAt: new Date() } });
+  if (claimed.count === 0) return { ok: false, error: "That request has already been answered or withdrawn." };
+  const release = () => db.meeting.updateMany({ where: { id: meetingId, status: "REQUESTED" }, data: { respondedAt: null } });
 
   // "Saumitra Rao × Sehej Sharma — topic": who's meeting whom, at a glance on any calendar.
   const pairTitle = `${fullName(meeting.organizer)} × ${fullName(user)} — ${meeting.title}`;
-  const details = [meeting.description, `Requested by ${fullName(meeting.organizer)} through the Focus Realm Workspace.`].filter(Boolean).join("\n\n");
+  const [founderNotes] = await foundersNotes([user.id]);
+  const details = [meeting.description, founderNotes, `Requested by ${fullName(meeting.organizer)} through the Focus Realm Workspace.`].filter(Boolean).join("\n\n");
   const attendeeEmails = conn.kind === "TEAM" ? [inviteEmailOf(user), inviteEmailOf(meeting.organizer)] : [inviteEmailOf(meeting.organizer)];
 
   if (meeting.slots.length > 1) {
-    return acceptSlots({ user, meeting, conn, team, startAt, endAt, pairTitle, details, attendeeEmails, note: d.note, tz });
+    const res = await acceptSlots({ user, meeting, conn, team, startAt, endAt, pairTitle, details, attendeeEmails, note: d.note, tz });
+    if (!res.ok) await release();
+    return res;
   }
 
   let event;
@@ -323,27 +364,30 @@ export async function respondToMeetingRequest(meetingId: string, input: z.input<
       attendeeEmails,
       meet: true,
       requestId: meeting.id,
+      // On the shared team calendar a founder meeting shows as "busy" to everyone else.
+      private: conn.kind === "TEAM",
     });
   } catch (error) {
+    await release();
     return googleFailure(error, "Couldn't add it to your calendar");
   }
   const meetUrl = meetLinkOf(event);
 
-  // The founder's calendar holds the real meeting; the shared team calendar gets a copy
-  // so everyone can see it. No invites from the copy — they already came from the real one.
+  // The founder's calendar holds the real meeting; the shared team calendar gets a private
+  // copy, so others see the founder is busy but not who with, why, or the Meet link.
   let teamEventId: string | null = null;
   if (conn.kind === "PERSONAL" && team && !team.lastError) {
     try {
       const copy = await createEvent(team, {
         title: pairTitle,
-        description: [details, meetUrl ? `Google Meet: ${meetUrl}` : null].filter(Boolean).join("\n\n"),
+        description: `Private meeting arranged through the Focus Realm Workspace. Details are on ${user.firstName}'s calendar.`,
         startAt,
         endAt,
         timeZone: tz,
         attendeeEmails: [],
         meet: false,
         requestId: `${meeting.id}-team`,
-        location: meetUrl,
+        private: true,
       });
       teamEventId = copy.id;
     } catch (error) {
@@ -352,28 +396,30 @@ export async function respondToMeetingRequest(meetingId: string, input: z.input<
     }
   }
 
-  await db.meeting.update({
-    where: { id: meetingId },
-    data: {
-      teamEventId,
-      status: "SCHEDULED",
-      startAt,
-      endAt,
-      respondedAt: new Date(),
-      responseNote: d.note || null,
-      calendarKind: conn.kind,
-      googleCalendarId: conn.calendarId,
-      googleEventId: event.id,
-      htmlLink: event.htmlLink ?? null,
-      meetUrl,
-      attendees: { create: [{ userId: meeting.organizer.id }] },
-    },
-  });
+  await db.$transaction([
+    db.meeting.update({
+      where: { id: meetingId },
+      data: {
+        teamEventId,
+        status: "SCHEDULED",
+        startAt,
+        endAt,
+        respondedAt: new Date(),
+        responseNote: d.note || null,
+        calendarKind: conn.kind,
+        googleCalendarId: conn.calendarId,
+        googleEventId: event.id,
+        htmlLink: event.htmlLink ?? null,
+        meetUrl,
+      },
+    }),
+    db.meetingAttendee.createMany({ data: [{ meetingId, userId: meeting.organizer.id }], skipDuplicates: true }),
+  ]);
   await notify([meeting.organizer.id], {
     kind: "MEETING",
     actorId: user.id,
     title: `${user.firstName} accepted "${meeting.title}"`,
-    body: `${formatDateTime(startAt, tz)}${startAt.getTime() !== meeting.startAt.getTime() ? " (new time)" : ""}${meetUrl ? " · Google Meet" : ""}`,
+    body: `${noticeTime(startAt)}${startAt.getTime() !== meeting.startAt.getTime() ? " (new time)" : ""}${meetUrl ? " · Google Meet" : ""}${founderNotes ? ` · Read ${user.firstName}'s notes before you join` : ""}`,
     href: "/calendar",
   });
   refresh();
@@ -423,12 +469,17 @@ async function acceptSlots(a: {
         attendeeEmails: a.attendeeEmails,
         meet: true,
         requestId: `${meeting.id}-s${slot.position}`,
+        private: conn.kind === "TEAM",
       });
       created.push({ slotId: slot.id, startAt, endAt, eventId: event.id, meetUrl: meetLinkOf(event), htmlLink: event.htmlLink ?? null, label });
     }
   } catch (error) {
     // All or nothing: don't leave half the slots booked.
-    await Promise.all(created.map((c) => deleteEvent(conn, conn.calendarId, c.eventId).catch(() => undefined)));
+    await Promise.all(
+      created.map((c) =>
+        deleteEvent(conn, conn.calendarId, c.eventId).catch((e) => console.error("Couldn't roll back slot event", conn.calendarId, c.eventId, e)),
+      ),
+    );
     return googleFailure(error, "Couldn't add the slots to your calendar");
   }
 
@@ -437,13 +488,14 @@ async function acceptSlots(a: {
     try {
       const copy = await createEvent(a.team, {
         title: `${a.pairTitle} (${total} slots)`,
-        description: [a.details, ...created.map((c) => `${c.label}: ${formatDateTime(c.startAt, tz)}${c.meetUrl ? ` · ${c.meetUrl}` : ""}`)].join("\n\n"),
+        description: `Private meetings arranged through the Focus Realm Workspace. Details are on ${a.user.firstName}'s calendar.`,
         startAt: a.startAt,
         endAt: a.endAt,
         timeZone: tz,
         attendeeEmails: [],
         meet: false,
         requestId: `${meeting.id}-team`,
+        private: true,
       });
       teamEventId = copy.id;
     } catch (error) {
@@ -472,15 +524,15 @@ async function acceptSlots(a: {
         googleEventId: null,
         htmlLink: created[0]?.htmlLink ?? null,
         meetUrl: created[0]?.meetUrl ?? null,
-        attendees: { create: [{ userId: meeting.organizer.id }] },
       },
     }),
+    db.meetingAttendee.createMany({ data: [{ meetingId: meeting.id, userId: meeting.organizer.id }], skipDuplicates: true }),
   ]);
   await notify([meeting.organizer.id], {
     kind: "MEETING",
     actorId: a.user.id,
     title: `${a.user.firstName} accepted "${meeting.title}" (${total} slots)`,
-    body: `${formatDateTime(a.startAt, tz)}${shift ? " (new time)" : ""} · a separate Meet link for each slot — copy the guest invites from Calendar`,
+    body: `${noticeTime(a.startAt)}${shift ? " (new time)" : ""} · a separate Meet link for each slot — copy the guest invites from Calendar`,
     href: "/calendar",
   });
   refresh();
@@ -490,12 +542,24 @@ async function acceptSlots(a: {
 /** Cancels a meeting (or withdraws a request) and tells everyone. */
 export async function cancelMeeting(meetingId: string): Promise<ActionResult> {
   const user = await requireUser();
-  const meeting = await db.meeting.findUnique({
+  const before = await db.meeting.findUnique({ where: { id: meetingId }, select: { status: true, respondedAt: true, organizerId: true, hostId: true } });
+  if (!before || before.status === "CANCELLED" || before.status === "DECLINED") return { ok: false, error: "That meeting is already off." };
+  if (!canCancelMeeting(user, before)) return { ok: false, error: "Only whoever arranged it, or a founder, can cancel it." };
+
+  // Claim it first. A request the founder is accepting right now can't be withdrawn under them.
+  const claimed =
+    before.status === "REQUESTED"
+      ? await db.meeting.updateMany({ where: { id: meetingId, status: "REQUESTED", respondedAt: null }, data: { status: "CANCELLED" } })
+      : await db.meeting.updateMany({ where: { id: meetingId, status: "SCHEDULED" }, data: { status: "CANCELLED" } });
+  if (claimed.count === 0) {
+    return { ok: false, error: before.status === "REQUESTED" ? "It's being answered right now — refresh in a moment." : "That meeting is already off." };
+  }
+
+  // Re-read after the claim, so an accept that finished in between is removed from Google too.
+  const meeting = await db.meeting.findUniqueOrThrow({
     where: { id: meetingId },
     select: {
-      id: true,
       title: true,
-      status: true,
       organizerId: true,
       hostId: true,
       calendarKind: true,
@@ -506,41 +570,39 @@ export async function cancelMeeting(meetingId: string): Promise<ActionResult> {
       slots: { select: { googleEventId: true } },
     },
   });
-  if (!meeting || meeting.status === "CANCELLED" || meeting.status === "DECLINED") return { ok: false, error: "That meeting is already off." };
-  if (!canCancelMeeting(user, meeting)) return { ok: false, error: "Only whoever arranged it, or a founder, can cancel it." };
-
-  if (meeting.googleEventId && meeting.googleCalendarId) {
-    const conn =
-      meeting.calendarKind === "PERSONAL" && meeting.hostId ? await personalConnection(meeting.hostId) : await teamConnection();
-    if (conn) {
-      try {
-        await deleteEvent(conn, meeting.googleCalendarId, meeting.googleEventId);
-      } catch (error) {
-        return googleFailure(error, "Couldn't remove it from Google Calendar");
-      }
-    }
-  }
-  const slotEvents = meeting.slots.map((s) => s.googleEventId).filter((id): id is string => !!id);
-  if (slotEvents.length && meeting.googleCalendarId) {
+  const events = [meeting.googleEventId, ...meeting.slots.map((s) => s.googleEventId)].filter((id): id is string => !!id);
+  let googleLeftBehind = false;
+  if (events.length && meeting.googleCalendarId) {
     const conn = meeting.calendarKind === "PERSONAL" && meeting.hostId ? await personalConnection(meeting.hostId) : await teamConnection();
-    if (conn) {
+    if (!conn || conn.lastError) {
+      googleLeftBehind = true;
+    } else {
       const calendarId = meeting.googleCalendarId;
-      const results = await Promise.allSettled(slotEvents.map((id) => deleteEvent(conn, calendarId, id)));
+      const results = await Promise.allSettled(events.map((id) => deleteEvent(conn, calendarId, id)));
       const failed = results.find((r) => r.status === "rejected");
-      if (failed) return googleFailure((failed as PromiseRejectedResult).reason, "Couldn't remove every slot from Google Calendar");
+      if (failed) {
+        await db.meeting.updateMany({ where: { id: meetingId, status: "CANCELLED" }, data: { status: before.status } });
+        return googleFailure((failed as PromiseRejectedResult).reason, "Couldn't remove it from Google Calendar");
+      }
     }
   }
   if (meeting.teamEventId) {
     const team = await teamConnection();
     if (team) await deleteEvent(team, team.calendarId, meeting.teamEventId).catch((e) => console.error("Couldn't remove the team-calendar copy", e));
   }
-  await db.meeting.update({ where: { id: meetingId }, data: { status: "CANCELLED" } });
   await notify(
     [meeting.organizerId, ...(meeting.hostId ? [meeting.hostId] : []), ...meeting.attendees.map((a) => a.userId)],
     { kind: "MEETING", actorId: user.id, title: `${user.firstName} cancelled "${meeting.title}"`, href: "/calendar" },
   );
   refresh();
-  return { ok: true, message: meeting.status === "REQUESTED" ? "Request withdrawn." : "Meeting cancelled — everyone's been told." };
+  if (before.status === "REQUESTED") return { ok: true, message: "Request withdrawn." };
+  if (googleLeftBehind) {
+    return {
+      ok: true,
+      message: "Cancelled here and everyone in the Workspace was told — but the Google calendar it was on isn't connected any more, so remove the Google invite there too.",
+    };
+  }
+  return { ok: true, message: "Meeting cancelled — everyone's been told." };
 }
 
 const AVAILABILITY_DAYS = 14;
@@ -553,7 +615,7 @@ export type AvailabilityAccess =
  * A founder's open slots on a day — only for people the founder has allowed to see
  * them. Busy blocks themselves never leave the server.
  */
-export async function founderAvailability(founderId: string, dayStartIso: string, minutes: number): Promise<ActionResult<AvailabilityAccess>> {
+export async function founderAvailability(founderId: string, day: string, minutes: number): Promise<ActionResult<AvailabilityAccess>> {
   const user = await requireUser();
   const founder = await db.user.findFirst({ where: { id: founderId, role: "FOUNDER" }, select: { id: true } });
   if (!founder) return { ok: false, error: "Pick one of the founders." };
@@ -567,7 +629,8 @@ export async function founderAvailability(founderId: string, dayStartIso: string
     return { ok: true, data: { access: latest?.status === "PENDING" ? "pending" : latest?.status === "DECLINED" ? "declined" : "none" } };
   }
   const conn = await personalConnection(founder.id);
-  const from = new Date(dayStartIso);
+  // The founder's working day (9:00–19:00) in the company's time zone, whatever zone the asker is in.
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(day) ? startOfDayInZone(new Date(`${day}T12:00:00Z`), config.timeZone()) : new Date(NaN);
   if (!conn || conn.lastError || !googleConfig.configured() || Number.isNaN(from.getTime())) return { ok: true, data: { access: "unavailable" } };
   try {
     const busy = await busyTimes(conn, from, new Date(from.getTime() + 24 * 3600_000));
@@ -638,11 +701,13 @@ export async function shareTeamCalendar(): Promise<ActionResult> {
   if ("error" in team) return { ok: false, error: team.error! };
   const people = await db.user.findMany({ where: { status: { not: "INACTIVE" } }, select: { email: true, calendarEmail: true } });
   try {
-    const res = await shareCalendar(team.conn, people.map(inviteEmailOf));
+    // Also removes read access from addresses that no longer belong to anyone here
+    // (people who left, or an old calendar email someone has since changed).
+    const res = await shareCalendar(team.conn, people.map(inviteEmailOf), { prune: true });
     await audit({ actorId: user.id, action: "google.team_shared", targetType: "workspace", summary: `Shared the team calendar with ${res.shared} new address${res.shared === 1 ? "" : "es"}` });
     return {
       ok: true,
-      message: `Shared with ${res.shared} new ${res.shared === 1 ? "address" : "addresses"}.${res.failed.length ? ` Couldn't share with ${res.failed.join(", ")}.` : ""}`,
+      message: `Shared with ${res.shared} new ${res.shared === 1 ? "address" : "addresses"}${res.removed ? `; removed ${res.removed} that no longer belong to anyone here` : ""}.${res.failed.length ? ` Couldn't share with ${res.failed.join(", ")}.` : ""}`,
     };
   } catch (error) {
     return googleFailure(error, "Couldn't share the team calendar");
@@ -676,7 +741,30 @@ export async function setCalendarEmail(input: z.input<typeof calendarEmailSchema
   const parsed = calendarEmailSchema.safeParse({ email: String(input.email ?? "").trim() });
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
   const email = parsed.data.email.toLowerCase();
+  const before = user.calendarEmail ?? "";
   await db.user.update({ where: { id: user.id }, data: { calendarEmail: email || null } });
+  // The old address shouldn't keep seeing the team calendar.
+  if (before && before.toLowerCase() !== email) {
+    const team = await teamConnection();
+    if (team && !team.lastError) {
+      const people = await db.user.findMany({ where: { status: { not: "INACTIVE" } }, select: { email: true, calendarEmail: true } });
+      await shareCalendar(team, people.map(inviteEmailOf), { prune: true, add: false }).catch((e) => console.error("Couldn't update team-calendar access", e));
+    }
+  }
   refresh();
   return { ok: true, message: email ? `Calendar invites will go to ${email}.` : "Calendar invites will go to your work email." };
+}
+
+const meetingNotesSchema = z.object({ notes: z.string().max(MEETING_NOTES_MAX, `Keep it under ${MEETING_NOTES_MAX} characters.`) });
+
+/** Founders: the "Before you meet me" notes shown to everyone who meets them and added to their invites. */
+export async function setMeetingNotes(input: z.input<typeof meetingNotesSchema>): Promise<ActionResult> {
+  const user = await requireUser();
+  if (!isFounder(user)) return { ok: false, error: "Only founders can set meeting notes." };
+  const parsed = meetingNotesSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  const notes = parsed.data.notes.replace(/\r\n/g, "\n").trim();
+  await db.user.update({ where: { id: user.id }, data: { meetingNotes: notes || null } });
+  refresh();
+  return { ok: true, message: notes ? "Saved — everyone meeting you will see these notes." : "Notes removed." };
 }

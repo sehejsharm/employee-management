@@ -31,6 +31,7 @@ function systemDark() {
 function applyTheme(p: ThemePreference) {
   const dark = p === "dark" || (p === "system" && systemDark());
   const root = document.documentElement;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#060a13" : "#f5f7fb");
   if (root.classList.contains("dark") === dark) return;
   root.classList.add("theme-switching");
   root.classList.toggle("dark", dark);
@@ -90,7 +91,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
             theme={resolved}
             position="bottom-right"
             offset={20}
-            mobileOffset={{ bottom: 84 }}
+            mobileOffset={{ bottom: "calc(92px + env(safe-area-inset-bottom))" }}
             gap={10}
             toastOptions={{
               classNames: {

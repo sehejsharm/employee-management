@@ -46,7 +46,7 @@ export function EmailDirectory({ groups, selfId }: { groups: EmailGroup[]; selfI
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search an email, name or ID"
-            className="h-9 w-full rounded-[10px] border border-line bg-surface pl-9 pr-3 text-[13.5px] shadow-xs outline-none placeholder:text-fg-subtle focus:border-brand focus:ring-4 focus:ring-ring/40"
+            className="h-9 w-full rounded-[10px] border border-line bg-surface pl-9 pr-3 text-base shadow-xs sm:text-[13.5px] outline-none placeholder:text-fg-subtle focus:border-brand focus:ring-4 focus:ring-ring/40"
           />
         </div>
         <Segmented
@@ -69,7 +69,7 @@ export function EmailDirectory({ groups, selfId }: { groups: EmailGroup[]; selfI
           description={show === "shared" && !q ? "Everyone currently has an email of their own." : "Try a different search."}
         />
       ) : (
-        <ul className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+        <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
           {list.map((g) => {
             const mine = g.users.some((u) => u.id === selfId);
             const shared = g.users.length > 1;

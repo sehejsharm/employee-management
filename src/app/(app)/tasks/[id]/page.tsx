@@ -18,6 +18,8 @@ import {
 } from "@/components/tasks/task-detail-client";
 import { NoClearance } from "@/components/clearance/no-clearance";
 import { SubmissionsPanel, SubmitWorkPanel } from "@/components/tasks/submissions";
+import { SeriesBadge } from "@/components/tasks/founder-task-tools";
+import { REPEAT_LABEL } from "@/lib/task-series";
 import { ReassignDialog } from "@/components/tasks/reassign-dialog";
 import { ExtendDeadlineDialog, MergeTasksDialog } from "@/components/tasks/founder-task-tools";
 import { pickablePeople } from "@/lib/people";
@@ -63,6 +65,7 @@ async function load(id: string) {
       createdBy: { select: person },
       assignees: { select: { role: true, user: { select: { ...person, role: true } } }, orderBy: assigneeOrder },
       checklist: { orderBy: { position: "asc" }, select: { id: true, text: true, done: true } },
+      series: { select: { id: true, frequency: true, total: true, created: true, stoppedAt: true, createdById: true } },
       // Task material only; proof lives with its submission.
       attachments: { where: { submissionId: null }, orderBy: { createdAt: "asc" }, select: attachmentSelect },
       submissions: {
@@ -211,14 +214,22 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
         <ChevronLeft className="size-4" /> Tasks
       </Link>
 
-      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0">
+      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-start lg:justify-between">
+        <div className="min-w-0 lg:min-w-[16rem] lg:flex-1">
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <span className="rounded-md bg-surface-sunken px-2 py-0.5 font-mono text-xs font-medium text-fg-muted ring-1 ring-line">{ref}</span>
             <HeaderStatus taskId={task.id} status={task.status} canChange={canChangeStatus(user, access) && contribute} />
             <PriorityBadge priority={task.priority} />
+            {task.series && task.seriesIndex && (
+              <SeriesBadge
+                seriesId={task.series.id}
+                label={`Repeats ${REPEAT_LABEL[task.series.frequency]} · ${task.seriesIndex} of ${task.series.total}`}
+                canStop={!task.series.stoppedAt && task.series.created < task.series.total && (task.series.createdById === user.id || isFounder(user))}
+                stopped={!!task.series.stoppedAt}
+              />
+            )}
           </div>
-          <h1 className="text-balance text-[26px] font-semibold leading-tight tracking-[-0.025em] sm:text-[32px]">{task.title}</h1>
+          <h1 className="text-balance text-[26px] font-semibold leading-tight tracking-[-0.025em] wrap-anywhere sm:text-[32px]">{task.title}</h1>
           <p className="mt-2 text-[13.5px] text-fg-muted">
             Assigned by <span className="font-medium text-fg">{task.createdBy.firstName} {task.createdBy.lastName}</span>{" "}
             <span suppressHydrationWarning title={formatDateTime(task.createdAt, tz)}>
@@ -271,7 +282,7 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-6">
           <Card>
             <CardHeader title="Brief" />
@@ -306,6 +317,7 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
               maxUploadBytes={config.maxUploadBytes()}
               reviewer={task.createdById === user.id ? "You" : task.createdBy.firstName}
               sentBack={lastSentBack}
+              founder={isFounder(user)}
             />
           )}
 

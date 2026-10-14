@@ -14,6 +14,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
+import { NotificationBanner } from "@/components/app/notification-setup";
 import { FadeIn } from "@/components/motion";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -88,6 +89,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           ) : undefined
         }
       />
+      <NotificationBanner className="mb-6" />
       {emailSharers.length > 0 && (
         <FadeIn delay={0.03} className="mb-6">
           <SharedEmailNotice self email={user.email} others={emailSharers} />
@@ -120,11 +122,11 @@ async function MemberView({ tz }: { tz: string }) {
     const b = dueBucket(new Date(t.dueAt), t.status, tz, now);
     groups.set(b, [...(groups.get(b) ?? []), t]);
   }
-  const order: DueBucket[] = ["overdue", "today", "tomorrow", "week", "later"];
+  const order: DueBucket[] = ["overdue", "today", "tomorrow", "week", "later", "review"];
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         <NextDeadline tz={tz} task={data.next} />
         <div className="grid grid-cols-2 gap-3 sm:gap-4">
           <StatCard index={0} label="Open tasks" value={data.stats.open} icon={<ClipboardList />} href="/tasks" />
@@ -166,7 +168,7 @@ async function MemberView({ tz }: { tz: string }) {
         </FadeIn>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader
             icon={<ClipboardList />}
@@ -264,7 +266,7 @@ async function LeaderView({ tz }: { tz: string }) {
               </Button>
             }
           />
-          <CardBody className="grid gap-3 sm:grid-cols-3">
+          <CardBody className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             {pulse.map((f) => (
               <Link key={f.id} href="/leadership" className="flex gap-3 rounded-xl border border-line p-3 transition hover:border-brand/30 hover:bg-surface-hover">
                 <Avatar person={f} size="md" />

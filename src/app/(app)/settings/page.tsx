@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
-import { Bell, CalendarDays, KeyRound, Palette, Target, UserRound } from "lucide-react";
+import { Bell, CalendarDays, ClipboardCheck, KeyRound, Palette, Target, UserRound } from "lucide-react";
 import { CalendarEmailForm } from "@/components/calendar/calendar-email-form";
+import { MeetingNotesForm } from "@/components/calendar/meeting-notes-form";
+import { isFounder } from "@/lib/permissions";
 import { PageHeader } from "@/components/app/page-header";
-import { DesktopAlerts } from "@/components/app/desktop-alerts";
+import { NotificationSetup } from "@/components/app/notification-setup";
 import { AppearanceForm, PasswordForm, ProfileForm, SessionsList } from "@/components/app/settings-forms";
 import { FocusEditor } from "@/components/dashboard/widgets";
 import { SharedEmailNotice } from "@/components/people/shared-email-notice";
@@ -11,13 +13,14 @@ import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { requireUser } from "@/lib/auth/current-user";
 import { currentSessionTokenHash } from "@/lib/auth/session";
 import { db } from "@/lib/db";
+import { getTimeZone } from "@/lib/tz.server";
 
 export const metadata: Metadata = { title: "Settings" };
 
 export default async function SettingsPage() {
   const user = await requireUser();
-  const [profile, sessions, currentHash, emailSharers] = await Promise.all([
-    db.user.findUniqueOrThrow({ where: { id: user.id }, select: { phone: true, location: true, bio: true, avatarHue: true, focus: true } }),
+  const [profile, sessions, currentHash, emailSharers, tz] = await Promise.all([
+    db.user.findUniqueOrThrow({ where: { id: user.id }, select: { phone: true, location: true, bio: true, avatarHue: true, focus: true, meetingNotes: true } }),
     db.session.findMany({
       where: { userId: user.id, expiresAt: { gt: new Date() } },
       orderBy: { createdAt: "desc" },
@@ -25,6 +28,7 @@ export default async function SettingsPage() {
     }),
     currentSessionTokenHash(),
     sharingEmailWith(user),
+    getTimeZone(),
   ]);
 
   return (
@@ -63,16 +67,28 @@ export default async function SettingsPage() {
             <CalendarEmailForm workEmail={user.email} initial={user.calendarEmail} />
           </CardBody>
         </Card>
+        {isFounder(user) && (
+          <Card>
+            <CardHeader
+              icon={<ClipboardCheck />}
+              title="Before you meet me"
+              description="How you like meetings to run. Everyone sees these when they request time, schedule or call you — and they're added to your Google invites and guest invites."
+            />
+            <CardBody>
+              <MeetingNotesForm firstName={user.firstName} initial={profile.meetingNotes} />
+            </CardBody>
+          </Card>
+        )}
         <Card>
           <CardHeader icon={<Palette />} title="Appearance" />
           <CardBody>
             <AppearanceForm />
           </CardBody>
         </Card>
-        <Card>
-          <CardHeader icon={<Bell />} title="Notifications" description="In-app alerts are always on. Desktop alerts are up to you." />
+        <Card id="notifications" className="scroll-mt-24">
+          <CardHeader icon={<Bell />} title="Notifications" description="Everything shows in your inbox here. Turn on notifications to get calls and updates on your phone or computer too." />
           <CardBody>
-            <DesktopAlerts />
+            <NotificationSetup />
           </CardBody>
         </Card>
         <Card>
@@ -83,6 +99,7 @@ export default async function SettingsPage() {
               <div className="mb-2 text-[13px] font-semibold">Where you&apos;re signed in</div>
               <SessionsList
                 sessions={sessions.map((s) => ({ id: s.id, device: s.device, createdAt: s.createdAt.toISOString(), current: s.tokenHash === currentHash }))}
+                tz={tz}
               />
             </div>
           </CardBody>

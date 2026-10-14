@@ -10,12 +10,50 @@ const SESSION_COOKIES = ["__Host-fr_session", "fr_session"];
 
 const PUBLIC_PREFIXES = ["/login", "/setup", "/privacy", "/terms"];
 
+/**
+ * Content-Security-Policy with a fresh nonce per request: only scripts Next.js
+ * renders (and the boot script in the root layout) can run, so an injected
+ * <script> or inline handler is refused by the browser. Styles stay inline-able
+ * because animations and React style props use style attributes.
+ */
+function contentSecurityPolicy(nonce: string) {
+  const dev = process.env.NODE_ENV === "development";
+  return [
+    "default-src 'self'",
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${dev ? " 'unsafe-eval'" : ""}`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' blob: data:",
+    "font-src 'self' data:",
+    "connect-src 'self'",
+    // The service worker that shows phone notifications (public/sw.js).
+    "worker-src 'self'",
+    "manifest-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    ...(dev ? [] : ["upgrade-insecure-requests"]),
+  ].join("; ");
+}
+
+/** Passes the request on, carrying the CSP nonce to the page and the policy to the browser. */
+function next(request: NextRequest) {
+  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+  const csp = contentSecurityPolicy(nonce);
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-nonce", nonce);
+  requestHeaders.set("Content-Security-Policy", csp);
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  response.headers.set("Content-Security-Policy", csp);
+  return response;
+}
+
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
-  if (PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(p))) return NextResponse.next();
+  if (PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(p))) return next(request);
 
   const hasSession = SESSION_COOKIES.some((name) => request.cookies.has(name));
-  if (hasSession) return NextResponse.next();
+  if (hasSession) return next(request);
 
   const url = request.nextUrl.clone();
   url.pathname = "/login";
@@ -27,5 +65,5 @@ export const config = {
   // Skip static assets, Next internals and /api: every API route authenticates
   // itself (or is public by design: health, cron, HR webhook), and skipping
   // them halves the function invocations that notification polling costs on Vercel.
-  matcher: ["/((?!api/|_next/static|_next/image|brand/|icon.svg|apple-icon|favicon.ico|robots.txt).*)"],
+  matcher: ["/((?!api/|_next/static|_next/image|brand/|icons/|icon.svg|apple-icon|apple-touch-icon|manifest.webmanifest|sw.js|favicon.ico|robots.txt).*)"],
 };

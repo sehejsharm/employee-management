@@ -40,8 +40,10 @@ export async function memberDashboard(userId: string) {
   ]);
 
   const rows = tasks.map(toClientRow);
-  const overdue = rows.filter((t) => new Date(t.dueAt) < now).length;
-  const dueSoon = rows.filter((t) => {
+  // Work handed in and waiting for review is delivered, not overdue or due.
+  const pending = rows.filter((t) => t.status !== "IN_REVIEW");
+  const overdue = pending.filter((t) => new Date(t.dueAt) < now).length;
+  const dueSoon = pending.filter((t) => {
     const ms = new Date(t.dueAt).getTime() - now.getTime();
     return ms > 0 && ms <= DAY;
   }).length;
@@ -144,16 +146,21 @@ export async function missionControl(user: Actor, clearedIds: Set<string>, tz: s
       }),
       db.task.findMany({ where: { AND: [scope, { status: "DONE", completedAt: { gte: seriesStart } }] }, select: { completedAt: true } }),
       db.task.findMany({ where: { AND: [scope, { createdAt: { gte: seriesStart } }] }, select: { createdAt: true } }),
-      db.task.findMany({ where: { AND: [scope, { status: "DONE", completedAt: { gte: monthAgo } }] }, select: { completedAt: true, dueAt: true } }),
+      db.task.findMany({
+        where: { AND: [scope, { status: "DONE", completedAt: { gte: monthAgo } }] },
+        select: { completedAt: true, dueAt: true, submissions: { where: { status: "ACCEPTED" }, orderBy: { createdAt: "desc" }, take: 1, select: { createdAt: true } } },
+      }),
       db.department.count(),
     ]);
 
   const load = new Map<string, { open: number; overdue: number; soon: number }>();
   for (const t of openTasks) {
     const ms = t.dueAt.getTime() - now.getTime();
+    const handedIn = t.status === "IN_REVIEW";
     for (const a of t.assignees) {
       const entry = load.get(a.userId) ?? { open: 0, overdue: 0, soon: 0 };
       entry.open += 1;
+      if (handedIn) continue;
       if (ms < 0) entry.overdue += 1;
       else if (ms <= DUE_SOON_MS) entry.soon += 1;
       load.set(a.userId, entry);
@@ -174,15 +181,17 @@ export async function missionControl(user: Actor, clearedIds: Set<string>, tz: s
     if (i !== undefined) days[i].created += 1;
   }
 
-  const onTime = closedMonth.length ? Math.round((closedMonth.filter((t) => t.completedAt! <= t.dueAt).length / closedMonth.length) * 100) : null;
+  // On time = handed in by the deadline (the accepted hand-in), not when the reviewer got round to it.
+  const deliveredOnTime = (t: (typeof closedMonth)[number]) => (t.submissions[0]?.createdAt ?? t.completedAt!) <= t.dueAt;
+  const onTime = closedMonth.length ? Math.round((closedMonth.filter(deliveredOnTime).length / closedMonth.length) * 100) : null;
   const counts = Object.fromEntries(statusGroups.map((g) => [g.status, g._count._all])) as Record<string, number>;
 
   return {
     generatedAt: now.toISOString(),
     stats: {
       open: openTasks.length,
-      dueSoon: openTasks.filter((t) => t.dueAt >= now && t.dueAt.getTime() - now.getTime() <= DUE_SOON_MS).length,
-      overdue: openTasks.filter((t) => t.dueAt < now).length,
+      dueSoon: openTasks.filter((t) => t.status !== "IN_REVIEW" && t.dueAt >= now && t.dueAt.getTime() - now.getTime() <= DUE_SOON_MS).length,
+      overdue: openTasks.filter((t) => t.status !== "IN_REVIEW" && t.dueAt < now).length,
       doneThisWeek,
       donePrevWeek,
       onTime,

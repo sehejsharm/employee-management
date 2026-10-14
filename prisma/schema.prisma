@@ -141,6 +141,11 @@ enum WorkReportReason {
   MANUAL
 }
 
+enum CallAnswer {
+  JOINED
+  DECLINED
+}
+
 enum MeetingStatus {
   /// Asked of a founder; not on any calendar until they accept.
   REQUESTED
@@ -173,6 +178,10 @@ model User {
   /// Where Google Calendar invites go, if not their work email — e.g. a
   /// founder's personal Gmail. Set automatically when they connect Google.
   calendarEmail      String?
+  /// Founders: what people should know before meeting them ("join 2 minutes early",
+  /// "camera on"…). Shown when scheduling with them and added to their invites.
+  meetingNotes       String?          @db.Text
+  taskSeries         TaskSeries[]     @relation("TaskSeriesCreator")
   /// Last working day (e.g. the end of an internship). The work report is filed that day.
   lastDay            DateTime?
   firstName          String
@@ -237,13 +246,14 @@ model User {
   updatedAt DateTime @updatedAt
 
   sessions           Session[]
-  tasksCreated       Task[]          @relation("TaskCreator")
+  pushSubscriptions  PushSubscription[]
+  tasksCreated       Task[]             @relation("TaskCreator")
   assignments        TaskAssignee[]
   activities         TaskActivity[]
   attachments        Attachment[]
-  updateRequestsMade UpdateRequest[] @relation("UpdateRequester")
-  notifications      Notification[]  @relation("NotificationRecipient")
-  notificationsSent  Notification[]  @relation("NotificationActor")
+  updateRequestsMade UpdateRequest[]    @relation("UpdateRequester")
+  notifications      Notification[]     @relation("NotificationRecipient")
+  notificationsSent  Notification[]     @relation("NotificationActor")
   announcements      Announcement[]
   auditEntries       AuditLog[]
 
@@ -263,18 +273,49 @@ model User {
 }
 
 model Session {
-  id        String   @id @default(cuid())
+  id                String             @id @default(cuid())
   /// SHA-256 of the cookie token. The raw token is never stored.
-  tokenHash String   @unique
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  expiresAt DateTime
-  createdAt DateTime @default(now())
+  tokenHash         String             @unique
+  userId            String
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt         DateTime
+  createdAt         DateTime           @default(now())
   /// Coarse device label ("Chrome on macOS") so people can recognise their own sessions.
-  device    String?
+  device            String?
+  /// Phones and browsers that turned on notifications while signed in here.
+  pushSubscriptions PushSubscription[]
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+/// A phone or browser that gets notifications even when the Workspace isn't
+/// open (Web Push: Android, and iPhone/iPad once added to the home screen).
+/// Tied to the session it was turned on in, so signing out stops them.
+model PushSubscription {
+  id         String   @id @default(cuid())
+  /// The push service URL (FCM, Apple, Mozilla …). Identifies the device.
+  endpoint   String   @unique
+  p256dh     String
+  auth       String
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionId  String?
+  session    Session? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  /// "Chrome on Android", "Safari on iOS" … shown in Settings.
+  device     String?
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+/// Secrets the app generates for itself (e.g. the Web Push signing key), so
+/// features work without extra setup. Values are encrypted at rest.
+model AppSecret {
+  name      String   @id
+  value     String   @db.Text
+  createdAt DateTime @default(now())
 }
 
 model Task {
@@ -311,9 +352,53 @@ model Task {
 
   submissions Submission[]
 
+  /// Set when this task is one occurrence of a repeating task.
+  seriesId    String?
+  series      TaskSeries? @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+  /// 1-based: "3 of 30".
+  seriesIndex Int?
+
   @@index([dueAt])
   @@index([status])
   @@index([createdById])
+  @@index([seriesId])
+}
+
+enum RepeatFrequency {
+  DAILY
+  WEEKDAYS
+  WEEKLY
+}
+
+/// A founder's repeating task ("Post on LinkedIn", every day for 30 days). Each
+/// occurrence becomes an ordinary task shortly before it's due, so assignees see
+/// one at a time rather than 30 at once.
+model TaskSeries {
+  id          String          @id @default(cuid())
+  createdById String
+  createdBy   User            @relation("TaskSeriesCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  title       String
+  description String?         @db.Text
+  priority    TaskPriority    @default(MEDIUM)
+  assigneeIds String[]
+  leadId      String
+  checklist   String[]
+  /// Links and notes copied onto every occurrence: [{ kind, title, url?, content? }].
+  attachments Json?
+  frequency   RepeatFrequency
+  /// How many occurrences in all.
+  total       Int
+  /// How many have been created so far.
+  created     Int             @default(0)
+  /// Due date of the next occurrence to create; null once all are created or the series is stopped.
+  nextDueAt   DateTime?
+  /// The time zone the due time is kept in (e.g. 6 PM in Asia/Kolkata every day).
+  timeZone    String
+  stoppedAt   DateTime?
+  createdAt   DateTime        @default(now())
+  tasks       Task[]
+
+  @@index([nextDueAt])
 }
 
 model TaskAssignee {
@@ -461,6 +546,8 @@ model IntegrationEvent {
   summary   Json?
   userId    String?
   createdAt DateTime @default(now())
+  /// When the status last changed — tells a crashed, half-applied delivery from one still in flight.
+  updatedAt DateTime @default(now()) @updatedAt
 
   @@index([source, createdAt])
 }
@@ -646,10 +733,13 @@ model MeetingSlot {
 }
 
 model MeetingAttendee {
-  meetingId String
-  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  userId    String
-  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  meetingId  String
+  meeting    Meeting     @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// "Meet now": how they answered the ringing call, on any device. Stops it ringing everywhere else.
+  callAnswer CallAnswer?
+  answeredAt DateTime?
 
   @@id([meetingId, userId])
   @@index([userId])

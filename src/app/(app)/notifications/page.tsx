@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { PageHeader } from "@/components/app/page-header";
-import { DesktopAlerts } from "@/components/app/desktop-alerts";
+import { NotificationBanner } from "@/components/app/notification-setup";
 import { InboxList } from "@/components/app/inbox-list";
 import { requireUser } from "@/lib/auth/current-user";
 import { syncDeadlineAlertsFor } from "@/lib/notifications";
@@ -17,7 +17,7 @@ export default async function NotificationsPage() {
     <>
       <PageHeader eyebrow="Work" title="Inbox" description="Assignments, deadline reminders, update requests and replies — everything that needs you." />
       <div className="mx-auto max-w-3xl space-y-5">
-        <DesktopAlerts compact />
+        <NotificationBanner />
         <InboxList items={feed.items} tz={tz} now={new Date().toISOString()} />
       </div>
     </>

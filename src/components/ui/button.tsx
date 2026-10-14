@@ -14,14 +14,15 @@ const VARIANTS = {
   "danger-ghost": "text-danger hover:bg-danger-soft",
 } as const;
 
+/** Touch screens get a little more room per control (`pointer-coarse`), so taps land; mouse layouts stay dense. */
 const SIZES = {
-  xs: "h-7 gap-1.5 rounded-lg px-2.5 text-xs",
-  sm: "h-8 gap-1.5 rounded-[9px] px-3 text-[13px]",
-  md: "h-9 gap-2 rounded-[10px] px-3.5 text-sm",
+  xs: "h-7 gap-1.5 rounded-lg px-2.5 text-xs pointer-coarse:h-8",
+  sm: "h-8 gap-1.5 rounded-[9px] px-3 text-[13px] pointer-coarse:h-9",
+  md: "h-9 gap-2 rounded-[10px] px-3.5 text-sm pointer-coarse:h-10",
   lg: "h-11 gap-2 rounded-xl px-5 text-[15px]",
-  icon: "h-9 w-9 rounded-[10px]",
-  "icon-sm": "h-8 w-8 rounded-[9px]",
-  "icon-xs": "h-7 w-7 rounded-lg",
+  icon: "h-9 w-9 rounded-[10px] pointer-coarse:h-10 pointer-coarse:w-10",
+  "icon-sm": "h-8 w-8 rounded-[9px] pointer-coarse:h-9 pointer-coarse:w-9",
+  "icon-xs": "h-7 w-7 rounded-lg pointer-coarse:h-8 pointer-coarse:w-8",
 } as const;
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {

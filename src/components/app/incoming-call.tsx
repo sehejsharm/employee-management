@@ -4,12 +4,14 @@ import * as React from "react";
 import { PhoneOff, Video } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { MeetingNotesCallout } from "@/components/calendar/meeting-notes";
+import { clearCallNotification, pushOnHere } from "@/lib/push-client";
 
 interface IncomingCall {
   id: string;
   meetUrl: string;
   ringUntil: string;
-  organizer: { id: string; firstName: string; lastName: string; avatarHue: number; title: string | null };
+  organizer: { id: string; firstName: string; lastName: string; avatarHue: number; title: string | null; meetingNotes: string | null };
 }
 
 const POLL_MS = 5_000;
@@ -17,16 +19,28 @@ const DISMISSED_KEY = "fr-dismissed-calls";
 
 function dismissed(): string[] {
   try {
-    return JSON.parse(sessionStorage.getItem(DISMISSED_KEY) || "[]");
+    return JSON.parse(localStorage.getItem(DISMISSED_KEY) || "[]");
   } catch {
     return [];
   }
 }
 
-function dismiss(id: string) {
+/**
+ * Answered or turned down here: stop ringing in this browser's other tabs
+ * (localStorage), on the person's other devices (the server), and clear the
+ * call's notification on this device.
+ */
+function dismiss(id: string, answer: "joined" | "declined") {
   try {
-    sessionStorage.setItem(DISMISSED_KEY, JSON.stringify([...dismissed(), id].slice(-20)));
+    localStorage.setItem(DISMISSED_KEY, JSON.stringify([...dismissed(), id].slice(-20)));
   } catch {}
+  void fetch(`/api/calls/${encodeURIComponent(id)}/answer`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ answer }),
+    keepalive: true,
+  }).catch(() => {});
+  void clearCallNotification(id);
 }
 
 /**
@@ -87,10 +101,24 @@ export function IncomingCallWatcher() {
     };
     const first = window.setTimeout(check, 0);
     const id = window.setInterval(check, POLL_MS);
+    // A call pushed to this device: ring now rather than at the next check.
+    const onMessage = (e: MessageEvent) => {
+      if (e.data?.type === "incoming-call") void check();
+    };
+    navigator.serviceWorker?.addEventListener("message", onMessage);
+    // Answered or dismissed in another tab: stop ringing here too.
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== DISMISSED_KEY) return;
+      const skip = dismissed();
+      setCall((cur) => (cur && skip.includes(cur.id) ? null : cur));
+    };
+    window.addEventListener("storage", onStorage);
     return () => {
       live = false;
       window.clearTimeout(first);
       window.clearInterval(id);
+      window.removeEventListener("storage", onStorage);
+      navigator.serviceWorker?.removeEventListener("message", onMessage);
     };
   }, []);
 
@@ -106,13 +134,14 @@ export function IncomingCallWatcher() {
       document.title = flip ? `📞 ${caller} is calling…` : title;
     }, 1000);
     let sys: Notification | null = null;
-    if (typeof Notification !== "undefined" && Notification.permission === "granted" && document.hidden) {
+    // With phone notifications on, the service worker already shows (and rings) this call.
+    if (typeof Notification !== "undefined" && Notification.permission === "granted" && document.hidden && !pushOnHere()) {
       try {
         sys = new Notification(`${caller} is inviting you to a call right now`, { body: "Click to join on Google Meet.", icon: "/icon.svg", tag: call.id, requireInteraction: true });
         sys.onclick = () => {
           window.focus();
           window.open(call.meetUrl, "_blank", "noopener");
-          dismiss(call.id);
+          dismiss(call.id, "joined");
           setCall(null);
         };
       } catch {}
@@ -128,29 +157,39 @@ export function IncomingCallWatcher() {
   }, [call]);
 
   if (!call) return null;
-  const close = () => {
-    dismiss(call.id);
+  const close = (answer: "joined" | "declined") => {
+    dismiss(call.id, answer);
     setCall(null);
   };
 
   return (
-    <div role="alertdialog" aria-live="assertive" aria-label={`${call.organizer.firstName} is calling`} className="fixed inset-0 z-[100] flex items-end justify-center bg-black/40 p-4 backdrop-blur-sm sm:items-center">
-      <div className="w-full max-w-sm rounded-3xl border border-line bg-surface p-6 text-center shadow-2xl">
-        <div className="relative mx-auto w-fit">
-          <span className="absolute inset-0 animate-ping rounded-full bg-success/30" />
-          <Avatar person={call.organizer} size="xl" />
+    <div
+      role="alertdialog"
+      aria-live="assertive"
+      aria-label={`${call.organizer.firstName} is calling`}
+      onKeyDown={(e) => e.key === "Escape" && close("declined")}
+      className="fixed inset-0 z-[100] flex items-end justify-center overflow-y-auto overscroll-contain bg-black/40 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] backdrop-blur-sm sm:items-center"
+    >
+      {/* The buttons stay in a fixed footer; only the middle scrolls, so Join and Not now are always reachable — even on a landscape phone. */}
+      <div className="flex max-h-[calc(100dvh-2rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] w-full max-w-sm flex-col overflow-hidden rounded-3xl border border-line bg-surface text-center shadow-2xl">
+        <div className="min-h-0 flex-1 overflow-y-auto p-6 pb-0 [@media(max-height:500px)]:p-4 [@media(max-height:500px)]:pb-0">
+          <div className="relative mx-auto w-fit [@media(max-height:500px)]:hidden">
+            <span className="absolute inset-0 animate-ping rounded-full bg-success/30" />
+            <Avatar person={call.organizer} size="xl" />
+          </div>
+          <p className="mt-4 text-[12px] font-semibold uppercase tracking-wider text-success [@media(max-height:500px)]:mt-0">Incoming call</p>
+          <h2 className="mt-1 text-[19px] font-semibold tracking-[-0.015em]">
+            {call.organizer.firstName} {call.organizer.lastName} is inviting you to a call right now
+          </h2>
+          {call.organizer.title && <p className="mt-0.5 text-[13px] text-fg-muted">{call.organizer.title}</p>}
+          <MeetingNotesCallout firstName={call.organizer.firstName} notes={call.organizer.meetingNotes} className="mt-4 text-left" />
         </div>
-        <p className="mt-4 text-[12px] font-semibold uppercase tracking-wider text-success">Incoming call</p>
-        <h2 className="mt-1 text-[19px] font-semibold tracking-[-0.015em]">
-          {call.organizer.firstName} {call.organizer.lastName} is inviting you to a call right now
-        </h2>
-        {call.organizer.title && <p className="mt-0.5 text-[13px] text-fg-muted">{call.organizer.title}</p>}
-        <div className="mt-6 grid grid-cols-2 gap-3">
-          <Button variant="secondary" size="lg" onClick={close}>
+        <div className="grid shrink-0 grid-cols-2 gap-3 p-6 pt-5 [@media(max-height:500px)]:p-4">
+          <Button variant="secondary" size="lg" onClick={() => close("declined")} autoFocus>
             <PhoneOff /> Not now
           </Button>
           <Button asChild size="lg" className="bg-success hover:bg-success/90">
-            <a href={call.meetUrl} target="_blank" rel="noopener noreferrer" onClick={close}>
+            <a href={call.meetUrl} target="_blank" rel="noopener noreferrer" onClick={() => close("joined")}>
               <Video /> Join
             </a>
           </Button>

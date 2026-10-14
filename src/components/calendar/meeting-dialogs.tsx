@@ -10,6 +10,20 @@ import { AssigneePicker, type PickablePerson } from "@/components/tasks/assignee
 import { toLocalInput } from "@/components/tasks/due-picker";
 import { askFounderAvailability, founderAvailability, meetNow, requestFounderMeeting, scheduleMeeting, type AvailabilityAccess } from "@/actions/meetings";
 import { cn } from "@/lib/utils";
+import { MeetingNotesCallout } from "@/components/calendar/meeting-notes";
+
+/** Notes from any founders among the picked people. */
+function FoundersNotes({ people, ids }: { people: PickablePerson[]; ids: string[] }) {
+  const founders = people.filter((p) => ids.includes(p.id) && p.meetingNotes);
+  if (!founders.length) return null;
+  return (
+    <div className="space-y-2">
+      {founders.map((f) => (
+        <MeetingNotesCallout key={f.id} firstName={f.firstName} notes={f.meetingNotes} />
+      ))}
+    </div>
+  );
+}
 
 const DURATIONS = [15, 30, 45, 60, 90, 120];
 
@@ -99,6 +113,7 @@ export function MeetNowDialog({ people, selfId, disabled }: { people: PickablePe
           hideLead
           placeholder="Who do you want to call?"
         />
+        <FoundersNotes people={people} ids={ids} />
         <DialogFooter>
           <DialogClose asChild>
             <Button variant="secondary">Cancel</Button>
@@ -197,7 +212,8 @@ export function ScheduleMeetingDialog({
               placeholder="Invite people"
             />
           </Field>
-          <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_160px]">
+          <FoundersNotes people={people} ids={ids} />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_160px]">
             <Field label="Starts">
               <Input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} />
             </Field>
@@ -227,6 +243,16 @@ export function ScheduleMeetingDialog({
               </span>
             </span>
           </label>
+          {isPrivate && people.some((p) => ids.includes(p.id) && p.sharedInbox) && (
+            <p className="rounded-xl border border-warning/25 bg-warning-soft px-3 py-2.5 text-[12.5px] text-fg">
+              <span className="font-semibold">Heads up:</span>{" "}
+              {people
+                .filter((p) => ids.includes(p.id) && p.sharedInbox)
+                .map((p) => p.firstName)
+                .join(", ")}{" "}
+              get calendar invites at an inbox other people share, so they can read this invite too. Ask them to set their own address in Settings → Calendar invites.
+            </p>
+          )}
         </div>
         <DialogFooter>
           <DialogClose asChild>
@@ -248,6 +274,8 @@ export interface FounderOption {
   title: string | null;
   /** Their own Google Calendar is connected. */
   calendarConnected: boolean;
+  /** "Before you meet me" notes. */
+  meetingNotes?: string | null;
 }
 
 /** Ask a founder for time. Their free slots show only once they have agreed to share them. */
@@ -266,13 +294,16 @@ export function RequestFounderDialog({
   const [description, setDescription] = React.useState("");
   const [start, setStart] = React.useState("");
   const [duration, setDuration] = React.useState(30);
-  const [slots, setSlots] = React.useState(1);
+  // Typed as text so the field can be cleared and retyped (a number input that snaps back to 1 turns "4" into "14").
+  const [slotsText, setSlotsText] = React.useState("1");
+  const slots = Math.min(12, Math.max(1, Math.floor(Number(slotsText)) || 1));
   const [guests, setGuests] = React.useState<string[]>([]);
   const block = duration * slots;
   const [availability, setAvailability] = React.useState<AvailabilityAccess | null>(null);
   const [checking, setChecking] = React.useState(false);
   const [asking, setAsking] = React.useState(false);
   const [ask, setAsk] = React.useState({ purpose: "", meetings: 1, slotMinutes: 30 as 15 | 30 | 45 | 60 | 90 });
+  const [meetingsText, setMeetingsText] = React.useState("1");
   const [reload, setReload] = React.useState(0);
   const [pending, startTransition] = React.useTransition();
   const founder = founders.find((f) => f.id === founderId);
@@ -281,11 +312,10 @@ export function RequestFounderDialog({
   React.useEffect(() => {
     if (!open || !founderId || !day) return;
     let live = true;
-    const dayStart = new Date(`${day}T00:00`);
     // Runs in a timeout so the loading flag isn't set synchronously inside the effect.
     const t = window.setTimeout(() => {
       setChecking(true);
-      founderAvailability(founderId, dayStart.toISOString(), block)
+      founderAvailability(founderId, day, block)
         .then((res) => live && setAvailability(res.ok ? res.data! : null))
         .finally(() => live && setChecking(false));
     }, 0);
@@ -325,7 +355,7 @@ export function RequestFounderDialog({
       setOpen(false);
       setTitle("");
       setDescription("");
-      setSlots(1);
+      setSlotsText("1");
       setGuests([]);
     });
 
@@ -360,20 +390,23 @@ export function RequestFounderDialog({
               ))}
             </NativeSelect>
           </Field>
+          {founder && <MeetingNotesCallout firstName={founder.firstName} notes={founder.meetingNotes} />}
           <Field label="What's it about">
             <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Feedback on the partnership deck" maxLength={200} />
           </Field>
-          <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_110px_150px]">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_110px_150px]">
             <Field label="Suggested time">
               <Input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} />
             </Field>
             <Field label="Slots">
               <Input
-                type="number"
+                type="text"
                 min={1}
                 max={12}
-                value={slots}
-                onChange={(e) => setSlots(Math.max(1, Math.min(12, Math.floor(Number(e.target.value)) || 1)))}
+                value={slotsText}
+                onChange={(e) => setSlotsText(e.target.value.replace(/\D/g, "").slice(0, 2))}
+                onBlur={() => setSlotsText(String(slots))}
+                inputMode="numeric"
                 aria-describedby="slots-hint"
               />
             </Field>
@@ -393,7 +426,7 @@ export function RequestFounderDialog({
                 Blocks {block < 60 ? `${block} min` : `${Math.floor(block / 60)} h${block % 60 ? ` ${block % 60} min` : ""}`} with {founder?.firstName ?? "them"}: {slots} back-to-back calls, each with its own Google Meet link.
               </div>
               <p className="mt-0.5 text-fg-muted">Once accepted, copy a ready-made invite for each guest from the Calendar page. Name the guests now (optional):</p>
-              <ol className="mt-2 grid gap-1.5 sm:grid-cols-2">
+              <ol className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                 {Array.from({ length: slots }, (_, i) => {
                   const at = startAt ? new Date(startAt.getTime() + i * duration * 60_000) : null;
                   return (
@@ -470,11 +503,17 @@ export function RequestFounderDialog({
                 />
                 <div className="flex flex-wrap items-center gap-2">
                   <Input
-                    type="number"
+                    type="text"
                     min={1}
                     max={50}
-                    value={ask.meetings}
-                    onChange={(e) => setAsk((a) => ({ ...a, meetings: Math.max(1, Math.min(50, Number(e.target.value) || 1)) }))}
+                    value={meetingsText}
+                    onChange={(e) => {
+                      const text = e.target.value.replace(/\D/g, "").slice(0, 2);
+                      setMeetingsText(text);
+                      setAsk((a) => ({ ...a, meetings: Math.max(1, Math.min(50, Number(text) || 1)) }));
+                    }}
+                    onBlur={() => setMeetingsText(String(ask.meetings))}
+                    inputMode="numeric"
                     className="w-20"
                     aria-label="How many meetings"
                   />

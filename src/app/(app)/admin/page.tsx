@@ -83,7 +83,7 @@ async function Integration({ tz }: { tz: string }) {
   const endpoint = `${config.appUrl()}/api/integrations/hr/events`;
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
       <Card>
         <CardHeader icon={<History />} title="Recent deliveries" description="Every event the HR console has sent. Credentials are never recorded." />
         <CardBody className="px-0 pb-2">

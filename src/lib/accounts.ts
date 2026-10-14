@@ -1,4 +1,4 @@
-import type { Prisma } from "@/generated/prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import type { AccountSource, EmploymentStatus, Role } from "@/generated/prisma/enums";
 import { generateTemporaryPassword, hashPassword, isBcryptHash } from "@/lib/auth/password";
@@ -76,30 +76,48 @@ export async function createAccount(input: NewAccount, client: Prisma.Transactio
   }
 
   const creds = await resolveCredentials(input.credentials);
-  const user = await client.user.create({
-    data: {
-      email,
-      employeeCode,
-      firstName: input.firstName.trim(),
-      lastName: input.lastName.trim(),
-      role: input.role,
-      ...defaultGrants(input.role),
-      title: input.title?.trim() || null,
-      phone: input.phone?.trim() || null,
-      location: input.location?.trim() || null,
-      departmentId: input.departmentId || null,
-      managerId: input.managerId || null,
-      joinedAt: input.joinedAt ?? new Date(),
-      lastDay: input.lastDay ?? null,
-      status: input.status ?? "ACTIVE",
-      source: input.source,
-      externalId: input.externalId ?? null,
-      avatarHue: hueFor(employeeCode),
-      passwordHash: creds.passwordHash,
-      mustChangePassword: creds.mustChangePassword,
-    },
-    select: { id: true, employeeCode: true, email: true, firstName: true, lastName: true },
-  });
+  const create = (code: string) =>
+    client.user.create({
+      data: {
+        email,
+        employeeCode: code,
+        firstName: input.firstName.trim(),
+        lastName: input.lastName.trim(),
+        role: input.role,
+        ...defaultGrants(input.role),
+        title: input.title?.trim() || null,
+        phone: input.phone?.trim() || null,
+        location: input.location?.trim() || null,
+        departmentId: input.departmentId || null,
+        managerId: input.managerId || null,
+        joinedAt: input.joinedAt ?? new Date(),
+        lastDay: input.lastDay ?? null,
+        status: input.status ?? "ACTIVE",
+        source: input.source,
+        externalId: input.externalId ?? null,
+        avatarHue: hueFor(code),
+        passwordHash: creds.passwordHash,
+        mustChangePassword: creds.mustChangePassword,
+      },
+      select: { id: true, employeeCode: true, email: true, firstName: true, lastName: true },
+    });
+
+  // Two accounts created at the same moment (e.g. an HR cohort sync) can pick the same next
+  // code; on that clash, take the next free one and try again.
+  let user;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      user = await create(employeeCode);
+      break;
+    } catch (error) {
+      const clash =
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002" &&
+        JSON.stringify(error.meta ?? {}).includes("employeeCode");
+      if (!clash || input.employeeCode || client !== db || attempt >= 4) throw error;
+      employeeCode = await nextEmployeeCode(client);
+    }
+  }
 
   return { user, generatedPassword: creds.generatedPassword };
 }

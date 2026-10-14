@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { db } from "@/lib/db";
+import { RING_MS } from "@/lib/calls";
 
 export const dynamic = "force-dynamic";
-
-/** How long a "Meet now" call keeps ringing. */
-const RING_MS = 90_000;
 
 /**
  * "Meet now" calls ringing for the signed-in person: instant calls started by
@@ -21,7 +19,8 @@ export async function GET() {
       status: "SCHEDULED",
       createdAt: { gte: new Date(Date.now() - RING_MS) },
       organizerId: { not: user.id },
-      attendees: { some: { userId: user.id } },
+      // Answered or turned down on another device: stop ringing here too.
+      attendees: { some: { userId: user.id, callAnswer: null } },
     },
     orderBy: { createdAt: "desc" },
     take: 3,
@@ -29,11 +28,20 @@ export async function GET() {
       id: true,
       meetUrl: true,
       createdAt: true,
-      organizer: { select: { id: true, firstName: true, lastName: true, avatarHue: true, title: true } },
+      organizer: { select: { id: true, firstName: true, lastName: true, avatarHue: true, title: true, role: true, meetingNotes: true } },
     },
   });
   return NextResponse.json(
-    { calls: calls.filter((c) => c.meetUrl).map((c) => ({ ...c, createdAt: c.createdAt.toISOString(), ringUntil: new Date(c.createdAt.getTime() + RING_MS).toISOString() })) },
+    {
+      calls: calls
+        .filter((c) => c.meetUrl)
+        .map(({ organizer: { role, meetingNotes, ...organizer }, ...c }) => ({
+          ...c,
+          organizer: { ...organizer, meetingNotes: role === "FOUNDER" ? meetingNotes : null },
+          createdAt: c.createdAt.toISOString(),
+          ringUntil: new Date(c.createdAt.getTime() + RING_MS).toISOString(),
+        })),
+    },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

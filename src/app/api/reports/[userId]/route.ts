@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 /** Downloads a work report as a PDF — the live one, or a filed copy with ?saved=<id>. Founders only. */
 export async function GET(request: NextRequest, { params }: { params: Promise<{ userId: string }> }) {
   const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+  if (!user || user.mustChangePassword) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
   if (!isFounder(user)) return NextResponse.json({ error: "Work reports are for founders only." }, { status: 403 });
   const { userId } = await params;
 

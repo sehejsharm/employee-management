@@ -1,5 +1,6 @@
 "use server";
 
+import { isValidPhone } from "@/lib/phone";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
@@ -18,8 +19,9 @@ export interface AuthFormState {
 
 const UNREACHABLE = "We can't reach the workspace right now. Try again in a minute — if it keeps happening, tell a founder.";
 
+/** The caller's IP. On Vercel `x-real-ip` is set by the platform (clients can't forge it); X-Forwarded-For is the fallback elsewhere. */
 function clientIp(h: Headers) {
-  return h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || "local";
+  return h.get("x-real-ip")?.trim() || h.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
 }
 
 const MAX_FAILED = 5;
@@ -38,10 +40,22 @@ function ipThrottled(ip: string) {
   return entry.count > 30;
 }
 
-/** Only same-site relative paths are honoured as post-login destinations. */
+/**
+ * Only same-site relative paths are honoured as post-login destinations. The value is
+ * parsed as a URL (not prefix-matched), so tricks like "/\t/evil.com", backslashes or
+ * control characters can't turn it into a link to another site.
+ */
 function safeNext(value: FormDataEntryValue | null) {
   const v = typeof value === "string" ? value : "";
-  return v.startsWith("/") && !v.startsWith("//") && !v.startsWith("/\\") ? v : "/dashboard";
+  if (!v.startsWith("/") || /[\x00-\x20\x7f\\]/.test(v)) return "/dashboard";
+  try {
+    const base = "http://same-origin.invalid";
+    const url = new URL(v, base);
+    if (url.origin !== base) return "/dashboard";
+    return url.pathname + url.search + url.hash;
+  } catch {
+    return "/dashboard";
+  }
 }
 
 export async function login(_: AuthFormState, formData: FormData): Promise<AuthFormState> {
@@ -87,14 +101,18 @@ async function authenticate(identifier: string, password: string, remember: bool
 
   if (!user || !valid) {
     if (user) {
-      const failed = user.failedLoginCount + 1;
-      await db.user.update({
+      // Counted atomically in the database, so parallel guesses can't all read the same count.
+      const { failedLoginCount } = await db.user.update({
         where: { id: user.id },
-        data: {
-          failedLoginCount: failed >= MAX_FAILED ? 0 : failed,
-          lockedUntil: failed >= MAX_FAILED ? new Date(Date.now() + LOCK_MINUTES * 60 * 1000) : null,
-        },
+        data: { failedLoginCount: { increment: 1 } },
+        select: { failedLoginCount: true },
       });
+      if (failedLoginCount >= MAX_FAILED) {
+        await db.user.updateMany({
+          where: { id: user.id, failedLoginCount: { gte: MAX_FAILED } },
+          data: { failedLoginCount: 0, lockedUntil: new Date(Date.now() + LOCK_MINUTES * 60 * 1000) },
+        });
+      }
     }
     // One message for unknown IDs and wrong passwords, so the form never confirms who has an account.
     return { error: "That ID and password don't match our records.", field: "password" };
@@ -117,6 +135,9 @@ export async function logout() {
 export async function choosePassword(_: AuthFormState, formData: FormData): Promise<AuthFormState> {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
+  // Only for replacing the temporary password on first sign-in. Changing a password
+  // later goes through Settings, which asks for the current one.
+  if (!user.mustChangePassword) redirect("/dashboard");
 
   const password = String(formData.get("password") ?? "");
   const confirm = String(formData.get("confirm") ?? "");
@@ -142,11 +163,11 @@ export async function completeProfile(_: AuthFormState, formData: FormData): Pro
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   if (user.mustChangePassword) redirect("/welcome");
+  if (!user.mustCompleteProfile) redirect("/dashboard");
 
   const phone = String(formData.get("phone") ?? "").trim();
   const location = String(formData.get("location") ?? "").trim();
-  const digits = phone.replace(/\D/g, "");
-  if (!/^\+?[\d\s().-]+$/.test(phone) || digits.length < 7 || digits.length > 15 || phone.length > 32) {
+  if (!isValidPhone(phone)) {
     return { error: "Enter a valid phone number, e.g. +91 98765 43210.", field: "phone" };
   }
   if (location.length < 2 || location.length > 80) return { error: "Enter your city or location.", field: "location" };

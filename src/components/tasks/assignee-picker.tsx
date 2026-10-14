@@ -16,6 +16,10 @@ export interface PickablePerson {
   roleLabel: string;
   department: string | null;
   onLeave: boolean;
+  /** Founders' "Before you meet me" notes. */
+  meetingNotes?: string | null;
+  /** Their calendar invites go to an inbox other people share (e.g. interns@). */
+  sharedInbox?: boolean;
 }
 
 export function AssigneePicker({
@@ -64,7 +68,27 @@ export function AssigneePicker({
             type="button"
             className="flex min-h-11 w-full flex-wrap items-center gap-1.5 rounded-[10px] border border-line bg-surface px-2 py-1.5 text-left shadow-xs transition hover:border-line-strong focus:border-brand focus:outline-none focus:ring-4 focus:ring-ring/40"
           >
-            {selected.length === 0 && (
+            {/* Someone already on the task who has since left: not in the picker any more, but still removable. */}
+            {value
+              .filter((id) => !people.some((p) => p.id === id))
+              .map((id) => (
+                <span key={id} className="inline-flex h-7 items-center gap-1.5 rounded-full bg-warning-soft py-0.5 pl-2.5 pr-1 text-[13px] text-warning ring-1 ring-warning/30">
+                  Former colleague
+                  <span
+                    role="button"
+                    tabIndex={-1}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggle(id);
+                    }}
+                    className="relative rounded-full p-0.5 after:absolute after:-inset-2 after:content-[''] hover:bg-surface-hover"
+                    aria-label="Remove former colleague"
+                  >
+                    <X className="size-3" />
+                  </span>
+                </span>
+              ))}
+            {value.length === 0 && (
               <span className="flex items-center gap-2 px-1.5 text-sm text-fg-subtle">
                 <UserPlus className="size-4" /> {placeholder}
               </span>
@@ -93,7 +117,7 @@ export function AssigneePicker({
                       e.stopPropagation();
                       toggle(p.id);
                     }}
-                    className="rounded-full p-0.5 text-fg-subtle hover:bg-surface-hover hover:text-fg"
+                    className="relative rounded-full p-0.5 text-fg-subtle after:absolute after:-inset-2 after:content-[''] hover:bg-surface-hover hover:text-fg"
                     aria-label={`Remove ${p.firstName}`}
                   >
                     <X className="size-3" />
@@ -104,14 +128,14 @@ export function AssigneePicker({
             <ChevronDown className="ml-auto mr-1 size-4 text-fg-subtle" />
           </button>
         </PopoverTrigger>
-        <PopoverContent className="w-[var(--radix-popover-trigger-width)] min-w-[300px]">
-          <Command loop>
+        <PopoverContent className="w-[var(--radix-popover-trigger-width)] min-w-[min(300px,calc(100vw-1rem))]">
+          <Command loop className="flex min-h-0 flex-1 flex-col">
             <Command.Input
               placeholder="Search people…"
-              className="h-11 w-full border-b border-line bg-transparent px-3.5 text-sm outline-none placeholder:text-fg-subtle"
+              className="h-11 w-full shrink-0 border-b border-line bg-transparent px-3.5 text-base outline-none placeholder:text-fg-subtle sm:text-sm"
               autoFocus
             />
-            <Command.List className="max-h-72 overflow-y-auto p-1.5">
+            <Command.List className="max-h-72 min-h-0 flex-1 overflow-y-auto p-1.5">
               <Command.Empty className="py-6 text-center text-[13px] text-fg-muted">No one by that name.</Command.Empty>
               {groups.map(([dept, list]) => (
                 <Command.Group

@@ -48,7 +48,7 @@ export function ProfileForm({
           </div>
         </div>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Phone" optional>
           <Input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} placeholder="+91 98xxx xxxxx" />
         </Field>
@@ -118,7 +118,7 @@ export function PasswordForm() {
       <Field label="Current password">
         <Input type="password" autoComplete="current-password" value={form.current} onChange={(e) => setForm((f) => ({ ...f, current: e.target.value }))} required />
       </Field>
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="New password">
           <Input type="password" autoComplete="new-password" value={form.next} onChange={(e) => setForm((f) => ({ ...f, next: e.target.value }))} required />
         </Field>
@@ -142,7 +142,7 @@ export function PasswordForm() {
   );
 }
 
-export function SessionsList({ sessions }: { sessions: { id: string; device: string | null; createdAt: string; current: boolean }[] }) {
+export function SessionsList({ sessions, tz }: { sessions: { id: string; device: string | null; createdAt: string; current: boolean }[]; tz: string }) {
   const [pending, start] = React.useTransition();
   return (
     <div>
@@ -155,7 +155,7 @@ export function SessionsList({ sessions }: { sessions: { id: string; device: str
                 {s.device ?? "Unknown device"}
                 {s.current && <span className="ml-2 rounded-full bg-success-soft px-2 py-0.5 text-[11px] font-semibold text-success">This device</span>}
               </div>
-              <div className="text-xs text-fg-subtle">Signed in {new Date(s.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</div>
+              <div className="text-xs text-fg-subtle">Signed in {new Date(s.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: tz })}</div>
             </div>
           </li>
         ))}

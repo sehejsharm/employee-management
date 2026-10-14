@@ -104,7 +104,7 @@ export default async function AnnouncementsPage({ searchParams }: { searchParams
                     {(a.authorId === user.id || isFounder(user)) && <AnnouncementMenu id={a.id} pinned={a.pinned} />}
                   </div>
                 </div>
-                <h2 className="mt-4 text-[19px] font-semibold tracking-[-0.015em]">{a.title}</h2>
+                <h2 className="mt-4 text-[19px] font-semibold tracking-[-0.015em] wrap-anywhere">{a.title}</h2>
                 <RichText text={a.body} className="mt-2 text-fg-muted" />
                 {a.pdfName && <AnnouncementPdf id={a.id} name={a.pdfName} size={formatBytes(a.pdfSize ?? 0)} />}
               </article>
@@ -146,14 +146,14 @@ async function RecognitionWall({ user, tabs }: { user: Awaited<ReturnType<typeof
         }
       />
       {tabs}
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-8">
           {awards.length > 0 && (
             <section>
               <h2 className="mb-3 flex items-center gap-2 text-[15px] font-semibold">
                 <Trophy className="size-4 text-warning" /> Wall of fame
               </h2>
-              <div className="grid gap-4 lg:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 {awards.map((r) => (
                   <RecognitionCard key={r.id} r={r} compact />
                 ))}

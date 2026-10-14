@@ -47,7 +47,7 @@ export function WelcomeForm({ firstName, employeeCode }: { firstName: string; em
                 autoComplete="new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="h-12 rounded-xl pr-11 text-[15px]"
+                className="h-12 rounded-xl pr-11 text-base"
                 aria-invalid={state.field === "password"}
                 autoFocus
                 required
@@ -100,7 +100,7 @@ export function WelcomeForm({ firstName, employeeCode }: { firstName: string; em
               autoComplete="new-password"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
-              className="h-12 rounded-xl text-[15px]"
+              className="h-12 rounded-xl text-base"
               aria-invalid={state.field === "confirm" || (confirm.length > 0 && confirm !== password)}
               required
             />

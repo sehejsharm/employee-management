@@ -28,10 +28,13 @@ export function SubmitWorkPanel({
   maxUploadBytes,
   reviewer,
   sentBack,
+  founder = false,
 }: {
   taskId: string;
   maxUploadBytes: number;
   reviewer: string;
+  /** Founders can hand work in with just a note ("Done") — no proof needed. */
+  founder?: boolean;
   /** The reviewer's note when the last submission was sent back. */
   sentBack?: string | null;
 }) {
@@ -45,7 +48,7 @@ export function SubmitWorkPanel({
 
   const total = files.reduce((s, f) => s + f.size, 0);
   const proof = {
-    writeup: summary.trim().length >= MIN_WRITEUP,
+    writeup: summary.trim().length >= (founder ? 1 : MIN_WRITEUP),
     document: files.length > 0,
     link: links.length > 0,
   };
@@ -109,7 +112,10 @@ export function SubmitWorkPanel({
           </span>
           <div>
             <h3 className="text-[15px] font-semibold tracking-[-0.01em]">Submit your work</h3>
-            <p className="mt-0.5 text-[13px] text-fg-muted">{reviewer} reviews it and marks the task done. Add proof — at least one of the three below.</p>
+            <p className="mt-0.5 text-[13px] text-fg-muted">
+              {reviewer === "You" ? "You review it" : `${reviewer} reviews it`} and mark{reviewer === "You" ? "" : "s"} the task done.{" "}
+              {founder ? "A short note is enough — e.g. “Done”. Documents and links are optional." : "Add proof — at least one of the three below."}
+            </p>
           </div>
         </div>
 
@@ -152,11 +158,17 @@ export function SubmitWorkPanel({
           onChange={(e) => setSummary(e.target.value)}
           rows={4}
           maxLength={20000}
-          placeholder="Describe the work and where to find it. A write-up of 40+ characters counts as proof on its own."
+          placeholder={founder ? "Done" : "Describe the work and where to find it. A write-up of 40+ characters counts as proof on its own."}
           className="mt-1.5"
         />
         <p className="mt-1 text-right text-[11.5px] text-fg-subtle tabular">
-          {summary.trim().length < MIN_WRITEUP ? `${MIN_WRITEUP - summary.trim().length} more characters to count as proof` : "Counts as proof"}
+          {founder
+            ? summary.trim()
+              ? "Ready to submit"
+              : "Write a short note to submit"
+            : summary.trim().length < MIN_WRITEUP
+              ? `${MIN_WRITEUP - summary.trim().length} more characters to count as proof`
+              : "Counts as proof"}
         </p>
 
         <div className="mt-2 text-[13px] font-medium">Documents</div>
@@ -285,7 +297,7 @@ export function SubmissionsPanel({ submissions, canReview }: { submissions: Clie
           </div>
           {s.summary && <RichText text={s.summary} className="mt-3 text-[13.5px]" />}
           {s.attachments.length > 0 && (
-            <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+            <ul className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
               {s.attachments.map((a) => (
                 <AttachmentCard key={a.id} a={a} />
               ))}

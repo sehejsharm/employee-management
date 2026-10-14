@@ -53,7 +53,7 @@ export function Directory({ people, departments }: { people: DirectoryPerson[]; 
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search by name, title, ID or email"
-            className="h-9 w-full rounded-[10px] border border-line bg-surface pl-9 pr-3 text-[13.5px] shadow-xs outline-none placeholder:text-fg-subtle focus:border-brand focus:ring-4 focus:ring-ring/40"
+            className="h-9 w-full rounded-[10px] border border-line bg-surface pl-9 pr-3 text-base shadow-xs sm:text-[13.5px] outline-none placeholder:text-fg-subtle focus:border-brand focus:ring-4 focus:ring-ring/40"
           />
         </div>
         <div className="no-scrollbar -mx-4 overflow-x-auto px-4 lg:mx-0 lg:px-0">
@@ -74,7 +74,7 @@ export function Directory({ people, departments }: { people: DirectoryPerson[]; 
         <select
           value={dept}
           onChange={(e) => setDept(e.target.value)}
-          className="h-9 rounded-[10px] border border-line bg-surface px-3 text-[13px] shadow-xs outline-none"
+          className="h-9 rounded-[10px] border border-line bg-surface px-3 text-base shadow-xs outline-none sm:text-[13px]"
         >
           <option value="all">All departments</option>
           {departments.map((d) => (
@@ -99,7 +99,7 @@ export function Directory({ people, departments }: { people: DirectoryPerson[]; 
       {list.length === 0 ? (
         <EmptyState icon={<Users />} title="No one matches" description="Try a different search or filter." />
       ) : (
-        <motion.ul layout className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+        <motion.ul layout className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           <AnimatePresence initial={false}>
             {list.map((p, i) => {
               const c = deptColor(p.department?.color);

@@ -1,14 +1,23 @@
 "use client";
 
 import * as React from "react";
-import { CalendarPlus, Clock, Loader2, Video } from "lucide-react";
+import { CalendarPlus, Clock, Loader2, Pencil, Video } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Field, Input, NativeSelect, Textarea } from "@/components/ui/input";
 import { AssigneePicker, type PickablePerson } from "@/components/tasks/assignee-picker";
 import { toLocalInput } from "@/components/tasks/due-picker";
-import { askFounderAvailability, founderAvailability, meetNow, requestFounderMeeting, scheduleMeeting, type AvailabilityAccess } from "@/actions/meetings";
+import {
+  askFounderAvailability,
+  founderAvailability,
+  meetNow,
+  requestFounderMeeting,
+  scheduleMeeting,
+  updateMeeting,
+  type AvailabilityAccess,
+} from "@/actions/meetings";
+import type { ClientMeeting } from "@/components/calendar/meeting-cards";
 import { cn } from "@/lib/utils";
 import { MeetingNotesCallout } from "@/components/calendar/meeting-notes";
 
@@ -260,6 +269,149 @@ export function ScheduleMeetingDialog({
           </DialogClose>
           <Button onClick={save} loading={pending} disabled={!title.trim() || ids.length === 0}>
             <CalendarPlus /> Schedule
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function durationLabel(m: number) {
+  return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ""}`;
+}
+
+/**
+ * Change a scheduled meeting in place — time, length, title, agenda, who's
+ * invited — instead of cancelling and booking it again. The Google invite is
+ * updated, so the Meet link and everyone's replies stay.
+ */
+export function EditMeetingDialog({ meeting, people, selfId }: { meeting: ClientMeeting; people: PickablePerson[]; selfId: string }) {
+  const minutes = Math.round((new Date(meeting.endAt).getTime() - new Date(meeting.startAt).getTime()) / 60_000);
+  const multi = meeting.slots.length > 1;
+  const slotMinutes = multi ? Math.round(minutes / meeting.slots.length) : minutes;
+  const founderMeeting = !!meeting.host;
+  const invited = () => meeting.attendees.map((a) => a.id).filter((id) => id !== meeting.organizer.id);
+
+  const [open, setOpen] = React.useState(false);
+  const [title, setTitle] = React.useState(meeting.title);
+  const [description, setDescription] = React.useState(meeting.description ?? "");
+  const [start, setStart] = React.useState("");
+  const [duration, setDuration] = React.useState(minutes);
+  const [ids, setIds] = React.useState<string[]>(invited);
+  const [addMeet, setAddMeet] = React.useState(false);
+  const [pending, startTransition] = React.useTransition();
+
+  // Start from the meeting as it is now every time the dialog opens.
+  const reset = () => {
+    setTitle(meeting.title);
+    setDescription(meeting.description ?? "");
+    setStart(toLocalInput(new Date(meeting.startAt)));
+    setDuration(minutes);
+    setIds(invited());
+    setAddMeet(false);
+  };
+
+  const save = () =>
+    startTransition(async () => {
+      if (!start) return void toast.error("Pick when it starts.");
+      const res = await updateMeeting(meeting.id, {
+        title,
+        description,
+        startAt: new Date(start).toISOString(),
+        durationMin: multi ? slotMinutes : duration,
+        ...(founderMeeting ? {} : { attendeeIds: ids }),
+        addMeet,
+      });
+      if (!res.ok) return void toast.error(res.error);
+      toast.success(res.message);
+      setOpen(false);
+    });
+
+  const durations = DURATIONS.includes(minutes) ? DURATIONS : [...DURATIONS, minutes].sort((a, b) => a - b);
+  // People who can be invited: anyone current, plus whoever is already on it (even if they've since left).
+  const others = people.filter((p) => p.id !== meeting.organizer.id);
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (next) reset();
+        setOpen(next);
+      }}
+    >
+      <DialogTrigger asChild>
+        <Button variant="secondary" size="sm">
+          <Pencil /> Edit
+        </Button>
+      </DialogTrigger>
+      <DialogContent
+        size="lg"
+        title="Edit meeting"
+        description={
+          founderMeeting
+            ? "The Meet link stays the same, and Google emails everyone invited about the change."
+            : "The Meet link stays the same, and Google emails everyone the change. Anyone you add gets an invitation; anyone you remove is told."
+        }
+      >
+        <div className="space-y-4">
+          <Field label="Title">
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} />
+          </Field>
+          {founderMeeting ? (
+            <p className="rounded-xl border border-line bg-surface-sunken px-3 py-2.5 text-[12.5px] text-fg-muted">
+              A meeting between {meeting.organizer.firstName} and {meeting.host!.firstName}
+              {multi ? `, in ${meeting.slots.length} slots of ${slotMinutes} min — the whole block moves together and each slot keeps its own Meet link` : ""}.
+            </p>
+          ) : (
+            <>
+              <Field label="Who">
+                <AssigneePicker
+                  people={others}
+                  value={ids}
+                  onChange={setIds}
+                  leadId={null}
+                  onLeadChange={() => {}}
+                  selfId={selfId}
+                  restrictedToSelf={false}
+                  hideLead
+                  placeholder="Invite people"
+                />
+              </Field>
+              <FoundersNotes people={people} ids={ids} />
+            </>
+          )}
+          <div className={cn("grid grid-cols-1 gap-4", !multi && "sm:grid-cols-[minmax(0,1fr)_160px]")}>
+            <Field label={multi ? "Block starts" : "Starts"}>
+              <Input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} />
+            </Field>
+            {!multi && (
+              <Field label="Length">
+                <NativeSelect value={duration} onChange={(e) => setDuration(Number(e.target.value))}>
+                  {durations.map((m) => (
+                    <option key={m} value={m}>
+                      {durationLabel(m)}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </Field>
+            )}
+          </div>
+          <Field label="Agenda" optional>
+            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} maxLength={5000} placeholder="What you'll cover" />
+          </Field>
+          {!meeting.meetUrl && !multi && (
+            <label className="flex cursor-pointer items-center gap-2.5 text-[13.5px]">
+              <input type="checkbox" checked={addMeet} onChange={(e) => setAddMeet(e.target.checked)} className="h-4 w-4 accent-[var(--brand)]" />
+              <Video className="size-4 text-success" /> Add a Google Meet link
+            </label>
+          )}
+        </div>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="secondary">Cancel</Button>
+          </DialogClose>
+          <Button onClick={save} loading={pending} disabled={title.trim().length < 2 || (!founderMeeting && ids.length === 0)}>
+            Save changes
           </Button>
         </DialogFooter>
       </DialogContent>

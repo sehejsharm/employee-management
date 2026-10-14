@@ -14,6 +14,8 @@ import { formatDate, formatTime } from "@/lib/time";
 import { useNow } from "@/lib/hooks";
 import { notesBlock } from "@/lib/meeting-notes";
 import { MeetingNotesCallout } from "@/components/calendar/meeting-notes";
+import { EditMeetingDialog } from "@/components/calendar/meeting-dialogs";
+import type { PickablePerson } from "@/components/tasks/assignee-picker";
 import { cn } from "@/lib/utils";
 
 export interface MeetingPerson {
@@ -44,6 +46,8 @@ export interface ClientMeeting {
   /** Multi-slot blocks: one call per slot, each with its own Meet link. */
   slots: { id: string; position: number; startAt: string; endAt: string; guestName: string | null; meetUrl: string | null }[];
   canCancel: boolean;
+  /** Can change the time, title, agenda or who's invited. */
+  canEdit: boolean;
 }
 
 /**
@@ -140,7 +144,7 @@ function useAction() {
 }
 
 /** A scheduled meeting: when, who, and a big Join button when it's close. */
-export function MeetingCard({ meeting, tz, selfId }: { meeting: ClientMeeting; tz: string; selfId: string }) {
+export function MeetingCard({ meeting, tz, selfId, people: everyone = [] }: { meeting: ClientMeeting; tz: string; selfId: string; people?: PickablePerson[] }) {
   const [pending, run] = useAction();
   // Null until hydrated, so server and client render the same; then ticks every 30s.
   const now = useNow(30_000)?.getTime();
@@ -226,6 +230,7 @@ export function MeetingCard({ meeting, tz, selfId }: { meeting: ClientMeeting; t
               </a>
             </Button>
           )}
+          {meeting.canEdit && <EditMeetingDialog meeting={meeting} people={everyone} selfId={selfId} />}
           {meeting.canCancel && (
             <Button
               variant="ghost"

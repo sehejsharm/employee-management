@@ -67,6 +67,18 @@ export function canCancelMeeting(actor: { id: string; role: string }, m: { organ
   return actor.role === "FOUNDER" || m.organizerId === actor.id || m.hostId === actor.id;
 }
 
+/**
+ * Can this person change the meeting (time, title, agenda, who's invited): whoever
+ * arranged a team meeting, or any founder. A meeting with a founder lives on the
+ * founder's calendar, so only founders move it — the person who asked can cancel
+ * it or ask for another time.
+ */
+export function canEditMeeting(actor: { id: string; role: string }, m: { organizerId: string; hostId: string | null; instant: boolean }) {
+  if (m.instant) return false;
+  if (actor.role === "FOUNDER") return true;
+  return m.hostId === null && m.organizerId === actor.id;
+}
+
 /** The next week of scheduled meetings someone is in, for the dashboard. */
 export async function upcomingForDashboard(userId: string, now = new Date()) {
   const rows = await db.meeting.findMany({

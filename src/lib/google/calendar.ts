@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import type { GoogleConnection } from "@/generated/prisma/client";
 import { googleConfig, GOOGLE_SCOPES } from "./config";
 import { openToken, sealToken } from "./crypto";
-import { eventBody, type EventInput, type GoogleEvent } from "./events";
+import { eventBody, eventPatch, type EventChanges, type EventInput, type GoogleEvent } from "./events";
 
 /**
  * Google Calendar + Meet over plain REST. Each call runs as a connected Google
@@ -144,6 +144,26 @@ const cal = (id: string) => `/calendar/v3/calendars/${encodeURIComponent(id)}`;
 /** Creates an event with a Meet link and emails invitations to every attendee. */
 export async function createEvent(conn: GoogleConnection, input: EventInput) {
   return api<GoogleEvent>(conn, "POST", `${cal(conn.calendarId)}/events?conferenceDataVersion=1&sendUpdates=all`, eventBody(input));
+}
+
+/** One event, as Google has it now. */
+export async function getEvent(conn: GoogleConnection, calendarId: string, eventId: string) {
+  return api<GoogleEvent>(conn, "GET", `${cal(calendarId)}/events/${encodeURIComponent(eventId)}`);
+}
+
+/**
+ * Changes an existing event in place — the Meet link, the event's privacy and
+ * guests' replies stay — and emails everyone invited about the change.
+ */
+export async function updateEvent(conn: GoogleConnection, calendarId: string, eventId: string, changes: EventChanges) {
+  // Guests who stay keep their yes/no/maybe, so read the current list before replacing it.
+  const current = changes.attendeeEmails ? await getEvent(conn, calendarId, eventId) : undefined;
+  return api<GoogleEvent>(
+    conn,
+    "PATCH",
+    `${cal(calendarId)}/events/${encodeURIComponent(eventId)}?conferenceDataVersion=1&sendUpdates=all`,
+    eventPatch(changes, current),
+  );
 }
 
 /** Cancels an event and tells everyone invited. */

@@ -3,11 +3,11 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
-import { FileText, FileUp, Link2, ListChecks, Plus, StickyNote, Trash2, X } from "lucide-react";
+import { FileText, FileUp, Link2, ListChecks, Plus, Repeat, StickyNote, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Field, Input, Textarea } from "@/components/ui/input";
+import { Field, Input, NativeSelect, Textarea } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import { createTask, updateTask, uploadFile } from "@/actions/tasks";
 import { useMounted } from "@/lib/hooks";
@@ -17,6 +17,30 @@ import { DuePicker, toLocalInput } from "./due-picker";
 import { PRIORITY_META, PRIORITY_ORDER, type TaskPriorityKey } from "./meta";
 
 type AttachTab = "link" | "note" | "file";
+type RepeatChoice = "NONE" | "DAILY" | "WEEKDAYS" | "WEEKLY";
+
+const REPEAT_OPTIONS: { value: RepeatChoice; label: string; noun: string }[] = [
+  { value: "NONE", label: "Doesn't repeat", noun: "" },
+  { value: "DAILY", label: "Every day", noun: "day" },
+  { value: "WEEKDAYS", label: "Every weekday (Mon–Fri)", noun: "weekday" },
+  { value: "WEEKLY", label: "Every week", noun: "week" },
+];
+
+/** The deadlines a repeat will produce, in the browser's time (the same rules the server applies). */
+function previewDates(start: Date, repeat: RepeatChoice, count: number) {
+  const weekend = (d: Date) => d.getDay() === 0 || d.getDay() === 6;
+  const step = (d: Date) => {
+    const n = new Date(d);
+    n.setDate(n.getDate() + (repeat === "WEEKLY" ? 7 : 1));
+    while (repeat === "WEEKDAYS" && weekend(n)) n.setDate(n.getDate() + 1);
+    return n;
+  };
+  const first = new Date(start);
+  while (repeat === "WEEKDAYS" && weekend(first)) first.setDate(first.getDate() + 1);
+  const out = [first];
+  while (out.length < count) out.push(step(out[out.length - 1]));
+  return out;
+}
 
 export interface TaskFormInitial {
   id: string;
@@ -35,6 +59,7 @@ export function TaskForm({
   maxUploadBytes,
   initial,
   presetAssignee,
+  canRepeat = false,
 }: {
   people: PickablePerson[];
   selfId: string;
@@ -42,6 +67,8 @@ export function TaskForm({
   maxUploadBytes: number;
   initial?: TaskFormInitial;
   presetAssignee?: string;
+  /** Founders can set a task to repeat (e.g. every day for 30 days). */
+  canRepeat?: boolean;
 }) {
   const router = useRouter();
   const editing = !!initial;
@@ -65,6 +92,13 @@ export function TaskForm({
   const [checklist, setChecklist] = React.useState<string[]>([]);
   const [tab, setTab] = React.useState<AttachTab>("link");
   const [pending, setPending] = React.useState(false);
+  const [repeat, setRepeat] = React.useState<RepeatChoice>("NONE");
+  // Kept as text so the field can be cleared and retyped without snapping back.
+  const [repeatCount, setRepeatCount] = React.useState("30");
+  const count = Math.floor(Number(repeatCount));
+  const countValid = Number.isInteger(count) && count >= 2 && count <= 90;
+  const repeating = canRepeat && !editing && repeat !== "NONE";
+  const preview = repeating && due && countValid ? previewDates(new Date(due), repeat, count) : null;
 
 
   const submit = async (e: React.FormEvent) => {
@@ -81,7 +115,19 @@ export function TaskForm({
         router.push(`/tasks/${initial!.id}`);
         return;
       }
-      const res = await createTask({ title, description, priority, dueAt, assigneeIds: assignees, leadId: leadId ?? undefined, links, notes, checklist });
+      if (repeating && !countValid) return void toast.error("Repeat between 2 and 90 times.");
+      const res = await createTask({
+        title,
+        description,
+        priority,
+        dueAt,
+        assigneeIds: assignees,
+        leadId: leadId ?? undefined,
+        links,
+        notes,
+        checklist,
+        repeat: repeating ? { frequency: repeat as Exclude<RepeatChoice, "NONE">, count } : undefined,
+      });
       if (!res.ok) return void toast.error(res.error);
       const id = res.data!.id;
       for (const f of files) {
@@ -91,8 +137,12 @@ export function TaskForm({
         const up = await uploadFile(id, fd).catch(() => ({ ok: false as const, error: "couldn't be uploaded. Try a smaller file or attach a link." }));
         if (!up.ok) toast.error(`${f.name}: ${up.error}`);
       }
-      toast.success("Task created", {
-        description: assignees.some((a) => a !== selfId) ? "The assignees have been notified." : "It's on your list.",
+      toast.success(repeating ? "Repeating task set up" : "Task created", {
+        description: repeating
+          ? res.message
+          : assignees.some((a) => a !== selfId)
+            ? "The assignees have been notified."
+            : "It's on your list.",
       });
       router.push(`/tasks/${id}`);
     } finally {
@@ -200,9 +250,55 @@ export function TaskForm({
               restrictedToSelf={!canAssignOthers}
             />
           </Field>
-          <Field label="Deadline" htmlFor="due" hint="Date and time, in your time zone.">
+          <Field label={repeating ? "First deadline" : "Deadline"} htmlFor="due" hint="Date and time, in your time zone.">
             <DuePicker id="due" value={due} onChange={setDue} />
           </Field>
+          {canRepeat && !editing && (
+            <Field label="Repeat" htmlFor="repeat">
+              <div className="flex gap-2">
+                <NativeSelect id="repeat" value={repeat} onChange={(e) => setRepeat(e.target.value as RepeatChoice)} className="min-w-0">
+                  {REPEAT_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </NativeSelect>
+                {repeat !== "NONE" && (
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Input
+                      inputMode="numeric"
+                      value={repeatCount}
+                      onChange={(e) => setRepeatCount(e.target.value.replace(/\D/g, "").slice(0, 2))}
+                      className="w-16 text-center"
+                      aria-label="How many times"
+                      aria-invalid={!countValid}
+                    />
+                    <span className="text-[13px] text-fg-muted">times</span>
+                  </div>
+                )}
+              </div>
+              {repeat !== "NONE" && (
+                <div className="mt-2 flex gap-2 rounded-xl border border-brand/20 bg-brand-soft/40 px-3 py-2.5 text-[12.5px] text-fg-muted">
+                  <Repeat className="mt-0.5 size-3.5 shrink-0 text-brand" />
+                  <span>
+                    {!countValid ? (
+                      "Choose between 2 and 90 times."
+                    ) : preview ? (
+                      <>
+                        <span className="font-medium text-fg">{count} tasks</span>,{" "}
+                        {preview[0].toLocaleDateString([], { day: "numeric", month: "short" })} →{" "}
+                        {preview[preview.length - 1].toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" })}. Each appears{" "}
+                        {repeat === "WEEKLY" ? "a week" : "a day"} before its deadline, so the assignee sees one at a time. Links, notes and steps are
+                        copied to every one; uploaded files go on the first.
+                      </>
+                    ) : (
+                      "Pick the first deadline to see the dates."
+                    )}
+                  </span>
+                </div>
+              )}
+            </Field>
+          )}
           <Field label="Priority">
             <div className="grid grid-cols-4 gap-1.5">
               {PRIORITY_ORDER.slice()
@@ -233,7 +329,7 @@ export function TaskForm({
             Cancel
           </Button>
           <Button type="submit" className="flex-[2]" loading={pending}>
-            {editing ? "Save changes" : "Create & notify"}
+            {editing ? "Save changes" : repeating && countValid ? `Create ${count} & notify` : "Create & notify"}
           </Button>
         </div>
       </div>

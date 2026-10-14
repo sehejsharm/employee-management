@@ -1,12 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { CalendarPlus, Combine, Search } from "lucide-react";
+import { CalendarPlus, Combine, Repeat, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/input";
-import { extendDeadline, mergeTasks } from "@/actions/tasks";
+import { extendDeadline, mergeTasks, stopTaskSeries } from "@/actions/tasks";
 import { toLocalInput } from "./due-picker";
 import { cn } from "@/lib/utils";
 
@@ -172,5 +172,34 @@ export function MergeTasksDialog({ taskId, taskRef, candidates, className }: { t
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** "Repeats every day · 3 of 30", with a way for whoever set it up (or a founder) to stop further occurrences. */
+export function SeriesBadge({ seriesId, label, canStop, stopped }: { seriesId: string; label: string; canStop: boolean; stopped: boolean }) {
+  const [pending, start] = React.useTransition();
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-soft px-2.5 py-0.5 text-[12px] font-medium text-brand-soft-fg">
+      <Repeat className="size-3.5" />
+      {label}
+      {stopped && <span className="text-fg-subtle">· stopped</span>}
+      {canStop && (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => {
+            if (!window.confirm("Stop repeating? Tasks already created stay; no new ones will be made.")) return;
+            start(async () => {
+              const res = await stopTaskSeries(seriesId);
+              if (res.ok) toast.success(res.message);
+              else toast.error(res.error);
+            });
+          }}
+          className="ml-0.5 rounded-full px-1.5 text-[11.5px] font-semibold text-brand underline-offset-2 hover:underline disabled:opacity-50"
+        >
+          Stop
+        </button>
+      )}
+    </span>
   );
 }

@@ -176,6 +176,7 @@ model User {
   /// Founders: what people should know before meeting them ("join 2 minutes early",
   /// "camera on"…). Shown when scheduling with them and added to their invites.
   meetingNotes       String?          @db.Text
+  taskSeries         TaskSeries[]     @relation("TaskSeriesCreator")
   /// Last working day (e.g. the end of an internship). The work report is filed that day.
   lastDay            DateTime?
   firstName          String
@@ -314,9 +315,53 @@ model Task {
 
   submissions Submission[]
 
+  /// Set when this task is one occurrence of a repeating task.
+  seriesId    String?
+  series      TaskSeries? @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+  /// 1-based: "3 of 30".
+  seriesIndex Int?
+
   @@index([dueAt])
   @@index([status])
   @@index([createdById])
+  @@index([seriesId])
+}
+
+enum RepeatFrequency {
+  DAILY
+  WEEKDAYS
+  WEEKLY
+}
+
+/// A founder's repeating task ("Post on LinkedIn", every day for 30 days). Each
+/// occurrence becomes an ordinary task shortly before it's due, so assignees see
+/// one at a time rather than 30 at once.
+model TaskSeries {
+  id          String          @id @default(cuid())
+  createdById String
+  createdBy   User            @relation("TaskSeriesCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  title       String
+  description String?         @db.Text
+  priority    TaskPriority    @default(MEDIUM)
+  assigneeIds String[]
+  leadId      String
+  checklist   String[]
+  /// Links and notes copied onto every occurrence: [{ kind, title, url?, content? }].
+  attachments Json?
+  frequency   RepeatFrequency
+  /// How many occurrences in all.
+  total       Int
+  /// How many have been created so far.
+  created     Int             @default(0)
+  /// Due date of the next occurrence to create; null once all are created or the series is stopped.
+  nextDueAt   DateTime?
+  /// The time zone the due time is kept in (e.g. 6 PM in Asia/Kolkata every day).
+  timeZone    String
+  stoppedAt   DateTime?
+  createdAt   DateTime        @default(now())
+  tasks       Task[]
+
+  @@index([nextDueAt])
 }
 
 model TaskAssignee {

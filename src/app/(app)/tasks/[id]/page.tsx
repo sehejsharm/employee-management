@@ -18,6 +18,8 @@ import {
 } from "@/components/tasks/task-detail-client";
 import { NoClearance } from "@/components/clearance/no-clearance";
 import { SubmissionsPanel, SubmitWorkPanel } from "@/components/tasks/submissions";
+import { SeriesBadge } from "@/components/tasks/founder-task-tools";
+import { REPEAT_LABEL } from "@/lib/task-series";
 import { ReassignDialog } from "@/components/tasks/reassign-dialog";
 import { ExtendDeadlineDialog, MergeTasksDialog } from "@/components/tasks/founder-task-tools";
 import { pickablePeople } from "@/lib/people";
@@ -63,6 +65,7 @@ async function load(id: string) {
       createdBy: { select: person },
       assignees: { select: { role: true, user: { select: { ...person, role: true } } }, orderBy: assigneeOrder },
       checklist: { orderBy: { position: "asc" }, select: { id: true, text: true, done: true } },
+      series: { select: { id: true, frequency: true, total: true, created: true, stoppedAt: true, createdById: true } },
       // Task material only; proof lives with its submission.
       attachments: { where: { submissionId: null }, orderBy: { createdAt: "asc" }, select: attachmentSelect },
       submissions: {
@@ -217,6 +220,14 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
             <span className="rounded-md bg-surface-sunken px-2 py-0.5 font-mono text-xs font-medium text-fg-muted ring-1 ring-line">{ref}</span>
             <HeaderStatus taskId={task.id} status={task.status} canChange={canChangeStatus(user, access) && contribute} />
             <PriorityBadge priority={task.priority} />
+            {task.series && task.seriesIndex && (
+              <SeriesBadge
+                seriesId={task.series.id}
+                label={`Repeats ${REPEAT_LABEL[task.series.frequency]} · ${task.seriesIndex} of ${task.series.total}`}
+                canStop={!task.series.stoppedAt && task.series.created < task.series.total && (task.series.createdById === user.id || isFounder(user))}
+                stopped={!!task.series.stoppedAt}
+              />
+            )}
           </div>
           <h1 className="text-balance text-[26px] font-semibold leading-tight tracking-[-0.025em] wrap-anywhere sm:text-[32px]">{task.title}</h1>
           <p className="mt-2 text-[13.5px] text-fg-muted">
@@ -306,6 +317,7 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
               maxUploadBytes={config.maxUploadBytes()}
               reviewer={task.createdById === user.id ? "You" : task.createdBy.firstName}
               sentBack={lastSentBack}
+              founder={isFounder(user)}
             />
           )}
 

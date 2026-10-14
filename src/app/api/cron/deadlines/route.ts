@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { config } from "@/lib/env";
 import { syncAllDeadlineAlerts } from "@/lib/notifications";
 import { fileDueLastDayReports } from "@/lib/work-report";
+import { materializeTaskSeries } from "@/lib/task-series";
 
 export const dynamic = "force-dynamic";
 
@@ -23,10 +24,14 @@ function authorised(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   if (!authorised(request)) return NextResponse.json({ ok: false, error: "Unauthorised." }, { status: 401 });
+  const repeating = await materializeTaskSeries().catch((e) => {
+    console.error("repeating tasks failed", e);
+    return 0;
+  });
   const created = await syncAllDeadlineAlerts();
   const reports = await fileDueLastDayReports(config.timeZone()).catch((e) => {
     console.error("last-day reports failed", e);
     return 0;
   });
-  return NextResponse.json({ ok: true, created, reports, at: new Date().toISOString() });
+  return NextResponse.json({ ok: true, created, reports, repeating, at: new Date().toISOString() });
 }

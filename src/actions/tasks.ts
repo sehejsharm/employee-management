@@ -22,6 +22,9 @@ import { notify } from "@/lib/notifications";
 import { config } from "@/lib/env";
 import { formatBytes, fullName, safeHttpUrl, taskRef, type ActionResult } from "@/lib/utils";
 import type { TaskStatus } from "@/generated/prisma/enums";
+import { createNextOccurrence, firstDue, MAX_OCCURRENCES, REPEAT_LABEL, seriesDueDates } from "@/lib/task-series";
+import { getTimeZone } from "@/lib/tz.server";
+import { formatDate } from "@/lib/time";
 
 /* -------------------------------------------------------------------------- */
 /* Helpers                                                                    */
@@ -133,6 +136,13 @@ const taskSchema = z.object({
   links: z.array(linkSchema).max(20).optional().default([]),
   notes: z.array(noteSchema).max(20).optional().default([]),
   checklist: z.array(z.string().trim().min(1).max(300)).max(50).optional().default([]),
+  /** Founders only: repeat the task, e.g. every day for 30 days. */
+  repeat: z
+    .object({
+      frequency: z.enum(["DAILY", "WEEKDAYS", "WEEKLY"]),
+      count: z.number().int().min(2, "Repeat at least twice.").max(MAX_OCCURRENCES, `At most ${MAX_OCCURRENCES} times.`),
+    })
+    .optional(),
 });
 
 export type TaskInput = z.input<typeof taskSchema>;
@@ -176,6 +186,40 @@ export async function createTask(input: TaskInput): Promise<ActionResult<{ id: s
     const url = safeHttpUrl(l.url);
     if (!url) return { ok: false, error: `"${l.url}" isn't a valid http(s) link.` };
     links.push({ title: l.title || new URL(url).hostname, url });
+  }
+
+  if (data.repeat) {
+    if (!isFounder(user)) return { ok: false, error: "Only founders can set up repeating tasks." };
+    const tz = await getTimeZone();
+    const first = firstDue(due, data.repeat.frequency, tz);
+    const series = await db.taskSeries.create({
+      data: {
+        createdById: user.id,
+        title: data.title,
+        description: data.description || null,
+        priority: data.priority,
+        assigneeIds: assignees.ids,
+        leadId: lead,
+        checklist: data.checklist,
+        attachments: [
+          ...links.map((l) => ({ kind: "LINK", title: l.title, url: l.url })),
+          ...data.notes.map((n) => ({ kind: "NOTE", title: n.title, content: n.content })),
+        ],
+        frequency: data.repeat.frequency,
+        total: data.repeat.count,
+        nextDueAt: first,
+        timeZone: tz,
+      },
+      select: { id: true },
+    });
+    const firstTask = await createNextOccurrence(series.id, new Date(), { force: true });
+    if (!firstTask) return { ok: false, error: "Couldn't create the first task. Try again." };
+    const dates = seriesDueDates(first, data.repeat.frequency, data.repeat.count, tz);
+    return {
+      ok: true,
+      data: { id: firstTask.id },
+      message: `Repeats ${REPEAT_LABEL[data.repeat.frequency]}, ${data.repeat.count} times (${formatDate(dates[0], tz)} → ${formatDate(dates[dates.length - 1], tz)}). Each one appears ahead of its deadline.`,
+    };
   }
 
   const task = await db.task.create({
@@ -687,7 +731,10 @@ export async function submitWork(taskId: string, formData: FormData): Promise<Ac
     if (!PROOF_EXTENSIONS.test(f.name)) return { ok: false, error: `${f.name}: attach a document — PDF, Word, a spreadsheet, slides or a screenshot.` };
   }
 
-  if (summary.length < MIN_WRITEUP && links.length === 0 && files.length === 0) {
+  // Founders' word is enough: a short note such as "Done" hands their work in. Everyone else needs proof.
+  if (isFounder(user)) {
+    if (!summary && links.length === 0 && files.length === 0) return { ok: false, error: 'Write a short note — even just "Done".' };
+  } else if (summary.length < MIN_WRITEUP && links.length === 0 && files.length === 0) {
     return {
       ok: false,
       error: `Add proof of the work: a written account (at least ${MIN_WRITEUP} characters), a document (Word, PDF…) or a link.`,
@@ -980,4 +1027,16 @@ export async function mergeTasks(targetId: string, input: z.input<typeof mergeSc
   });
   refresh();
   return { ok: true, message: `Merged ${refs.join(", ")} into ${taskRef(target.number)}.` };
+}
+
+/** Stops a repeating task: no further occurrences are created. Ones already created stay as they are. */
+export async function stopTaskSeries(seriesId: string): Promise<ActionResult> {
+  const user = await requireUser();
+  const series = await db.taskSeries.findUnique({ where: { id: seriesId }, select: { createdById: true, stoppedAt: true, created: true, total: true } });
+  if (!series) return { ok: false, error: "That repeating task is gone." };
+  if (series.createdById !== user.id && !isFounder(user)) return { ok: false, error: "Only whoever set it up, or a founder, can stop it." };
+  if (series.stoppedAt || series.created >= series.total) return { ok: true, message: "It has already stopped repeating." };
+  await db.taskSeries.update({ where: { id: seriesId }, data: { stoppedAt: new Date(), nextDueAt: null } });
+  refresh();
+  return { ok: true, message: `Stopped — no more after ${series.created} of ${series.total}.` };
 }

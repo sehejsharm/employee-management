@@ -48,6 +48,8 @@ export interface ClientMeeting {
   canCancel: boolean;
   /** Can change the time, title, agenda or who's invited. */
   canEdit: boolean;
+  /** Version of the meeting as loaded, so an edit can't overwrite a newer one. */
+  updatedAt: string;
 }
 
 /**

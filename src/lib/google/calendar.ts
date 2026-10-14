@@ -157,7 +157,7 @@ export async function getEvent(conn: GoogleConnection, calendarId: string, event
  */
 export async function updateEvent(conn: GoogleConnection, calendarId: string, eventId: string, changes: EventChanges) {
   // Guests who stay keep their yes/no/maybe, so read the current list before replacing it.
-  const current = changes.attendeeEmails ? await getEvent(conn, calendarId, eventId) : undefined;
+  const current = changes.attendeeEmails || changes.removeEmails ? await getEvent(conn, calendarId, eventId) : undefined;
   return api<GoogleEvent>(
     conn,
     "PATCH",

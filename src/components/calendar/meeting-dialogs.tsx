@@ -300,9 +300,12 @@ export function EditMeetingDialog({ meeting, people, selfId }: { meeting: Client
   const [ids, setIds] = React.useState<string[]>(invited);
   const [addMeet, setAddMeet] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
+  // The version the form was filled from: saving over someone else's newer change is refused.
+  const [openedAt, setOpenedAt] = React.useState(meeting.updatedAt);
 
   // Start from the meeting as it is now every time the dialog opens.
   const reset = () => {
+    setOpenedAt(meeting.updatedAt);
     setTitle(meeting.title);
     setDescription(meeting.description ?? "");
     setStart(toLocalInput(new Date(meeting.startAt)));
@@ -321,6 +324,7 @@ export function EditMeetingDialog({ meeting, people, selfId }: { meeting: Client
         durationMin: multi ? slotMinutes : duration,
         ...(founderMeeting ? {} : { attendeeIds: ids }),
         addMeet,
+        expectedUpdatedAt: openedAt,
       });
       if (!res.ok) return void toast.error(res.error);
       toast.success(res.message);

@@ -45,30 +45,37 @@ export interface EventChanges {
   startAt?: Date;
   endAt?: Date;
   timeZone: string;
-  /** The full new guest list. Guests who stay keep their RSVP. */
+  /** Everyone the app invites. Missing ones are added; guests who stay keep their reply. */
   attendeeEmails?: string[];
+  /** App users taken off. Guests added straight in Google Calendar are never touched. */
+  removeEmails?: string[];
   /** Adds a Google Meet link to an event that doesn't have one. */
   addMeet?: { requestId: string };
 }
 
 /**
- * The new guest list for an event: everyone who stays keeps their entry (and
- * so their yes/no/maybe), new people are added, the rest are dropped.
+ * The new guest list for an event: everyone already on it stays (with their
+ * yes/no/maybe) unless they were taken off, and anyone missing is added.
  */
-export function mergeAttendees(existing: { email: string; responseStatus?: string }[] | undefined, wanted: string[]) {
-  const emails = [...new Set(wanted.map((e) => e.trim().toLowerCase()).filter(Boolean))];
-  const byEmail = new Map((existing ?? []).map((a) => [a.email.trim().toLowerCase(), a]));
-  return emails.map((email) => byEmail.get(email) ?? { email });
+export function mergeAttendees(existing: { email: string; responseStatus?: string }[] | undefined, add: string[], remove: string[] = []) {
+  const norm = (e: string) => e.trim().toLowerCase();
+  const wanted = [...new Set(add.map(norm).filter(Boolean))];
+  // Someone still invited is never dropped (several people can share one inbox).
+  const drop = new Set(remove.map(norm).filter((e) => !wanted.includes(e)));
+  const kept = (existing ?? []).filter((a) => !drop.has(norm(a.email)));
+  const have = new Set(kept.map((a) => norm(a.email)));
+  return [...kept, ...wanted.filter((e) => !have.has(e)).map((email) => ({ email }))];
 }
 
 /** A PATCH body for an existing event: only the fields that change. */
 export function eventPatch(changes: EventChanges, current?: Pick<GoogleEvent, "attendees">) {
+  const guests = changes.attendeeEmails || changes.removeEmails;
   return {
     ...(changes.title !== undefined ? { summary: changes.title } : {}),
     ...(changes.description !== undefined ? { description: changes.description || "" } : {}),
     ...(changes.startAt ? { start: { dateTime: changes.startAt.toISOString(), timeZone: changes.timeZone } } : {}),
     ...(changes.endAt ? { end: { dateTime: changes.endAt.toISOString(), timeZone: changes.timeZone } } : {}),
-    ...(changes.attendeeEmails ? { attendees: mergeAttendees(current?.attendees, changes.attendeeEmails) } : {}),
+    ...(guests ? { attendees: mergeAttendees(current?.attendees, changes.attendeeEmails ?? [], changes.removeEmails ?? []) } : {}),
     ...(changes.addMeet
       ? { conferenceData: { createRequest: { requestId: changes.addMeet.requestId, conferenceSolutionKey: { type: "hangoutsMeet" } } } }
       : {}),

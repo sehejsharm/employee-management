@@ -550,6 +550,8 @@ const editSchema = z.object({
   attendeeIds: z.array(z.string().min(1)).max(50).optional(),
   /** Add a Google Meet link to a meeting that doesn't have one. */
   addMeet: z.boolean().optional().default(false),
+  /** The meeting as the form was opened: saving over someone else's newer change is refused. */
+  expectedUpdatedAt: z.iso.datetime({ offset: true }).optional(),
 });
 
 /**
@@ -581,9 +583,10 @@ export async function updateMeeting(meetingId: string, input: z.input<typeof edi
       googleEventId: true,
       teamEventId: true,
       meetUrl: true,
-      organizer: { select: { id: true, firstName: true, lastName: true, email: true, calendarEmail: true } },
+      updatedAt: true,
+      organizer: { select: { id: true, firstName: true, lastName: true, email: true, calendarEmail: true, status: true } },
       host: { select: { id: true, firstName: true, lastName: true } },
-      attendees: { select: { userId: true } },
+      attendees: { select: { userId: true, user: { select: { status: true, email: true, calendarEmail: true } } } },
       slots: { orderBy: { position: "asc" }, select: { id: true, position: true, startAt: true, endAt: true, guestName: true, googleEventId: true } },
     },
   });
@@ -598,6 +601,9 @@ export async function updateMeeting(meetingId: string, input: z.input<typeof edi
           : "Only whoever arranged it, or a founder, can change it.",
     };
   }
+  const STALE = "Someone else just changed this meeting — close this and open Edit again to see the latest.";
+  if (d.expectedUpdatedAt && new Date(d.expectedUpdatedAt).getTime() !== meeting.updatedAt.getTime()) return { ok: false, error: STALE };
+  if (meeting.organizer.status === "INACTIVE") return { ok: false, error: `${meeting.organizer.firstName} has left Focus Realm — cancel this meeting instead.` };
   const now = Date.now();
   if (meeting.endAt.getTime() < now) return { ok: false, error: "This meeting is already over." };
 
@@ -609,13 +615,16 @@ export async function updateMeeting(meetingId: string, input: z.input<typeof edi
   const timeChanged = shift !== 0 || endAt.getTime() !== meeting.endAt.getTime();
   if (shift !== 0 && startAt.getTime() < now - 5 * MINUTE) return { ok: false, error: "That time has already passed." };
 
-  // Who: only for team meetings. A founder meeting is between the founder and whoever asked.
+  // Who. People who have left are taken off quietly, so they stop getting this meeting's
+  // updates; the rest only changes for team meetings (a founder meeting is between the
+  // founder and whoever asked).
   const current = meeting.attendees.map((a) => a.userId);
-  let wanted = current;
+  const leavers = meeting.attendees.filter((a) => a.user.status === "INACTIVE").map((a) => a.userId);
+  let wanted = current.filter((id) => !leavers.includes(id));
   if (!meeting.hostId && d.attendeeIds) {
-    wanted = [...new Set(d.attendeeIds)].filter((id) => id !== meeting.organizerId);
-    if (wanted.length === 0) return { ok: false, error: "Invite at least one other person." };
+    wanted = [...new Set(d.attendeeIds)].filter((id) => id !== meeting.organizerId && !leavers.includes(id));
   }
+  if (!meeting.hostId && wanted.length === 0) return { ok: false, error: "Invite at least one other person." };
   const added = wanted.filter((id) => !current.includes(id));
   const removed = current.filter((id) => !wanted.includes(id));
   if (added.length) {
@@ -633,19 +642,28 @@ export async function updateMeeting(meetingId: string, input: z.input<typeof edi
   // What Google shows, written the same way as when the meeting was booked.
   const tz = await getTimeZone();
   const founderMeeting = !!meeting.hostId && !!meeting.host;
-  const googleTitle = founderMeeting ? `${fullName(meeting.organizer)} × ${fullName(meeting.host!)} — ${d.title}` : d.title;
+  const titleFor = (title: string) => (founderMeeting ? `${fullName(meeting.organizer)} × ${fullName(meeting.host!)} — ${title}` : title);
   const notes = await foundersNotes(founderMeeting ? [meeting.host!.id] : [meeting.organizerId, ...wanted]);
-  const details = [
-    d.description,
-    ...notes,
-    founderMeeting ? `Requested by ${fullName(meeting.organizer)} through the Focus Realm Workspace.` : `Arranged by ${fullName(meeting.organizer)} in the Focus Realm Workspace.`,
-  ]
-    .filter(Boolean)
-    .join("\n\n");
+  const detailsFor = (description: string | null) =>
+    [
+      description,
+      ...notes,
+      founderMeeting ? `Requested by ${fullName(meeting.organizer)} through the Focus Realm Workspace.` : `Arranged by ${fullName(meeting.organizer)} in the Focus Realm Workspace.`,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+  const googleTitle = titleFor(d.title);
+  const details = detailsFor(d.description);
   let attendeeEmails: string[] | undefined;
+  let removeEmails: string[] = [];
   if (added.length || removed.length) {
     const people = await db.user.findMany({ where: { id: { in: wanted } }, select: { email: true, calendarEmail: true } });
     attendeeEmails = [inviteEmailOf(meeting.organizer), ...people.map(inviteEmailOf)];
+    const keep = new Set(attendeeEmails.map((e) => e.toLowerCase()));
+    removeEmails = meeting.attendees
+      .filter((a) => removed.includes(a.userId))
+      .map((a) => inviteEmailOf(a.user))
+      .filter((e) => !keep.has(e.toLowerCase()));
   }
 
   // Update Google first: if that fails, nothing here changes either.
@@ -663,36 +681,54 @@ export async function updateMeeting(meetingId: string, input: z.input<typeof edi
             : "The team calendar's Google connection has expired — a founder needs to connect it again before this can change.",
       };
     }
+    // Last check before anything goes out: someone else saved a change while this one was being prepared.
+    const latest = await db.meeting.findUnique({ where: { id: meeting.id }, select: { updatedAt: true, status: true } });
+    if (!latest || latest.status !== "SCHEDULED") return { ok: false, error: "This meeting isn't on any more — refresh the page." };
+    if (latest.updatedAt.getTime() !== meeting.updatedAt.getTime()) return { ok: false, error: STALE };
+
     const calendarId = meeting.googleCalendarId;
     if (multi) {
       const total = meeting.slots.length;
-      const moved: typeof slotTimes = [];
+      const label = (s: { position: number; guestName: string | null }) => `Slot ${s.position}/${total}${s.guestName ? ` — ${s.guestName}` : ""}`;
+      // Every slot we've sent a change to — including one whose request failed or timed out,
+      // since Google may have applied it anyway.
+      const attempted: typeof slotTimes = [];
       try {
         for (const slot of slotTimes) {
           if (!slot.googleEventId) continue;
+          attempted.push(slot);
           await updateEvent(conn, calendarId, slot.googleEventId, {
-            title: `${googleTitle} · Slot ${slot.position}/${total}${slot.guestName ? ` — ${slot.guestName}` : ""}`,
+            title: `${googleTitle} · ${label(slot)}`,
             description: details,
             startAt: slot.startAt,
             endAt: slot.endAt,
             timeZone: tz,
           });
-          moved.push(slot);
         }
       } catch (error) {
-        // All or nothing: put back the slots already moved.
+        // All or nothing: put those slots back exactly as they were.
+        const oldTitle = titleFor(meeting.title);
+        const oldDetails = detailsFor(meeting.description);
         await Promise.all(
-          moved.map((slot) => {
+          attempted.map((slot) => {
             const was = meeting.slots.find((s) => s.id === slot.id)!;
-            return updateEvent(conn, calendarId, slot.googleEventId!, { startAt: was.startAt, endAt: was.endAt, timeZone: tz }).catch((e) =>
-              console.error("Couldn't put a slot back", slot.googleEventId, e),
-            );
+            return updateEvent(conn, calendarId, slot.googleEventId!, {
+              title: `${oldTitle} · ${label(was)}`,
+              description: oldDetails,
+              startAt: was.startAt,
+              endAt: was.endAt,
+              timeZone: tz,
+            }).catch((e) => console.error("Couldn't put a slot back", slot.googleEventId, e));
           }),
         );
         return googleFailure(error, "Couldn't update Google Calendar");
       }
     } else {
       try {
+        // People taken off hear about it first, while the event still has its old title and agenda.
+        if (removeEmails.length && (titleChanged || descriptionChanged || timeChanged)) {
+          await updateEvent(conn, calendarId, meeting.googleEventId!, { timeZone: tz, removeEmails });
+        }
         const event = await updateEvent(conn, calendarId, meeting.googleEventId!, {
           title: googleTitle,
           description: details,
@@ -700,6 +736,7 @@ export async function updateMeeting(meetingId: string, input: z.input<typeof edi
           endAt,
           timeZone: tz,
           attendeeEmails,
+          removeEmails,
           ...(addMeet ? { addMeet: { requestId: `${meeting.id}-meet` } } : {}),
         });
         meetUrl = meetLinkOf(event) ?? meetUrl;
@@ -722,10 +759,10 @@ export async function updateMeeting(meetingId: string, input: z.input<typeof edi
   }
 
   const saved = await db.$transaction(async (tx) => {
-    // Cancelled while this was saving: leave it cancelled.
+    // Cancelled — or changed by someone else — while this was saving: don't overwrite it.
     const res = await tx.meeting.updateMany({
-      where: { id: meeting.id, status: "SCHEDULED" },
-      data: { title: d.title, description: d.description || null, startAt, endAt, meetUrl },
+      where: { id: meeting.id, status: "SCHEDULED", updatedAt: meeting.updatedAt },
+      data: { title: d.title, description: d.description || null, startAt, endAt, meetUrl, updatedAt: new Date() },
     });
     if (res.count === 0) return false;
     if (multi && shift !== 0) {
@@ -735,11 +772,11 @@ export async function updateMeeting(meetingId: string, input: z.input<typeof edi
     if (added.length) await tx.meetingAttendee.createMany({ data: added.map((userId) => ({ meetingId: meeting.id, userId })), skipDuplicates: true });
     return true;
   });
-  if (!saved) return { ok: false, error: "It was cancelled while you were editing it." };
+  if (!saved) return { ok: false, error: "It was cancelled or changed by someone else while you were editing it — refresh the page." };
 
-  // Tell people what changed for them.
+  // Tell people what changed for them. Anyone taken off only hears the name they knew.
   const what = timeChanged ? `New time: ${noticeTime(startAt)}` : titleChanged ? `Now called "${d.title}"` : addMeet && meetUrl ? "A Google Meet link was added" : "The details were updated";
-  const staying = [meeting.organizerId, ...(meeting.hostId ? [meeting.hostId] : []), ...current.filter((id) => !removed.includes(id))];
+  const staying = [meeting.organizerId, ...(meeting.hostId ? [meeting.hostId] : []), ...wanted.filter((id) => !added.includes(id))];
   await Promise.all([
     notify(staying, { kind: "MEETING", actorId: user.id, title: `${user.firstName} changed "${d.title}"`, body: what, href: "/calendar" }),
     notify(added, {
@@ -749,7 +786,10 @@ export async function updateMeeting(meetingId: string, input: z.input<typeof edi
       body: `${noticeTime(startAt)}${meetUrl ? " · Google Meet" : ""}`,
       href: "/calendar",
     }),
-    notify(removed, { kind: "MEETING", actorId: user.id, title: `${user.firstName} took you off "${d.title}"`, body: "You no longer need to attend.", href: "/calendar" }),
+    notify(
+      removed.filter((id) => !leavers.includes(id)),
+      { kind: "MEETING", actorId: user.id, title: `${user.firstName} took you off "${meeting.title}"`, body: "You no longer need to attend.", href: "/calendar" },
+    ),
   ]);
   await audit({
     actorId: user.id,

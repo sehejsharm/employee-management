@@ -57,15 +57,26 @@ describe("founder free slots", () => {
 });
 
 describe("editing an event", () => {
-  it("keeps guests' replies and drops people taken off", () => {
+  it("keeps guests' replies, drops only people taken off, and leaves guests added in Google alone", () => {
     const merged = mergeAttendees(
       [
         { email: "aarav@focusrealm.com", responseStatus: "accepted" },
         { email: "Rohan@FocusRealm.com", responseStatus: "declined" },
+        { email: "vendor@acme.com", responseStatus: "tentative" },
       ],
       ["aarav@focusrealm.com", "tara@focusrealm.com", "AARAV@focusrealm.com"],
+      ["rohan@focusrealm.com"],
     );
-    expect(merged).toEqual([{ email: "aarav@focusrealm.com", responseStatus: "accepted" }, { email: "tara@focusrealm.com" }]);
+    expect(merged).toEqual([
+      { email: "aarav@focusrealm.com", responseStatus: "accepted" },
+      { email: "vendor@acme.com", responseStatus: "tentative" },
+      { email: "tara@focusrealm.com" },
+    ]);
+  });
+
+  it("never drops a shared inbox someone is still invited through", () => {
+    const merged = mergeAttendees([{ email: "interns@focusrealm.com", responseStatus: "accepted" }], ["interns@focusrealm.com"], ["interns@focusrealm.com"]);
+    expect(merged).toEqual([{ email: "interns@focusrealm.com", responseStatus: "accepted" }]);
   });
 
   it("only sends what changes", () => {

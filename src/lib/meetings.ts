@@ -20,6 +20,7 @@ export const meetingSelect = {
   calendarKind: true,
   responseNote: true,
   createdAt: true,
+  updatedAt: true,
   organizer: { select: meetingPersonSelect },
   host: { select: meetingPersonSelect },
   attendees: { select: { user: { select: meetingPersonSelect } } },

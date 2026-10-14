@@ -141,6 +141,11 @@ enum WorkReportReason {
   MANUAL
 }
 
+enum CallAnswer {
+  JOINED
+  DECLINED
+}
+
 enum MeetingStatus {
   /// Asked of a founder; not on any calendar until they accept.
   REQUESTED
@@ -241,13 +246,14 @@ model User {
   updatedAt DateTime @updatedAt
 
   sessions           Session[]
-  tasksCreated       Task[]          @relation("TaskCreator")
+  pushSubscriptions  PushSubscription[]
+  tasksCreated       Task[]             @relation("TaskCreator")
   assignments        TaskAssignee[]
   activities         TaskActivity[]
   attachments        Attachment[]
-  updateRequestsMade UpdateRequest[] @relation("UpdateRequester")
-  notifications      Notification[]  @relation("NotificationRecipient")
-  notificationsSent  Notification[]  @relation("NotificationActor")
+  updateRequestsMade UpdateRequest[]    @relation("UpdateRequester")
+  notifications      Notification[]     @relation("NotificationRecipient")
+  notificationsSent  Notification[]     @relation("NotificationActor")
   announcements      Announcement[]
   auditEntries       AuditLog[]
 
@@ -267,18 +273,49 @@ model User {
 }
 
 model Session {
-  id        String   @id @default(cuid())
+  id                String             @id @default(cuid())
   /// SHA-256 of the cookie token. The raw token is never stored.
-  tokenHash String   @unique
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  expiresAt DateTime
-  createdAt DateTime @default(now())
+  tokenHash         String             @unique
+  userId            String
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt         DateTime
+  createdAt         DateTime           @default(now())
   /// Coarse device label ("Chrome on macOS") so people can recognise their own sessions.
-  device    String?
+  device            String?
+  /// Phones and browsers that turned on notifications while signed in here.
+  pushSubscriptions PushSubscription[]
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+/// A phone or browser that gets notifications even when the Workspace isn't
+/// open (Web Push: Android, and iPhone/iPad once added to the home screen).
+/// Tied to the session it was turned on in, so signing out stops them.
+model PushSubscription {
+  id         String   @id @default(cuid())
+  /// The push service URL (FCM, Apple, Mozilla …). Identifies the device.
+  endpoint   String   @unique
+  p256dh     String
+  auth       String
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionId  String?
+  session    Session? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  /// "Chrome on Android", "Safari on iOS" … shown in Settings.
+  device     String?
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+/// Secrets the app generates for itself (e.g. the Web Push signing key), so
+/// features work without extra setup. Values are encrypted at rest.
+model AppSecret {
+  name      String   @id
+  value     String   @db.Text
+  createdAt DateTime @default(now())
 }
 
 model Task {
@@ -696,10 +733,13 @@ model MeetingSlot {
 }
 
 model MeetingAttendee {
-  meetingId String
-  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  userId    String
-  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  meetingId  String
+  meeting    Meeting     @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// "Meet now": how they answered the ringing call, on any device. Stops it ringing everywhere else.
+  callAnswer CallAnswer?
+  answeredAt DateTime?
 
   @@id([meetingId, userId])
   @@index([userId])

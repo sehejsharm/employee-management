@@ -14,6 +14,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
+import { NotificationBanner } from "@/components/app/notification-setup";
 import { FadeIn } from "@/components/motion";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -88,6 +89,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           ) : undefined
         }
       />
+      <NotificationBanner className="mb-6" />
       {emailSharers.length > 0 && (
         <FadeIn delay={0.03} className="mb-6">
           <SharedEmailNotice self email={user.email} others={emailSharers} />

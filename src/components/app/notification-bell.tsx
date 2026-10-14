@@ -12,6 +12,7 @@ import { markAllNotificationsRead, markNotificationRead } from "@/actions/notifi
 import type { FeedItem } from "@/lib/notification-feed";
 import { timeAgo } from "@/lib/time";
 import { cn } from "@/lib/utils";
+import { pushOnHere } from "@/lib/push-client";
 import { NotificationIcon } from "./notification-icon";
 
 const POLL_MS = 60_000;
@@ -71,7 +72,8 @@ export function NotificationsProvider({ initialUnread, children }: { initialUnre
                 }
               : undefined,
           });
-          if (typeof Notification !== "undefined" && Notification.permission === "granted" && document.hidden) {
+          // With phone notifications on, the same update already arrives by push.
+          if (typeof Notification !== "undefined" && Notification.permission === "granted" && document.hidden && !pushOnHere()) {
             try {
               const sys = new Notification(n.title, { body: n.body ?? undefined, icon: "/icon.svg", tag: n.id });
               sys.onclick = () => {

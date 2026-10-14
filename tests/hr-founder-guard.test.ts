@@ -12,10 +12,12 @@ const fake = vi.hoisted(() => ({
   integrationEvent: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
 }));
 
+vi.mock("server-only", () => ({}));
 vi.mock("@/lib/db", () => ({ db: fake }));
 vi.mock("@/lib/notifications", () => ({ notify: vi.fn() }));
 vi.mock("@/lib/audit", () => ({ audit: vi.fn() }));
 vi.mock("@/lib/work-report", () => ({ fileReportOnOffboarding: vi.fn() }));
+vi.mock("@/lib/offboarding", () => ({ closeOutAfterLeaving: vi.fn() }));
 
 const { handleHrEvent } = await import("@/lib/hr/provision");
 

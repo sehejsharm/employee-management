@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import type { NotificationKind } from "@/generated/prisma/enums";
 import { REMINDER_HORIZON_MS, SUBMITTED_STATUSES, deadlineAlerts } from "@/lib/deadline-alerts";
+import { inBackground, pushNotices } from "@/lib/push";
 
 export interface NotificationInput {
   userId: string;
@@ -13,11 +14,15 @@ export interface NotificationInput {
   dedupeKey?: string | null;
 }
 
-/** Sends one notification to each recipient, never to the person who caused it. */
-export async function notify(recipients: Iterable<string>, input: Omit<NotificationInput, "userId">) {
+/**
+ * Sends one notification to each recipient, never to the person who caused it,
+ * and to their phone if they turned phone notifications on. `push: false` when
+ * the caller sends its own phone notification (a ringing call).
+ */
+export async function notify(recipients: Iterable<string>, input: Omit<NotificationInput, "userId">, opts: { push?: boolean } = {}) {
   const ids = [...new Set(recipients)].filter((id) => id && id !== input.actorId);
   if (ids.length === 0) return;
-  await db.notification.createMany({
+  const created = await db.notification.createManyAndReturn({
     data: ids.map((userId) => ({
       userId,
       kind: input.kind,
@@ -29,7 +34,9 @@ export async function notify(recipients: Iterable<string>, input: Omit<Notificat
       dedupeKey: input.dedupeKey ?? null,
     })),
     skipDuplicates: true,
+    select: { userId: true, title: true, body: true, href: true },
   });
+  if (opts.push !== false && created.length) inBackground(() => pushNotices(created));
 }
 
 const openTaskSelect = {
@@ -54,7 +61,7 @@ export async function syncDeadlineAlertsFor(userId: string, now = new Date()) {
     select: openTaskSelect,
   });
   const alerts = deadlineAlerts(tasks, now, userId);
-  if (alerts.length) await db.notification.createMany({ data: alerts, skipDuplicates: true });
+  if (alerts.length) await createAndPush(alerts);
   return alerts.length;
 }
 
@@ -66,6 +73,16 @@ export async function syncAllDeadlineAlerts(now = new Date()) {
     select: openTaskSelect,
   });
   const alerts = deadlineAlerts(tasks, now);
-  if (alerts.length) await db.notification.createMany({ data: alerts, skipDuplicates: true });
+  if (alerts.length) await createAndPush(alerts);
   return alerts.length;
+}
+
+/** Files reminders (skipping any already sent) and pushes only the new ones. */
+async function createAndPush(alerts: ReturnType<typeof deadlineAlerts>) {
+  const created = await db.notification.createManyAndReturn({
+    data: alerts,
+    skipDuplicates: true,
+    select: { userId: true, title: true, body: true, href: true },
+  });
+  if (created.length) inBackground(() => pushNotices(created));
 }

@@ -7,6 +7,8 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth/current-user";
 import { audit } from "@/lib/audit";
 import { notify } from "@/lib/notifications";
+import { inBackground } from "@/lib/push";
+import { ringCall } from "@/lib/calls";
 import { googleConfig } from "@/lib/google/config";
 import {
   GoogleError,
@@ -179,7 +181,10 @@ async function createScheduled({
     instant
       ? { kind: "MEETING", actorId: user.id, title: `${user.firstName} is calling you on Google Meet`, body: "Join now — the call has started.", href: meetUrl ?? "/calendar" }
       : { kind: "MEETING", actorId: user.id, title: `${user.firstName} invited you to "${title}"`, body: `${noticeTime(startAt)}${meetUrl ? " · Google Meet" : ""}`, href: "/calendar" },
+    // A call rings their phones on its own (below) instead of a plain notification.
+    { push: !instant },
   );
+  if (instant && meetUrl) inBackground(() => ringCall(id));
   refresh();
   return { ok: true, data: { id, meetUrl }, message: instant ? "Call started." : "Meeting scheduled — invitations are on their way." };
 }

@@ -5,6 +5,7 @@ import { PhoneOff, Video } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { MeetingNotesCallout } from "@/components/calendar/meeting-notes";
+import { clearCallNotification, pushOnHere } from "@/lib/push-client";
 
 interface IncomingCall {
   id: string;
@@ -24,10 +25,22 @@ function dismissed(): string[] {
   }
 }
 
-function dismiss(id: string) {
+/**
+ * Answered or turned down here: stop ringing in this browser's other tabs
+ * (localStorage), on the person's other devices (the server), and clear the
+ * call's notification on this device.
+ */
+function dismiss(id: string, answer: "joined" | "declined") {
   try {
     localStorage.setItem(DISMISSED_KEY, JSON.stringify([...dismissed(), id].slice(-20)));
   } catch {}
+  void fetch(`/api/calls/${encodeURIComponent(id)}/answer`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ answer }),
+    keepalive: true,
+  }).catch(() => {});
+  void clearCallNotification(id);
 }
 
 /**
@@ -88,6 +101,11 @@ export function IncomingCallWatcher() {
     };
     const first = window.setTimeout(check, 0);
     const id = window.setInterval(check, POLL_MS);
+    // A call pushed to this device: ring now rather than at the next check.
+    const onMessage = (e: MessageEvent) => {
+      if (e.data?.type === "incoming-call") void check();
+    };
+    navigator.serviceWorker?.addEventListener("message", onMessage);
     // Answered or dismissed in another tab: stop ringing here too.
     const onStorage = (e: StorageEvent) => {
       if (e.key !== DISMISSED_KEY) return;
@@ -100,6 +118,7 @@ export function IncomingCallWatcher() {
       window.clearTimeout(first);
       window.clearInterval(id);
       window.removeEventListener("storage", onStorage);
+      navigator.serviceWorker?.removeEventListener("message", onMessage);
     };
   }, []);
 
@@ -115,13 +134,14 @@ export function IncomingCallWatcher() {
       document.title = flip ? `📞 ${caller} is calling…` : title;
     }, 1000);
     let sys: Notification | null = null;
-    if (typeof Notification !== "undefined" && Notification.permission === "granted" && document.hidden) {
+    // With phone notifications on, the service worker already shows (and rings) this call.
+    if (typeof Notification !== "undefined" && Notification.permission === "granted" && document.hidden && !pushOnHere()) {
       try {
         sys = new Notification(`${caller} is inviting you to a call right now`, { body: "Click to join on Google Meet.", icon: "/icon.svg", tag: call.id, requireInteraction: true });
         sys.onclick = () => {
           window.focus();
           window.open(call.meetUrl, "_blank", "noopener");
-          dismiss(call.id);
+          dismiss(call.id, "joined");
           setCall(null);
         };
       } catch {}
@@ -137,8 +157,8 @@ export function IncomingCallWatcher() {
   }, [call]);
 
   if (!call) return null;
-  const close = () => {
-    dismiss(call.id);
+  const close = (answer: "joined" | "declined") => {
+    dismiss(call.id, answer);
     setCall(null);
   };
 
@@ -147,7 +167,7 @@ export function IncomingCallWatcher() {
       role="alertdialog"
       aria-live="assertive"
       aria-label={`${call.organizer.firstName} is calling`}
-      onKeyDown={(e) => e.key === "Escape" && close()}
+      onKeyDown={(e) => e.key === "Escape" && close("declined")}
       className="fixed inset-0 z-[100] flex items-end justify-center overflow-y-auto overscroll-contain bg-black/40 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] backdrop-blur-sm sm:items-center"
     >
       {/* The buttons stay in a fixed footer; only the middle scrolls, so Join and Not now are always reachable — even on a landscape phone. */}
@@ -165,11 +185,11 @@ export function IncomingCallWatcher() {
           <MeetingNotesCallout firstName={call.organizer.firstName} notes={call.organizer.meetingNotes} className="mt-4 text-left" />
         </div>
         <div className="grid shrink-0 grid-cols-2 gap-3 p-6 pt-5 [@media(max-height:500px)]:p-4">
-          <Button variant="secondary" size="lg" onClick={close} autoFocus>
+          <Button variant="secondary" size="lg" onClick={() => close("declined")} autoFocus>
             <PhoneOff /> Not now
           </Button>
           <Button asChild size="lg" className="bg-success hover:bg-success/90">
-            <a href={call.meetUrl} target="_blank" rel="noopener noreferrer" onClick={close}>
+            <a href={call.meetUrl} target="_blank" rel="noopener noreferrer" onClick={() => close("joined")}>
               <Video /> Join
             </a>
           </Button>

@@ -25,6 +25,9 @@ function contentSecurityPolicy(nonce: string) {
     "img-src 'self' blob: data:",
     "font-src 'self' data:",
     "connect-src 'self'",
+    // The service worker that shows phone notifications (public/sw.js).
+    "worker-src 'self'",
+    "manifest-src 'self'",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
@@ -62,5 +65,5 @@ export const config = {
   // Skip static assets, Next internals and /api: every API route authenticates
   // itself (or is public by design: health, cron, HR webhook), and skipping
   // them halves the function invocations that notification polling costs on Vercel.
-  matcher: ["/((?!api/|_next/static|_next/image|brand/|icons/|icon.svg|apple-icon|apple-touch-icon|manifest.webmanifest|favicon.ico|robots.txt).*)"],
+  matcher: ["/((?!api/|_next/static|_next/image|brand/|icons/|icon.svg|apple-icon|apple-touch-icon|manifest.webmanifest|sw.js|favicon.ico|robots.txt).*)"],
 };

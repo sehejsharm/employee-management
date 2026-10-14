@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { db } from "@/lib/db";
+import { RING_MS } from "@/lib/calls";
 
 export const dynamic = "force-dynamic";
-
-/** How long a "Meet now" call keeps ringing. */
-const RING_MS = 90_000;
 
 /**
  * "Meet now" calls ringing for the signed-in person: instant calls started by
@@ -21,7 +19,8 @@ export async function GET() {
       status: "SCHEDULED",
       createdAt: { gte: new Date(Date.now() - RING_MS) },
       organizerId: { not: user.id },
-      attendees: { some: { userId: user.id } },
+      // Answered or turned down on another device: stop ringing here too.
+      attendees: { some: { userId: user.id, callAnswer: null } },
     },
     orderBy: { createdAt: "desc" },
     take: 3,

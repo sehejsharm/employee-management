@@ -18,6 +18,9 @@ import { getTimeZone } from "@/lib/tz.server";
 
 export const metadata: Metadata = { title: "Calendar" };
 
+/** "Meet now" keeps ringing people's phones for up to 90 seconds after the call starts (src/lib/calls.ts). */
+export const maxDuration = 120;
+
 const GOOGLE_NOTICE: Record<string, { tone: "success" | "danger"; text: string }> = {
   "personal-connected": { tone: "success", text: "Your Google Calendar is connected. People can now request time with you." },
   "team-connected": { tone: "success", text: "The team calendar is connected. Everyone can schedule meetings and start calls." },

@@ -24,6 +24,7 @@ import { CommandPalette, usePalette } from "./command-palette";
 import { DailyBriefing, OPEN_BRIEFING_EVENT } from "./daily-briefing";
 import { NotificationBell, NotificationsProvider } from "./notification-bell";
 import { IncomingCallWatcher } from "./incoming-call";
+import { PushSync } from "./notification-setup";
 import { SECTION_LABEL, navItems, type NavItem, type ShellFlags, type ShellUser } from "./nav";
 import { ThemeToggle } from "./theme-toggle";
 
@@ -59,6 +60,7 @@ export function AppShell({
         </div>
         <DailyBriefing />
         <IncomingCallWatcher />
+        <PushSync />
       </CommandPalette>
     </NotificationsProvider>
   );

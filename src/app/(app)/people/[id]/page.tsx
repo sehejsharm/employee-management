@@ -33,6 +33,9 @@ import { taskRowSelect, taskVisibilityWhere, toClientRow } from "@/lib/tasks/que
 import { formatDate, timeAgo } from "@/lib/time";
 import { getTimeZone } from "@/lib/tz.server";
 
+/** "Meet now" keeps ringing people's phones for up to 90 seconds after the call starts (src/lib/calls.ts). */
+export const maxDuration = 120;
+
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
   const p = await db.user.findUnique({ where: { id }, select: { firstName: true, lastName: true } });

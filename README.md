@@ -32,9 +32,19 @@ Prisma 7 and PostgreSQL, in the blue-and-white Focus Realm brand
   (or a founder) accepts it — the task is done — or sends it back with notes.
 - **Reminders** — 1 day, 12 hours, 6 hours, 1 hour, 30 minutes, 15 minutes and
   5 minutes before the deadline, then when it's overdue, for as long as the
-  work hasn't been submitted: in the inbox, as a toast, and as a desktop
-  notification if you turn them on. Whoever assigned the work hears when it
-  slips.
+  work hasn't been submitted: in the inbox, as a toast, and on your phone or
+  computer if you turn notifications on. Whoever assigned the work hears when
+  it slips.
+- **Phone notifications (free)** — turn them on under *Settings →
+  Notifications* on each phone and computer. Android works in Chrome or the
+  installed app; on iPhone, add the Workspace to the home screen first (Safari →
+  Share → Add to Home Screen) and turn them on there. A *Meet now* call rings
+  like a phone call — a notification with **Join / Not now** that sounds and
+  vibrates every 15 seconds for 90 seconds, stops on every device once you
+  answer anywhere, and becomes *Missed call* if you don't. Tasks, meetings,
+  announcements and reminders arrive as normal notifications. Uses Web Push,
+  so there's nothing to pay and nothing to set up (see `.env.example` to
+  manage the keys yourself).
 - **Clearance** — you see your own tasks and the tasks you're on. Seeing
   anyone else's work needs clearance: ask for it under *Clearance*, and it's
   given only when **both** that colleague **and** a founder agree. Otherwise

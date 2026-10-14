@@ -142,7 +142,7 @@ export function PasswordForm() {
   );
 }
 
-export function SessionsList({ sessions }: { sessions: { id: string; device: string | null; createdAt: string; current: boolean }[] }) {
+export function SessionsList({ sessions, tz }: { sessions: { id: string; device: string | null; createdAt: string; current: boolean }[]; tz: string }) {
   const [pending, start] = React.useTransition();
   return (
     <div>
@@ -155,7 +155,7 @@ export function SessionsList({ sessions }: { sessions: { id: string; device: str
                 {s.device ?? "Unknown device"}
                 {s.current && <span className="ml-2 rounded-full bg-success-soft px-2 py-0.5 text-[11px] font-semibold text-success">This device</span>}
               </div>
-              <div className="text-xs text-fg-subtle">Signed in {new Date(s.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</div>
+              <div className="text-xs text-fg-subtle">Signed in {new Date(s.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: tz })}</div>
             </div>
           </li>
         ))}

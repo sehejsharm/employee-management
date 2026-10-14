@@ -210,7 +210,9 @@ export function FeedRow({ item, onOpen }: { item: FeedItem; onOpen: () => void }
       <div className="min-w-0 flex-1 wrap-anywhere">
         <div className={cn("text-[13px] leading-snug", item.readAt ? "text-fg-muted" : "font-medium text-fg")}>{item.title}</div>
         {item.body && <div className="mt-0.5 line-clamp-2 text-[12.5px] leading-snug text-fg-subtle">{item.body}</div>}
-        <div className="mt-1 text-[11px] text-fg-subtle">{timeAgo(new Date(item.createdAt))}</div>
+        <div className="mt-1 text-[11px] text-fg-subtle" suppressHydrationWarning>
+          {timeAgo(new Date(item.createdAt))}
+        </div>
       </div>
       {!item.readAt && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-brand" />}
     </div>

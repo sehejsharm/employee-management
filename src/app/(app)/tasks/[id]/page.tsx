@@ -211,8 +211,8 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
         <ChevronLeft className="size-4" /> Tasks
       </Link>
 
-      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0">
+      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-start lg:justify-between">
+        <div className="min-w-0 lg:min-w-[16rem] lg:flex-1">
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <span className="rounded-md bg-surface-sunken px-2 py-0.5 font-mono text-xs font-medium text-fg-muted ring-1 ring-line">{ref}</span>
             <HeaderStatus taskId={task.id} status={task.status} canChange={canChangeStatus(user, access) && contribute} />

@@ -79,7 +79,7 @@ export default async function LeadershipPage() {
       const [ownCount, delegatedCount, overdue] = await Promise.all([
         db.task.count({ where: { archivedAt: null, status: { not: "DONE" }, assignees: { some: { userId: l.id } } } }),
         db.task.count({ where: { archivedAt: null, status: { not: "DONE" }, createdById: l.id, assignees: { some: { userId: { not: l.id } } } } }),
-        db.task.count({ where: { archivedAt: null, status: { not: "DONE" }, dueAt: { lt: now }, assignees: { some: { userId: l.id } } } }),
+        db.task.count({ where: { archivedAt: null, status: { notIn: ["DONE", "IN_REVIEW"] }, dueAt: { lt: now }, assignees: { some: { userId: l.id } } } }),
       ]);
       return { leader: l, own, delegated, doneWeek, ownCount, delegatedCount, overdue };
     }),

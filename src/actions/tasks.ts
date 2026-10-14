@@ -95,30 +95,35 @@ function pickLead(ids: string[], leadId: string | undefined) {
   return leadId && ids.includes(leadId) ? leadId : ids[0];
 }
 
-/** Assignees must be real, current people. Former employees can't be given work. */
-async function validateAssignees(user: Actor, ids: string[]) {
+/**
+ * Assignees must be real, current people. Only the people being *added* are checked:
+ * someone already on the task stays editable (and removable) after they leave, and an
+ * editor without assigning rights can still edit a task others were added to.
+ */
+async function validateAssignees(user: Actor, ids: string[], existing: string[] = []) {
   const unique = [...new Set(ids)];
   if (unique.length === 0) return { error: "Assign the task to at least one person." } as const;
   if (unique.length > 25) return { error: "A task can have at most 25 assignees." } as const;
-  if (!canAssignTasks(user) && unique.some((id) => id !== user.id)) {
+  const added = unique.filter((id) => !existing.includes(id));
+  if (!canAssignTasks(user) && added.some((id) => id !== user.id)) {
     return { error: "You can create tasks for yourself. Ask a founder to give you assigning rights for others." } as const;
   }
   const found = await db.user.findMany({
-    where: { id: { in: unique }, status: { not: "INACTIVE" } },
+    where: { id: { in: added }, status: { not: "INACTIVE" } },
     select: { id: true },
   });
-  if (found.length !== unique.length) return { error: "One of the selected people is no longer active." } as const;
+  if (found.length !== added.length) return { error: "One of the selected people is no longer active." } as const;
   return { ids: unique } as const;
 }
 
 const linkSchema = z.object({
-  title: z.string().trim().max(160).optional().default(""),
-  url: z.string().trim().min(1, "Add a URL.").max(2000),
+  title: z.string().trim().max(160, "Link labels can be up to 160 characters.").optional().default(""),
+  url: z.string().trim().min(1, "Add a URL.").max(2000, "That link is too long."),
 });
 
 const noteSchema = z.object({
-  title: z.string().trim().min(1, "Give the note a title.").max(160),
-  content: z.string().trim().min(1, "The note is empty.").max(20000),
+  title: z.string().trim().min(1, "Give the note a title.").max(160, "Note titles can be up to 160 characters."),
+  content: z.string().trim().min(1, "The note is empty.").max(20000, "Notes can be up to 20,000 characters."),
 });
 
 /* -------------------------------------------------------------------------- */
@@ -135,7 +140,11 @@ const taskSchema = z.object({
   leadId: z.string().min(1).optional(),
   links: z.array(linkSchema).max(20).optional().default([]),
   notes: z.array(noteSchema).max(20).optional().default([]),
-  checklist: z.array(z.string().trim().min(1).max(300)).max(50).optional().default([]),
+  checklist: z
+    .array(z.string().trim().min(1, "A checklist step is empty.").max(300, "Checklist steps can be up to 300 characters."))
+    .max(50, "At most 50 checklist steps.")
+    .optional()
+    .default([]),
   /** Founders only: repeat the task, e.g. every day for 30 days. */
   repeat: z
     .object({
@@ -257,14 +266,23 @@ export async function updateTask(taskId: string, input: z.input<typeof editSchem
   if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
   const data = parsed.data;
 
-  const assignees = await validateAssignees(user, data.assigneeIds);
+  const assignees = await validateAssignees(
+    user,
+    data.assigneeIds,
+    task.assignees.map((a) => a.userId),
+  );
   if ("error" in assignees) return { ok: false, error: assignees.error! };
 
   const current = await db.task.findUniqueOrThrow({
     where: { id: taskId },
-    select: { title: true, description: true, priority: true, dueAt: true },
+    select: { title: true, description: true, priority: true, dueAt: true, status: true },
   });
   const due = new Date(data.dueAt);
+  if (due.getTime() !== current.dueAt.getTime()) {
+    // A finished task's deadline is part of its record; moving it would rewrite who was on time.
+    if (current.status === "DONE") return { ok: false, error: "This task is done — its deadline can't change any more." };
+    if (due.getTime() < Date.now() - 5 * 60 * 1000) return { ok: false, error: "The deadline is in the past." };
+  }
   const before = new Set(task.assignees.map((a) => a.userId));
   const added = assignees.ids.filter((id) => !before.has(id));
   const removed = [...before].filter((id) => !assignees.ids.includes(id));
@@ -627,8 +645,10 @@ export async function removeAttachment(attachmentId: string): Promise<ActionResu
   if (attachment.submissionId) return { ok: false, error: "Proof that's been submitted stays with the submission." };
   const task = await loadTask(attachment.taskId);
   if (!task) return { ok: false, error: "That task no longer exists." };
-  if (attachment.createdById !== user.id && !canEditTask(user, ctx(task))) {
-    return { ok: false, error: "Only whoever added it, or the task's owner, can remove this." };
+  // Your own material only while you're still on the task; the owner can always tidy up.
+  const ownAndStillOn = attachment.createdById === user.id && canContribute(user, ctx(task));
+  if (!ownAndStillOn && !canEditTask(user, ctx(task))) {
+    return { ok: false, error: "Only whoever added it (while still on the task), or the task's owner, can remove this." };
   }
 
   await db.$transaction([
@@ -978,6 +998,11 @@ export async function mergeTasks(targetId: string, input: z.input<typeof mergeSc
   ]);
   if (!target) return { ok: false, error: "That task no longer exists." };
   if (sources.length !== sourceIds.length) return { ok: false, error: "One of those tasks no longer exists." };
+  // Work waiting for review has to be decided first, or it would land on the merged task half-reviewed.
+  const inReview = sources.filter((t) => t.status === "IN_REVIEW");
+  if (inReview.length) {
+    return { ok: false, error: `${inReview.map((t) => taskRef(t.number)).join(", ")} has work waiting for review — accept it or send it back first.` };
+  }
 
   const have = new Set(target.assignees.map((a) => a.userId));
   const newcomers = [...new Set(sources.flatMap((t) => t.assignees.map((a) => a.userId)))].filter((id) => !have.has(id));
@@ -1016,15 +1041,26 @@ export async function mergeTasks(targetId: string, input: z.input<typeof mergeSc
     }),
   ]);
 
-  const everyone = [target.createdById, ...target.assignees.map((a) => a.userId), ...sources.flatMap((t) => [t.createdById, ...t.assignees.map((a) => a.userId)])];
-  await notify(everyone, {
+  // People on the merged task (and founders) can open it; whoever assigned a source task
+  // but isn't on the merged one gets a plain note instead of a link they can't open.
+  const onTarget = new Set([target.createdById, ...target.assignees.map((a) => a.userId), ...newcomers]);
+  const sourceCreators = [...new Set(sources.map((t) => t.createdById))].filter((id) => !onTarget.has(id));
+  const founderIds = new Set(
+    (await db.user.findMany({ where: { id: { in: sourceCreators }, role: "FOUNDER" }, select: { id: true } })).map((u) => u.id),
+  );
+  const title = `${user.firstName} merged ${refs.join(", ")} into ${taskRef(target.number)}`;
+  await notify([...onTarget, ...sourceCreators.filter((id) => founderIds.has(id))], {
     kind: "TASK_STATUS",
     actorId: user.id,
     taskId: targetId,
     href: `/tasks/${targetId}`,
-    title: `${user.firstName} merged ${refs.join(", ")} into ${taskRef(target.number)}`,
+    title,
     body: `${target.title} — one task now, with everyone on it.`,
   });
+  await notify(
+    sourceCreators.filter((id) => !founderIds.has(id)),
+    { kind: "TASK_STATUS", actorId: user.id, title, body: `The work you assigned now lives in ${taskRef(target.number)}, which you're not on. Ask ${user.firstName} if you need to follow it.` },
+  );
   refresh();
   return { ok: true, message: `Merged ${refs.join(", ")} into ${taskRef(target.number)}.` };
 }

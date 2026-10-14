@@ -375,7 +375,7 @@ export function LinkComposer({ onAdd, busy }: { onAdd: (l: { title: string; url:
         placeholder="https://docs.google.com/…"
         onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), add())}
       />
-      <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Label (optional)" onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), add())} />
+      <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Label (optional)" maxLength={160} onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), add())} />
       <Button type="button" variant="secondary" onClick={add} loading={busy}>
         <Plus /> Add link
       </Button>
@@ -394,7 +394,7 @@ export function NoteComposer({ onAdd, busy }: { onAdd: (n: { title: string; cont
   };
   return (
     <div className="space-y-2">
-      <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title — e.g. Must-haves" />
+      <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title — e.g. Must-haves" maxLength={160} />
       <Textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="Write the details, a list, instructions…" className="min-h-28" />
       <div className="flex justify-end">
         <Button type="button" variant="secondary" onClick={add} loading={busy}>
@@ -467,7 +467,7 @@ function ChecklistComposer({ items, onChange }: { items: string[]; onChange: (it
         ))}
       </ul>
       <div className="mt-2 flex gap-2">
-        <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="Add a step and press Enter" onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), add())} />
+        <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="Add a step and press Enter" maxLength={300} onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), add())} />
         <Button type="button" variant="secondary" onClick={add}>
           <Plus /> Add
         </Button>

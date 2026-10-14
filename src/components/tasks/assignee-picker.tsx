@@ -68,7 +68,27 @@ export function AssigneePicker({
             type="button"
             className="flex min-h-11 w-full flex-wrap items-center gap-1.5 rounded-[10px] border border-line bg-surface px-2 py-1.5 text-left shadow-xs transition hover:border-line-strong focus:border-brand focus:outline-none focus:ring-4 focus:ring-ring/40"
           >
-            {selected.length === 0 && (
+            {/* Someone already on the task who has since left: not in the picker any more, but still removable. */}
+            {value
+              .filter((id) => !people.some((p) => p.id === id))
+              .map((id) => (
+                <span key={id} className="inline-flex h-7 items-center gap-1.5 rounded-full bg-warning-soft py-0.5 pl-2.5 pr-1 text-[13px] text-warning ring-1 ring-warning/30">
+                  Former colleague
+                  <span
+                    role="button"
+                    tabIndex={-1}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggle(id);
+                    }}
+                    className="relative rounded-full p-0.5 after:absolute after:-inset-2 after:content-[''] hover:bg-surface-hover"
+                    aria-label="Remove former colleague"
+                  >
+                    <X className="size-3" />
+                  </span>
+                </span>
+              ))}
+            {value.length === 0 && (
               <span className="flex items-center gap-2 px-1.5 text-sm text-fg-subtle">
                 <UserPlus className="size-4" /> {placeholder}
               </span>

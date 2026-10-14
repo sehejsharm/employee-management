@@ -2,7 +2,7 @@ import "server-only";
 import { db } from "@/lib/db";
 import { notify } from "@/lib/notifications";
 import { ROLE_LABEL } from "@/lib/permissions";
-import { dayKey } from "@/lib/time";
+import { dayKey, startOfDayInZone } from "@/lib/time";
 import { fullName, taskRef } from "@/lib/utils";
 import { badgeLabel } from "@/lib/recognition";
 import type { WorkReportReason } from "@/generated/prisma/enums";
@@ -55,7 +55,8 @@ export async function buildWorkReport(userId: string, now = new Date()): Promise
             archivedAt: true,
             createdAt: true,
             createdBy: { select: { firstName: true, lastName: true } },
-            submissions: { where: { submittedById: userId }, orderBy: { createdAt: "asc" }, select: { createdAt: true, status: true } },
+            // Everyone's hand-ins: the work is delivered when the hand-in that was accepted arrived, for lead and followers alike.
+            submissions: { orderBy: { createdAt: "asc" }, select: { createdAt: true, status: true } },
           },
         },
       },
@@ -78,11 +79,16 @@ export async function buildWorkReport(userId: string, now = new Date()): Promise
     }),
   ]);
 
+  const from = person.joinedAt ?? person.createdAt;
+  const to = person.lastDay && person.lastDay < now ? person.lastDay : now;
+
   const tasks: ReportTask[] = assignments
     .filter((a) => !a.task.archivedAt)
     .map(({ role, task }) => {
-      const firstSubmitted = task.submissions[0]?.createdAt ?? null;
-      const delivered = task.status === "DONE" ? (firstSubmitted ?? task.completedAt) : firstSubmitted;
+      // Work sent back doesn't count as delivered; the accepted (or still pending) hand-in does.
+      const accepted = [...task.submissions].reverse().find((s) => s.status === "ACCEPTED")?.createdAt ?? null;
+      const pending = task.submissions.find((s) => s.status === "SUBMITTED")?.createdAt ?? null;
+      const delivered = task.status === "DONE" ? (accepted ?? task.completedAt) : pending;
       return {
         ref: taskRef(task.number),
         title: task.title,
@@ -94,13 +100,11 @@ export async function buildWorkReport(userId: string, now = new Date()): Promise
         dueAt: task.dueAt.toISOString(),
         deliveredAt: delivered ? delivered.toISOString() : null,
         completedAt: task.completedAt?.toISOString() ?? null,
-        onTime: delivered ? delivered.getTime() <= task.dueAt.getTime() : task.status !== "DONE" && task.dueAt.getTime() < now.getTime() ? false : null,
+        // Deadlines after someone's last day don't count against them.
+        onTime: delivered ? delivered.getTime() <= task.dueAt.getTime() : task.status !== "DONE" && task.dueAt.getTime() < to.getTime() ? false : null,
       };
     })
     .sort((a, b) => b.dueAt.localeCompare(a.dueAt));
-
-  const from = person.joinedAt ?? person.createdAt;
-  const to = person.lastDay && person.lastDay < now ? person.lastDay : now;
 
   return summarise({
     generatedAt: now.toISOString(),
@@ -162,28 +166,36 @@ export async function fileWorkReport(userId: string, reason: WorkReportReason, a
 }
 
 /**
- * Files the report for everyone whose last day is today (or passed without
- * one). Run by the daily cron; safe to run repeatedly.
+ * Files the final report for everyone whose last day has ended — on the morning after,
+ * so the last day's own hand-ins and reviews are in it. If the last day was moved later
+ * after a report was filed, a new one is filed once the new day ends. Run by the daily
+ * cron; safe to run repeatedly.
  */
 export async function fileDueLastDayReports(tz: string, now = new Date()) {
   const today = dayKey(now, tz);
   const due = await db.user.findMany({
-    where: { lastDay: { not: null, lte: new Date(now.getTime() + 24 * 3600_000) }, workReports: { none: { reason: { in: ["LAST_DAY", "OFFBOARDED"] } } } },
+    where: { lastDay: { not: null, lte: now } },
     select: { id: true, lastDay: true },
   });
   let filed = 0;
   for (const u of due) {
-    if (dayKey(u.lastDay!, tz) > today) continue;
+    if (dayKey(u.lastDay!, tz) >= today) continue;
+    const dayEnded = new Date(startOfDayInZone(u.lastDay!, tz).getTime() + 24 * 3600_000);
+    const already = await db.workReport.findFirst({
+      where: { userId: u.id, reason: { in: ["LAST_DAY", "OFFBOARDED"] }, createdAt: { gte: dayEnded } },
+      select: { id: true },
+    });
+    if (already) continue;
     await fileWorkReport(u.id, "LAST_DAY");
     filed += 1;
   }
   return filed;
 }
 
-/** When someone leaves: file the final report unless one was filed in the last day. */
+/** When someone leaves: file their final report as of now (reusing one only if it was filed in the last few minutes). */
 export async function fileReportOnOffboarding(userId: string, actorId: string | null) {
   const recent = await db.workReport.findFirst({
-    where: { userId, reason: { in: ["LAST_DAY", "OFFBOARDED"] }, createdAt: { gte: new Date(Date.now() - 24 * 3600_000) } },
+    where: { userId, reason: { in: ["LAST_DAY", "OFFBOARDED"] }, createdAt: { gte: new Date(Date.now() - 10 * 60_000) } },
     select: { id: true },
   });
   if (recent) return recent.id;

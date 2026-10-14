@@ -120,7 +120,7 @@ async function MemberView({ tz }: { tz: string }) {
     const b = dueBucket(new Date(t.dueAt), t.status, tz, now);
     groups.set(b, [...(groups.get(b) ?? []), t]);
   }
-  const order: DueBucket[] = ["overdue", "today", "tomorrow", "week", "later"];
+  const order: DueBucket[] = ["overdue", "today", "tomorrow", "week", "later", "review"];
 
   return (
     <div className="space-y-6">

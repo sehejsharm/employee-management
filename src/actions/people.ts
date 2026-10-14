@@ -1,5 +1,6 @@
 "use server";
 
+import { placementProblem } from "@/lib/placement";
 import { closeOutAfterLeaving } from "@/lib/offboarding";
 import { refresh } from "next/cache";
 import { z } from "zod";
@@ -101,7 +102,7 @@ export async function updateMember(userId: string, input: z.input<typeof accessS
 
   const target = await db.user.findUnique({
     where: { id: userId },
-    select: { id: true, firstName: true, lastName: true, role: true, status: true, canAssignTasks: true, canManageOrg: true, canManagePeople: true },
+    select: { id: true, firstName: true, lastName: true, role: true, status: true, lastDay: true, canAssignTasks: true, canManageOrg: true, canManagePeople: true },
   });
   if (!target) return { ok: false, error: "That person no longer exists." };
 
@@ -115,6 +116,8 @@ export async function updateMember(userId: string, input: z.input<typeof accessS
     if (others === 0) return { ok: false, error: "The workspace needs at least one active founder." };
   }
 
+  const problem = await placementProblem(d.managerId, d.departmentId);
+  if (problem) return { ok: false, error: problem };
   if (wouldCreateCycle(await reportingEdges(), userId, d.managerId)) return { ok: false, error: "That would make someone report to their own report." };
 
   // Founders always hold every grant.
@@ -130,6 +133,8 @@ export async function updateMember(userId: string, input: z.input<typeof accessS
         managerId: d.managerId,
         status: d.status,
         ...grants,
+        // Leaving ends their work period, so their record stops counting later deadlines against them.
+        ...(d.status === "INACTIVE" && target.status !== "INACTIVE" && !target.lastDay ? { lastDay: new Date() } : {}),
       },
     }),
     ...(d.managerId ? [db.additionalManager.deleteMany({ where: { userId, managerId: d.managerId } })] : []),

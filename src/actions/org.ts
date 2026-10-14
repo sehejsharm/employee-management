@@ -1,5 +1,7 @@
 "use server";
 
+import { placementProblem } from "@/lib/placement";
+import { closeOutAfterLeaving } from "@/lib/offboarding";
 import { refresh } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
@@ -18,9 +20,10 @@ export async function setManager(userId: string, managerId: string | null): Prom
   const actor = await requireUser();
   if (!canManageOrg(actor)) return { ok: false, error: "Only founders, or people they've allowed, can edit the org chart." };
 
-  const edges = await db.user.findMany({ select: { id: true, managerId: true, firstName: true, lastName: true, status: true } });
+  const edges = await db.user.findMany({ select: { id: true, managerId: true, firstName: true, lastName: true, status: true, role: true } });
   const person = edges.find((e) => e.id === userId);
   if (!person) return { ok: false, error: "That person no longer exists." };
+  if (person.role === "FOUNDER" && !isFounder(actor)) return { ok: false, error: "Only founders can change who a founder reports to." };
   if (managerId) {
     const manager = edges.find((e) => e.id === managerId);
     if (!manager) return { ok: false, error: "That manager no longer exists." };
@@ -146,26 +149,31 @@ export async function updatePlacement(userId: string, input: z.input<typeof plac
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
   const d = parsed.data;
 
-  const target = await db.user.findUnique({ where: { id: userId }, select: { id: true, role: true, firstName: true, lastName: true, status: true } });
+  const target = await db.user.findUnique({ where: { id: userId }, select: { id: true, role: true, firstName: true, lastName: true, status: true, lastDay: true } });
   if (!target) return { ok: false, error: "That person no longer exists." };
   if (target.role === "FOUNDER" && !isFounder(actor)) return { ok: false, error: "Only founders can change a founder's placement." };
   if (userId === actor.id && d.status === "INACTIVE") return { ok: false, error: "You can't mark yourself as former." };
 
+  const problem = await placementProblem(d.managerId, d.departmentId);
+  if (problem) return { ok: false, error: problem };
   if (wouldCreateCycle(await reportingEdges(), userId, d.managerId)) {
     return { ok: false, error: "That would make someone report to their own report." };
   }
+  const leaving = d.status === "INACTIVE" && target.status !== "INACTIVE";
 
   await db.$transaction([
     db.user.update({
       where: { id: userId },
-      data: { title: d.title || null, departmentId: d.departmentId, managerId: d.managerId, status: d.status },
+      // Leaving ends their work period, so their record stops counting later deadlines against them.
+      data: { title: d.title || null, departmentId: d.departmentId, managerId: d.managerId, status: d.status, ...(leaving && !target.lastDay ? { lastDay: new Date() } : {}) },
     }),
     ...(d.managerId ? [db.additionalManager.deleteMany({ where: { userId, managerId: d.managerId } })] : []),
     ...(d.status === "INACTIVE" ? [db.session.deleteMany({ where: { userId } })] : []),
   ]);
 
-  if (d.status === "INACTIVE" && target.status !== "INACTIVE") {
+  if (leaving) {
     await fileReportOnOffboarding(userId, actor.id).catch((e) => console.error("offboarding report failed", e));
+    await closeOutAfterLeaving(userId);
   }
   if (d.status !== target.status) {
     await audit({

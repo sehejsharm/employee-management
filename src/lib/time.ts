@@ -116,7 +116,8 @@ export function timeAgo(date: Date, now = new Date()) {
 export type DueState = "done" | "overdue" | "urgent" | "soon" | "upcoming";
 
 export function dueState(dueAt: Date, status: string, now = new Date()): DueState {
-  if (status === "DONE") return "done";
+  // Handed in and waiting for review counts as delivered — never "overdue".
+  if (status === "DONE" || status === "IN_REVIEW") return "done";
   const ms = dueAt.getTime() - now.getTime();
   if (ms <= 0) return "overdue";
   if (ms <= DUE_URGENT_HOURS * HOUR) return "urgent";
@@ -124,7 +125,7 @@ export function dueState(dueAt: Date, status: string, now = new Date()): DueStat
   return "upcoming";
 }
 
-export type DueBucket = "overdue" | "today" | "tomorrow" | "week" | "later" | "done";
+export type DueBucket = "overdue" | "today" | "tomorrow" | "week" | "later" | "review" | "done";
 
 export const DUE_BUCKET_LABEL: Record<DueBucket, string> = {
   overdue: "Overdue",
@@ -132,11 +133,13 @@ export const DUE_BUCKET_LABEL: Record<DueBucket, string> = {
   tomorrow: "Due tomorrow",
   week: "This week",
   later: "Later",
+  review: "Handed in · waiting for review",
   done: "Completed",
 };
 
 export function dueBucket(dueAt: Date, status: string, tz: string, now = new Date()): DueBucket {
   if (status === "DONE") return "done";
+  if (status === "IN_REVIEW") return "review";
   if (dueAt.getTime() < now.getTime()) return "overdue";
   const diff = dayDiff(dueAt, now, tz);
   if (diff <= 0) return "today";

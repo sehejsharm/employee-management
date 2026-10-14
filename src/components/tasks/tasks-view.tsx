@@ -26,7 +26,7 @@ export interface Scope {
   count: number;
 }
 
-const BUCKET_ORDER: DueBucket[] = ["overdue", "today", "tomorrow", "week", "later", "done"];
+const BUCKET_ORDER: DueBucket[] = ["overdue", "today", "tomorrow", "week", "later", "review", "done"];
 
 export function TasksView({
   tasks: initial,

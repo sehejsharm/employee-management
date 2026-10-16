@@ -38,7 +38,7 @@ export async function startSession(userId: string, remember: boolean) {
   const userAgent = (await headers()).get("user-agent");
 
   await db.session.create({
-    data: { tokenHash: hashToken(token), userId, expiresAt, device: describeDevice(userAgent) },
+    data: { tokenHash: hashToken(token), userId, expiresAt, remember, device: describeDevice(userAgent) },
   });
 
   (await cookies()).set(SESSION_COOKIE, token, {

@@ -82,6 +82,8 @@ export interface PushMessage {
 }
 
 const MAX_TEXT = 300;
+/** How long after a remembered session expires its devices still get notifications. */
+const REMEMBERED_GRACE_MS = 90 * 24 * 3600_000;
 const clip = (s: string | null | undefined) => (s && s.length > MAX_TEXT ? `${s.slice(0, MAX_TEXT - 1)}…` : (s ?? ""));
 
 /** A push "topic" (≤ 32 URL-safe chars): a newer message with the same topic replaces one not yet delivered. */
@@ -103,8 +105,14 @@ export async function sendPush(userIds: Iterable<string>, message: PushMessage, 
       where: {
         userId: { in: ids },
         user: { status: { not: "INACTIVE" } },
-        // Only devices still signed in: signing out (or the session expiring) stops notifications.
-        OR: [{ sessionId: null }, { session: { expiresAt: { gt: now } } }],
+        // Only devices still signed in. Signing out, a password reset or leaving deletes the
+        // session and stops them at once. A "keep me signed in" phone keeps getting calls for a
+        // while after the session runs out, so it doesn't go quiet just because nobody opened it.
+        OR: [
+          { sessionId: null },
+          { session: { expiresAt: { gt: now } } },
+          { session: { remember: true, expiresAt: { gt: new Date(now.getTime() - REMEMBERED_GRACE_MS) } } },
+        ],
       },
       select: { id: true, endpoint: true, p256dh: true, auth: true },
     });

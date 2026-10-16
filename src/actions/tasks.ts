@@ -20,6 +20,7 @@ import {
 } from "@/lib/permissions";
 import { notify } from "@/lib/notifications";
 import { config } from "@/lib/env";
+import { deleteObjectsQuietly, storeFile } from "@/lib/storage";
 import { formatBytes, fullName, safeHttpUrl, taskRef, type ActionResult } from "@/lib/utils";
 import type { TaskStatus } from "@/generated/prisma/enums";
 import { createNextOccurrence, firstDue, MAX_OCCURRENCES, REPEAT_LABEL, seriesDueDates } from "@/lib/task-series";
@@ -611,15 +612,24 @@ export async function uploadFile(taskId: string, formData: FormData): Promise<Ac
   const title = String(formData.get("title") ?? "").trim().slice(0, 160) || name;
 
   const bytes = new Uint8Array(await file.arrayBuffer());
+  const mime = file.type || "application/octet-stream";
+  let stored: Awaited<ReturnType<typeof storeFile>>;
+  try {
+    stored = await storeFile(`drive/${r.user.id}`, name, bytes, mime);
+  } catch (error) {
+    console.error("upload failed", error);
+    return { ok: false, error: "Couldn't save the file. Try again in a minute." };
+  }
+  try {
   await db.$transaction(async (tx) => {
-    const blob = await tx.fileBlob.create({ data: { data: bytes }, select: { id: true } });
+    const blob = await tx.fileBlob.create({ data: stored, select: { id: true } });
     await tx.attachment.create({
       data: {
         taskId,
         kind: "FILE",
         title,
         fileName: name,
-        mimeType: file.type || "application/octet-stream",
+        mimeType: mime,
         size: file.size,
         blobId: blob.id,
         createdById: r.user.id,
@@ -630,6 +640,10 @@ export async function uploadFile(taskId: string, formData: FormData): Promise<Ac
     });
     // A few MB over a cross-region link can outlast Prisma's 5-second default.
   }, { timeout: 20_000, maxWait: 5_000 });
+  } catch (error) {
+    await deleteObjectsQuietly([stored.storageKey]);
+    throw error;
+  }
 
   refresh();
   return { ok: true, message: "File uploaded." };
@@ -639,7 +653,7 @@ export async function removeAttachment(attachmentId: string): Promise<ActionResu
   const user = await requireUser();
   const attachment = await db.attachment.findUnique({
     where: { id: attachmentId },
-    select: { id: true, taskId: true, title: true, kind: true, createdById: true, blobId: true, submissionId: true },
+    select: { id: true, taskId: true, title: true, kind: true, createdById: true, blobId: true, submissionId: true, blob: { select: { storageKey: true } } },
   });
   if (!attachment) return { ok: false, error: "That attachment is already gone." };
   if (attachment.submissionId) return { ok: false, error: "Proof that's been submitted stays with the submission." };
@@ -658,6 +672,7 @@ export async function removeAttachment(attachmentId: string): Promise<ActionResu
       data: { taskId: task.id, actorId: user.id, kind: "ATTACHMENT_REMOVED", meta: { kind: attachment.kind, title: attachment.title } },
     }),
   ]);
+  await deleteObjectsQuietly([attachment.blob?.storageKey]);
   refresh();
   return { ok: true, message: "Removed." };
 }
@@ -761,7 +776,19 @@ export async function submitWork(taskId: string, formData: FormData): Promise<Ac
     };
   }
 
-  const blobs = await Promise.all(files.map(async (f) => ({ file: f, bytes: new Uint8Array(await f.arrayBuffer()) })));
+  // Files go to storage first; if the hand-in then fails, they're removed again.
+  let blobs: { file: File; name: string; stored: Awaited<ReturnType<typeof storeFile>> }[];
+  try {
+    blobs = await Promise.all(
+      files.map(async (f) => {
+        const name = f.name.replace(/[\\/\0]/g, "_").slice(0, 200) || "document";
+        return { file: f, name, stored: await storeFile(`drive/${user.id}`, name, new Uint8Array(await f.arrayBuffer()), f.type || "application/octet-stream") };
+      }),
+    );
+  } catch (error) {
+    console.error("upload failed", error);
+    return { ok: false, error: "Couldn't save your files. Try again in a minute." };
+  }
   try {
     await db.$transaction(
       async (tx) => {
@@ -776,9 +803,8 @@ export async function submitWork(taskId: string, formData: FormData): Promise<Ac
         for (const l of links) {
           await tx.attachment.create({ data: { taskId, submissionId: sub.id, kind: "LINK", title: l.title, url: l.url, createdById: user.id } });
         }
-        for (const { file, bytes } of blobs) {
-          const blob = await tx.fileBlob.create({ data: { data: bytes }, select: { id: true } });
-          const name = file.name.replace(/[\\/\0]/g, "_").slice(0, 200) || "document";
+        for (const { file, name, stored } of blobs) {
+          const blob = await tx.fileBlob.create({ data: stored, select: { id: true } });
           await tx.attachment.create({
             data: {
               taskId,
@@ -810,6 +836,7 @@ export async function submitWork(taskId: string, formData: FormData): Promise<Ac
       { timeout: 20_000, maxWait: 5_000 },
     );
   } catch (e) {
+    await deleteObjectsQuietly(blobs.map((b) => b.stored.storageKey));
     if (e instanceof Conflict) return { ok: false, error: e.message };
     throw e;
   }

@@ -45,6 +45,12 @@ Prisma 7 and PostgreSQL, in the blue-and-white Focus Realm brand
   announcements and reminders arrive as normal notifications. Uses Web Push,
   so there's nothing to pay and nothing to set up (see `.env.example` to
   manage the keys yourself).
+- **Drive** — every document, link and written hand-in someone adds to a task
+  or submits as proof collects in their drive (*My drive*, and *Open drive* on
+  their profile). It stays there after the work is accepted, the task is done
+  or archived — founders, the person, and anyone cleared to see their work can
+  open it. Files are stored on Cloudflare R2 when connected
+  ([docs/CLOUDFLARE_R2.md](docs/CLOUDFLARE_R2.md)), otherwise in the database.
 - **Clearance** — you see your own tasks and the tasks you're on. Seeing
   anyone else's work needs clearance: ask for it under *Clearance*, and it's
   given only when **both** that colleague **and** a founder agree. Otherwise

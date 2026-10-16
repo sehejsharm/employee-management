@@ -7,6 +7,7 @@ import { requireUser } from "@/lib/auth/current-user";
 import { isFounder, isLeader } from "@/lib/permissions";
 import { notify } from "@/lib/notifications";
 import { config } from "@/lib/env";
+import { deleteObjectsQuietly, storeFile } from "@/lib/storage";
 import { formatBytes } from "@/lib/utils";
 import type { ActionResult } from "@/lib/utils";
 
@@ -27,7 +28,7 @@ export async function postAnnouncement(formData: FormData): Promise<ActionResult
   });
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
 
-  let pdf: { pdf: Uint8Array<ArrayBuffer>; pdfName: string; pdfSize: number } | undefined;
+  let pdf: { pdf: Uint8Array<ArrayBuffer> | null; pdfKey: string | null; pdfName: string; pdfSize: number } | undefined;
   const file = formData.get("pdf");
   if (file instanceof File && file.size > 0) {
     const max = config.maxUploadBytes();
@@ -36,7 +37,14 @@ export async function postAnnouncement(formData: FormData): Promise<ActionResult
     // Check the file itself, not just its name: it must start with the PDF signature.
     if (new TextDecoder().decode(bytes.subarray(0, 5)) !== "%PDF-") return { ok: false, error: "Attach a PDF file." };
     const name = file.name.replace(/[\\/\0]/g, "_").slice(0, 200) || "document.pdf";
-    pdf = { pdf: bytes, pdfName: /\.pdf$/i.test(name) ? name : `${name}.pdf`, pdfSize: file.size };
+    const pdfName = /\.pdf$/i.test(name) ? name : `${name}.pdf`;
+    try {
+      const stored = await storeFile("announcements", pdfName, bytes, "application/pdf");
+      pdf = { pdf: stored.data, pdfKey: stored.storageKey, pdfName, pdfSize: file.size };
+    } catch (error) {
+      console.error("announcement PDF upload failed", error);
+      return { ok: false, error: "Couldn't save the PDF. Try again in a minute." };
+    }
   }
 
   const a = await db.announcement.create({ data: { ...parsed.data, ...pdf, authorId: user.id }, select: { id: true, title: true } });
@@ -68,7 +76,8 @@ export async function togglePin(id: string): Promise<ActionResult> {
 export async function deleteAnnouncement(id: string): Promise<ActionResult> {
   const r = await own(id);
   if ("error" in r) return { ok: false, error: r.error! };
-  await db.announcement.delete({ where: { id } });
+  const gone = await db.announcement.delete({ where: { id }, select: { pdfKey: true } });
+  await deleteObjectsQuietly([gone.pdfKey]);
   refresh();
   return { ok: true, message: "Deleted." };
 }

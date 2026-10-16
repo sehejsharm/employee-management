@@ -4,7 +4,7 @@
  * Keep it true to what the code does — update it when data handling changes.
  */
 
-export const POLICY_UPDATED = "13 October 2026";
+export const POLICY_UPDATED = "16 October 2026";
 
 export interface PolicySection {
   title: string;
@@ -79,7 +79,7 @@ export function policySections(contact: string): PolicySection[] {
     {
       title: "Service providers",
       body: [
-        "We use a small number of providers to host and run the Workspace, each processing data only on our instructions: Vercel (application hosting), our managed PostgreSQL database provider (data storage, in Singapore where available), and Google (Calendar and Meet, only when connected). Data may be processed outside your country by these providers under their own security and data-protection terms.",
+        "We use a small number of providers to host and run the Workspace, each processing data only on our instructions: Vercel (application hosting), our managed PostgreSQL database provider (data storage, in Singapore where available), Cloudflare R2 (storage of uploaded documents, when enabled), Google (Calendar and Meet, only when connected), and the push services of your phone or browser maker — Google, Apple, Microsoft or Mozilla — to deliver notifications you turn on. Data may be processed outside your country by these providers under their own security and data-protection terms.",
       ],
     },
     {

@@ -1,6 +1,6 @@
 # Focus Realm Workspace — Privacy Policy
 
-_Last updated: 13 October 2026_
+_Last updated: 16 October 2026_
 
 ## Who we are
 
@@ -52,7 +52,7 @@ A founder can disconnect at any time on the Calendar page, which deletes the sto
 
 ## Service providers
 
-We use a small number of providers to host and run the Workspace, each processing data only on our instructions: Vercel (application hosting), our managed PostgreSQL database provider (data storage, in Singapore where available), and Google (Calendar and Meet, only when connected). Data may be processed outside your country by these providers under their own security and data-protection terms.
+We use a small number of providers to host and run the Workspace, each processing data only on our instructions: Vercel (application hosting), our managed PostgreSQL database provider (data storage, in Singapore where available), Cloudflare R2 (storage of uploaded documents, when enabled), Google (Calendar and Meet, only when connected), and the push services of your phone or browser maker — Google, Apple, Microsoft or Mozilla — to deliver notifications you turn on. Data may be processed outside your country by these providers under their own security and data-protection terms.
 
 ## How long we keep data
 

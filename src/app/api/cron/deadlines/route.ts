@@ -4,6 +4,7 @@ import { config } from "@/lib/env";
 import { syncAllDeadlineAlerts } from "@/lib/notifications";
 import { fileDueLastDayReports } from "@/lib/work-report";
 import { materializeTaskSeries } from "@/lib/task-series";
+import { moveFilesToCloud } from "@/lib/storage-move";
 
 export const dynamic = "force-dynamic";
 
@@ -33,5 +34,10 @@ export async function GET(request: NextRequest) {
     console.error("last-day reports failed", e);
     return 0;
   });
-  return NextResponse.json({ ok: true, created, reports, repeating, at: new Date().toISOString() });
+  // Once Cloudflare R2 is set up, files still kept in the database move across a batch a day.
+  const files = await moveFilesToCloud(100).catch((e) => {
+    console.error("moving files to cloud storage failed", e);
+    return { moved: 0, failed: 0 };
+  });
+  return NextResponse.json({ ok: true, created, reports, repeating, files, at: new Date().toISOString() });
 }

@@ -1,13 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { Check, Copy, Pencil, Plus, Trash2 } from "lucide-react";
+import { Check, CloudUpload, Copy, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { DEPARTMENT_COLOR_KEYS, deptColor } from "@/components/ui/badge";
 import { Dialog, DialogClose, DialogContent, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/input";
 import { deleteDepartment, saveDepartment } from "@/actions/org";
+import { moveFilesNow } from "@/actions/storage";
 import { cn } from "@/lib/utils";
 
 export function CopyField({ value }: { value: string }) {
@@ -118,6 +119,25 @@ export function DeleteDepartment({ id, name, members }: { id: string; name: stri
       }}
     >
       <Trash2 />
+    </Button>
+  );
+}
+
+/** Moves the next batch of files from the database to Cloudflare R2. */
+export function MoveFilesButton({ remaining }: { remaining: number }) {
+  const [pending, start] = React.useTransition();
+  return (
+    <Button
+      loading={pending}
+      onClick={() =>
+        start(async () => {
+          const res = await moveFilesNow();
+          if (res.ok) toast.success(res.message);
+          else toast.error(res.error);
+        })
+      }
+    >
+      <CloudUpload /> Move {Math.min(25, remaining)} file{Math.min(25, remaining) === 1 ? "" : "s"} to Cloudflare
     </Button>
   );
 }

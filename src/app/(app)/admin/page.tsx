@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Activity, Building2, CheckCircle2, CircleAlert, History, PlugZap, ScrollText, Users } from "lucide-react";
+import { Activity, Building2, CheckCircle2, CircleAlert, HardDrive, History, PlugZap, ScrollText, Users } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
-import { CopyField, DeleteDepartment, DepartmentDialog } from "@/components/app/admin-client";
+import { CopyField, DeleteDepartment, DepartmentDialog, MoveFilesButton } from "@/components/app/admin-client";
+import { cloudStorageConfigured } from "@/lib/storage";
+import { filesStillInDatabase } from "@/lib/storage-move";
+import { formatBytes } from "@/lib/utils";
 import { StatCard } from "@/components/dashboard/widgets";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge, deptColor } from "@/components/ui/badge";
@@ -23,6 +26,7 @@ const TABS = [
   { key: "integration", label: "HR console", icon: PlugZap },
   { key: "departments", label: "Departments", icon: Building2 },
   { key: "audit", label: "Audit log", icon: ScrollText },
+  { key: "storage", label: "File storage", icon: HardDrive },
 ] as const;
 
 export default async function AdminPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
@@ -71,6 +75,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
       {tab === "integration" && <Integration tz={tz} />}
       {tab === "departments" && <Departments />}
       {tab === "audit" && <Audit tz={tz} />}
+      {tab === "storage" && <Storage />}
     </>
   );
 }
@@ -250,5 +255,57 @@ async function Audit({ tz }: { tz: string }) {
         )}
       </CardBody>
     </Card>
+  );
+}
+
+async function Storage() {
+  const cloud = cloudStorageConfigured();
+  const [left, inCloud] = await Promise.all([filesStillInDatabase(), db.fileBlob.count({ where: { storageKey: { not: null } } })]);
+  return (
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <Card>
+        <CardHeader
+          icon={<HardDrive />}
+          title="Where files are kept"
+          description="Proof of work, task files and announcement PDFs."
+        />
+        <CardBody className="space-y-4 text-[13.5px]">
+          {cloud ? (
+            <p className="flex items-start gap-2 rounded-xl border border-success/25 bg-success-soft px-3 py-2.5">
+              <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success" />
+              <span>
+                <span className="font-semibold">Cloudflare R2 is connected.</span> New uploads go there — 10 GB free, and downloads cost nothing.
+              </span>
+            </p>
+          ) : (
+            <p className="flex items-start gap-2 rounded-xl border border-warning/25 bg-warning-soft px-3 py-2.5">
+              <CircleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
+              <span>
+                <span className="font-semibold">Files are being kept in the database.</span> That works, but a free database fills up fast. Connect Cloudflare R2 (see
+                docs/CLOUDFLARE_R2.md) to store far more for free.
+              </span>
+            </p>
+          )}
+          <dl className="grid grid-cols-2 gap-3">
+            <div className="rounded-xl border border-line p-3">
+              <dt className="text-[12px] text-fg-muted">In Cloudflare</dt>
+              <dd className="text-[18px] font-semibold">{inCloud}</dd>
+            </div>
+            <div className="rounded-xl border border-line p-3">
+              <dt className="text-[12px] text-fg-muted">Still in the database</dt>
+              <dd className="text-[18px] font-semibold">
+                {left.files} <span className="text-[12.5px] font-normal text-fg-muted">· {formatBytes(left.bytes)}</span>
+              </dd>
+            </div>
+          </dl>
+          {cloud && left.files > 0 && (
+            <div className="space-y-2">
+              <MoveFilesButton remaining={left.files} />
+              <p className="text-[12px] text-fg-subtle">Moves 25 files at a time. The daily job also moves 100 a day on its own.</p>
+            </div>
+          )}
+        </CardBody>
+      </Card>
+    </div>
   );
 }

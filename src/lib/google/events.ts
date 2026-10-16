@@ -38,6 +38,50 @@ export function eventBody(input: EventInput) {
   };
 }
 
+/** What can change on an existing event. Anything left out stays as it is on Google. */
+export interface EventChanges {
+  title?: string;
+  description?: string | null;
+  startAt?: Date;
+  endAt?: Date;
+  timeZone: string;
+  /** Everyone the app invites. Missing ones are added; guests who stay keep their reply. */
+  attendeeEmails?: string[];
+  /** App users taken off. Guests added straight in Google Calendar are never touched. */
+  removeEmails?: string[];
+  /** Adds a Google Meet link to an event that doesn't have one. */
+  addMeet?: { requestId: string };
+}
+
+/**
+ * The new guest list for an event: everyone already on it stays (with their
+ * yes/no/maybe) unless they were taken off, and anyone missing is added.
+ */
+export function mergeAttendees(existing: { email: string; responseStatus?: string }[] | undefined, add: string[], remove: string[] = []) {
+  const norm = (e: string) => e.trim().toLowerCase();
+  const wanted = [...new Set(add.map(norm).filter(Boolean))];
+  // Someone still invited is never dropped (several people can share one inbox).
+  const drop = new Set(remove.map(norm).filter((e) => !wanted.includes(e)));
+  const kept = (existing ?? []).filter((a) => !drop.has(norm(a.email)));
+  const have = new Set(kept.map((a) => norm(a.email)));
+  return [...kept, ...wanted.filter((e) => !have.has(e)).map((email) => ({ email }))];
+}
+
+/** A PATCH body for an existing event: only the fields that change. */
+export function eventPatch(changes: EventChanges, current?: Pick<GoogleEvent, "attendees">) {
+  const guests = changes.attendeeEmails || changes.removeEmails;
+  return {
+    ...(changes.title !== undefined ? { summary: changes.title } : {}),
+    ...(changes.description !== undefined ? { description: changes.description || "" } : {}),
+    ...(changes.startAt ? { start: { dateTime: changes.startAt.toISOString(), timeZone: changes.timeZone } } : {}),
+    ...(changes.endAt ? { end: { dateTime: changes.endAt.toISOString(), timeZone: changes.timeZone } } : {}),
+    ...(guests ? { attendees: mergeAttendees(current?.attendees, changes.attendeeEmails ?? [], changes.removeEmails ?? []) } : {}),
+    ...(changes.addMeet
+      ? { conferenceData: { createRequest: { requestId: changes.addMeet.requestId, conferenceSolutionKey: { type: "hangoutsMeet" } } } }
+      : {}),
+  };
+}
+
 export interface GoogleEvent {
   id: string;
   status?: string;

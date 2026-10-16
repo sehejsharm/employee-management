@@ -10,7 +10,7 @@ import { db } from "@/lib/db";
 import { googleConfig } from "@/lib/google/config";
 import { listEvents, personalConnection, teamConnection } from "@/lib/google/calendar";
 import { eventTimes, meetLinkOf, subscribeUrl, type GoogleEvent } from "@/lib/google/events";
-import { canCancelMeeting, meetingsFor, type MeetingRow } from "@/lib/meetings";
+import { canCancelMeeting, canEditMeeting, meetingsFor, type MeetingRow } from "@/lib/meetings";
 import { pickablePeople } from "@/lib/people";
 import { isFounder } from "@/lib/permissions";
 import { dayKey, formatDate, formatTime } from "@/lib/time";
@@ -109,6 +109,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     attendees: m.attendees.map((a) => a.user),
     slots: m.slots.map((sl) => ({ ...sl, startAt: sl.startAt.toISOString(), endAt: sl.endAt.toISOString() })),
     canCancel: canCancelMeeting(user, { organizerId: m.organizer.id, hostId: m.host?.id ?? null }),
+    updatedAt: m.updatedAt.toISOString(),
+    canEdit: m.status === "SCHEDULED" && canEditMeeting(user, { organizerId: m.organizer.id, hostId: m.host?.id ?? null, instant: m.instant }),
   });
   const notice = params.google ? GOOGLE_NOTICE[params.google] : null;
   const founderOptions = founders.map((f) => ({
@@ -208,7 +210,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
             ) : (
               <ul className="space-y-3">
                 {mine.upcoming.map((m) => (
-                  <MeetingCard key={m.id} meeting={toClient(m)} tz={tz} selfId={user.id} />
+                  <MeetingCard key={m.id} meeting={toClient(m)} tz={tz} selfId={user.id} people={people} />
                 ))}
               </ul>
             )}

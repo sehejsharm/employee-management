@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clashes, eventBody, eventTimes, meetLinkOf, subscribeUrl } from "@/lib/google/events";
+import { clashes, eventBody, eventTimes, meetLinkOf, subscribeUrl, eventPatch, mergeAttendees } from "@/lib/google/events";
 import { openToken, sealToken } from "@/lib/google/crypto";
 
 describe("Google Calendar payloads", () => {
@@ -53,5 +53,48 @@ describe("founder free slots", () => {
     const busy = [{ start: "2026-10-14T10:00:00Z", end: "2026-10-14T11:00:00Z" }];
     const slots = freeSlots(busy, day, 60, new Date("2026-10-14T08:45:00Z"), [9, 13]);
     expect(slots.map((s) => s.slice(11, 16))).toEqual(["09:00", "11:00", "11:30", "12:00"]);
+  });
+});
+
+describe("editing an event", () => {
+  it("keeps guests' replies, drops only people taken off, and leaves guests added in Google alone", () => {
+    const merged = mergeAttendees(
+      [
+        { email: "aarav@focusrealm.com", responseStatus: "accepted" },
+        { email: "Rohan@FocusRealm.com", responseStatus: "declined" },
+        { email: "vendor@acme.com", responseStatus: "tentative" },
+      ],
+      ["aarav@focusrealm.com", "tara@focusrealm.com", "AARAV@focusrealm.com"],
+      ["rohan@focusrealm.com"],
+    );
+    expect(merged).toEqual([
+      { email: "aarav@focusrealm.com", responseStatus: "accepted" },
+      { email: "vendor@acme.com", responseStatus: "tentative" },
+      { email: "tara@focusrealm.com" },
+    ]);
+  });
+
+  it("never drops a shared inbox someone is still invited through", () => {
+    const merged = mergeAttendees([{ email: "interns@focusrealm.com", responseStatus: "accepted" }], ["interns@focusrealm.com"], ["interns@focusrealm.com"]);
+    expect(merged).toEqual([{ email: "interns@focusrealm.com", responseStatus: "accepted" }]);
+  });
+
+  it("only sends what changes", () => {
+    const start = new Date("2026-10-20T10:00:00Z");
+    const patch = eventPatch({ startAt: start, endAt: new Date("2026-10-20T10:30:00Z"), timeZone: "Asia/Kolkata" });
+    expect(patch).toEqual({
+      start: { dateTime: "2026-10-20T10:00:00.000Z", timeZone: "Asia/Kolkata" },
+      end: { dateTime: "2026-10-20T10:30:00.000Z", timeZone: "Asia/Kolkata" },
+    });
+    // Leaving these out keeps the Meet link, privacy and guest list as they are.
+    expect(patch).not.toHaveProperty("conferenceData");
+    expect(patch).not.toHaveProperty("visibility");
+    expect(patch).not.toHaveProperty("attendees");
+  });
+
+  it("can add a Meet link and clear the agenda", () => {
+    const patch = eventPatch({ timeZone: "UTC", description: "", addMeet: { requestId: "m1-meet" } });
+    expect(patch.description).toBe("");
+    expect(patch.conferenceData?.createRequest.requestId).toBe("m1-meet");
   });
 });

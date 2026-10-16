@@ -7,6 +7,7 @@ import {
   HardDrive,
   LayoutDashboard,
   Megaphone,
+  Archive,
   Network,
   Settings,
   ShieldCheck,
@@ -56,6 +57,7 @@ export function navItems(flags: ShellFlags): NavItem[] {
   // Founders' work is founders-only, so the leadership board is too.
   if (flags.isFounder) {
     items.push({ href: "/leadership", label: "Leadership", icon: Telescope, section: "leadership" });
+    items.push({ href: "/leadership/archive", label: "Work archive", icon: Archive, section: "leadership" });
   }
   if (flags.canAdminister) {
     items.push({ href: "/admin", label: "Workspace admin", icon: Building2, section: "leadership", match: (p) => p.startsWith("/admin") });

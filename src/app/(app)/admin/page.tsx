@@ -281,8 +281,8 @@ async function Storage() {
             <p className="flex items-start gap-2 rounded-xl border border-warning/25 bg-warning-soft px-3 py-2.5">
               <CircleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
               <span>
-                <span className="font-semibold">Files are being kept in the database.</span> That works, but a free database fills up fast. Connect Cloudflare R2 (see
-                docs/CLOUDFLARE_R2.md) to store far more for free.
+                <span className="font-semibold">Files are being kept in the Supabase database.</span> Cloudflare R2 isn&apos;t connected on this deployment yet — add the four
+                R2 settings in Vercel and redeploy (see docs/CLOUDFLARE_R2.md). Until then new uploads keep going to Supabase.
               </span>
             </p>
           )}
@@ -292,16 +292,19 @@ async function Storage() {
               <dd className="text-[18px] font-semibold">{inCloud}</dd>
             </div>
             <div className="rounded-xl border border-line p-3">
-              <dt className="text-[12px] text-fg-muted">Still in the database</dt>
+              <dt className="text-[12px] text-fg-muted">Still in Supabase</dt>
               <dd className="text-[18px] font-semibold">
                 {left.files} <span className="text-[12.5px] font-normal text-fg-muted">· {formatBytes(left.bytes)}</span>
               </dd>
             </div>
           </dl>
+          {cloud && left.files === 0 && (
+            <p className="text-[12.5px] text-success">Every file is in Cloudflare — nothing is stored in Supabase.</p>
+          )}
           {cloud && left.files > 0 && (
             <div className="space-y-2">
               <MoveFilesButton remaining={left.files} />
-              <p className="text-[12px] text-fg-subtle">Moves 25 files at a time. The daily job also moves 100 a day on its own.</p>
+              <p className="text-[12px] text-fg-subtle">Keep this page open until it finishes. Files also move on their own: any old file someone opens, plus 100 a day from the daily job.</p>
             </div>
           )}
         </CardBody>

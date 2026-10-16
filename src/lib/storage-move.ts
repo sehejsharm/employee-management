@@ -62,3 +62,24 @@ export async function moveFilesToCloud(limit = 25) {
   }
   return { moved, failed };
 }
+
+/** Moves one file to R2 (used when an older file is opened). Never throws. */
+export async function moveFileToCloud(blobId: string) {
+  if (!cloudStorageConfigured()) return false;
+  const blob = await db.fileBlob.findUnique({
+    where: { id: blobId },
+    select: { data: true, storageKey: true, attachment: { select: { createdById: true, fileName: true, mimeType: true } } },
+  });
+  if (!blob?.data || blob.storageKey) return false;
+  const key = objectKey(`drive/${blob.attachment?.createdById ?? "unassigned"}`, blob.attachment?.fileName ?? "file");
+  try {
+    await putObject(key, blob.data, blob.attachment?.mimeType ?? "application/octet-stream");
+    const done = await db.fileBlob.updateMany({ where: { id: blobId, storageKey: null }, data: { storageKey: key, data: null } });
+    if (done.count === 0) await deleteObjectsQuietly([key]);
+    return done.count > 0;
+  } catch (error) {
+    console.error("Couldn't move a file to cloud storage", blobId, error);
+    await deleteObjectsQuietly([key]);
+    return false;
+  }
+}

@@ -3,7 +3,9 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { getClearedIds } from "@/lib/clearance";
 import { canViewTask, isFounder } from "@/lib/permissions";
-import { signedDownloadUrl } from "@/lib/storage";
+import { cloudStorageConfigured, signedDownloadUrl } from "@/lib/storage";
+import { moveFileToCloud } from "@/lib/storage-move";
+import { inBackground } from "@/lib/push";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +24,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       fileName: true,
       mimeType: true,
       createdById: true,
+      blobId: true,
       blob: { select: { data: true, storageKey: true } },
       task: { select: { createdById: true, archivedAt: true, assignees: { select: { userId: true, user: { select: { role: true } } } } } },
     },
@@ -55,6 +58,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.redirect(url, { status: 302, headers: { "Cache-Control": "no-store" } });
   }
 
+  // An older file still in the database: move it to Cloudflare once it's been sent.
+  if (cloudStorageConfigured() && attachment.blobId) {
+    const blobId = attachment.blobId;
+    inBackground(() => moveFileToCloud(blobId));
+  }
   return new NextResponse(Buffer.from(attachment.blob.data!), {
     headers: {
       "Content-Type": inline ? mime : "application/octet-stream",

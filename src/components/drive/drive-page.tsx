@@ -62,6 +62,11 @@ export async function DrivePage({ personId }: { personId: string }) {
         <span className="inline-flex items-center gap-1.5">
           <Link2 className="size-4" /> {links} link{links === 1 ? "" : "s"}
         </span>
+        {self && isFounder(viewer) && (
+          <Link href="/leadership/archive" className="inline-flex items-center gap-1.5 font-medium text-brand hover:underline">
+            <HardDrive className="size-4" /> Looking for your team&apos;s files? Open the Work archive
+          </Link>
+        )}
         {!self && !isFounder(viewer) && (
           <span className="inline-flex items-center gap-1.5">
             <HardDrive className="size-4" /> Showing what your clearance covers

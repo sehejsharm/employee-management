@@ -123,21 +123,29 @@ export function DeleteDepartment({ id, name, members }: { id: string; name: stri
   );
 }
 
-/** Moves the next batch of files from the database to Cloudflare R2. */
+/** Moves every file still in the database to Cloudflare R2, a batch at a time, until none are left. */
 export function MoveFilesButton({ remaining }: { remaining: number }) {
-  const [pending, start] = React.useTransition();
-  return (
-    <Button
-      loading={pending}
-      onClick={() =>
-        start(async () => {
-          const res = await moveFilesNow();
-          if (res.ok) toast.success(res.message);
-          else toast.error(res.error);
-        })
+  const [busy, setBusy] = React.useState(false);
+  const [left, setLeft] = React.useState(remaining);
+  const run = async () => {
+    setBusy(true);
+    try {
+      for (let round = 0; round < 400; round++) {
+        const res = await moveFilesNow();
+        if (!res.ok) return void toast.error(res.error);
+        const next = res.data?.remaining ?? 0;
+        setLeft(next);
+        if (next === 0) return void toast.success("Done — every file is in Cloudflare now.");
+        // No progress this round (e.g. a file Cloudflare keeps refusing): stop rather than loop.
+        if (res.message?.startsWith("Moved 0")) return void toast.error(`${next} file${next === 1 ? "" : "s"} couldn't be moved. Try again later.`);
       }
-    >
-      <CloudUpload /> Move {Math.min(25, remaining)} file{Math.min(25, remaining) === 1 ? "" : "s"} to Cloudflare
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Button loading={busy} onClick={run}>
+      <CloudUpload /> {busy ? `Moving… ${left} left` : `Move all ${left} file${left === 1 ? "" : "s"} to Cloudflare`}
     </Button>
   );
 }

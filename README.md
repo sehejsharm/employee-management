@@ -51,6 +51,11 @@ Prisma 7 and PostgreSQL, in the blue-and-white Focus Realm brand
   or archived — founders, the person, and anyone cleared to see their work can
   open it. Files are stored on Cloudflare R2 when connected
   ([docs/CLOUDFLARE_R2.md](docs/CLOUDFLARE_R2.md)), otherwise in the database.
+- **Work archive** (founders) — *Leadership → Work archive*: every task with
+  anything handed in or attached, from everyone, done or archived included —
+  each hand-in with its write-up, documents and links. Filter by person and
+  status, search by task, file name or T-number. Shows whether every file is in
+  Cloudflare or some are still in the database.
 - **Clearance** — you see your own tasks and the tasks you're on. Seeing
   anyone else's work needs clearance: ask for it under *Clearance*, and it's
   given only when **both** that colleague **and** a founder agree. Otherwise

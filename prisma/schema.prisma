@@ -282,6 +282,8 @@ model Session {
   createdAt         DateTime           @default(now())
   /// Coarse device label ("Chrome on macOS") so people can recognise their own sessions.
   device            String?
+  /// "Keep me signed in": phone notifications carry on for a while after it expires.
+  remember          Boolean            @default(false)
   /// Phones and browsers that turned on notifications while signed in here.
   pushSubscriptions PushSubscription[]
 
@@ -454,11 +456,13 @@ model Attachment {
   @@index([submissionId])
 }
 
-/// Uploaded file bytes. Kept in Postgres so the app runs anywhere with no
-/// extra storage service; swap the storage driver in src/lib/storage.ts for S3.
+/// An uploaded file. Stored in Cloudflare R2 when it's set up (storageKey), or
+/// in Postgres (data) otherwise — see src/lib/storage.ts.
 model FileBlob {
   id         String      @id @default(cuid())
-  data       Bytes
+  data       Bytes?
+  /// Object key in the R2 bucket.
+  storageKey String?     @unique
   createdAt  DateTime    @default(now())
   attachment Attachment?
 }
@@ -523,6 +527,8 @@ model Announcement {
   pinned    Boolean  @default(false)
   /// Optional PDF shared with the announcement (e.g. a guide or policy).
   pdf       Bytes?
+  /// The PDF's object key in R2, when stored there instead of in `pdf`.
+  pdfKey    String?
   pdfName   String?
   pdfSize   Int?
   authorId  String

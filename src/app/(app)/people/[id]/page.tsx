@@ -23,11 +23,13 @@ import { MeetingNotesCallout } from "@/components/calendar/meeting-notes";
 import { teamConnection } from "@/lib/google/calendar";
 import { googleConfig } from "@/lib/google/config";
 import { pickablePeople } from "@/lib/people";
-import { Award, CalendarPlus, FileText } from "lucide-react";
+import { Award, CalendarPlus, FileText, HardDrive } from "lucide-react";
 import { GiveRecognitionDialog, RecognitionCard } from "@/components/recognition/recognition";
 import { recognitionFeed } from "@/lib/recognition-feed";
 import { sharingEmailWith } from "@/lib/shared-email";
 import { db } from "@/lib/db";
+import { driveSummary } from "@/lib/drive";
+import { formatBytes } from "@/lib/utils";
 import { ROLE_LABEL, STATUS_LABEL, canAssignTasks, canChangeEmail, canManageOrg, canManagePeople, isFounder, isLeader } from "@/lib/permissions";
 import { taskRowSelect, taskVisibilityWhere, toClientRow } from "@/lib/tasks/queries";
 import { formatDate, timeAgo } from "@/lib/time";
@@ -141,6 +143,8 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
     orderBy: { dueAt: "asc" },
     take: 12,
   });
+
+  const drive = canSeeWork ? await driveSummary(viewer, person.id, cleared) : null;
 
   const [departments, managers] = admin
     ? await Promise.all([
@@ -370,6 +374,29 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
               )}
             </CardBody>
           </Card>
+
+          {canSeeWork && drive && (
+            <Card>
+              <CardHeader
+                icon={<HardDrive />}
+                title={isSelf ? "My drive" : `${person.firstName}'s drive`}
+                description="Every document, link and write-up handed in or added to tasks — kept even after the work is done."
+                action={
+                  <Button asChild variant="secondary" size="sm">
+                    <Link href={isSelf ? "/drive" : `/people/${person.id}/drive`}>Open drive</Link>
+                  </Button>
+                }
+              />
+              <CardBody className="flex flex-wrap gap-x-5 gap-y-1 text-[13px] text-fg-muted">
+                <span>
+                  {drive.files} document{drive.files === 1 ? "" : "s"} · {formatBytes(drive.bytes)}
+                </span>
+                <span>
+                  {drive.links} link{drive.links === 1 ? "" : "s"}
+                </span>
+              </CardBody>
+            </Card>
+          )}
 
           {recognitions.length > 0 && (
             <Card>

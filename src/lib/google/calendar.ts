@@ -1,9 +1,9 @@
 import "server-only";
 import { db } from "@/lib/db";
 import type { GoogleConnection } from "@/generated/prisma/client";
-import { googleConfig, GOOGLE_SCOPES } from "./config";
+import { googleConfig, GOOGLE_SCOPES, MEET_SETTINGS_SCOPE } from "./config";
 import { openToken, sealToken } from "./crypto";
-import { eventBody, eventPatch, type EventChanges, type EventInput, type GoogleEvent } from "./events";
+import { eventBody, eventPatch, meetLinkOf, type EventChanges, type EventInput, type GoogleEvent } from "./events";
 
 /**
  * Google Calendar + Meet over plain REST. Each call runs as a connected Google
@@ -73,6 +73,7 @@ export async function exchangeCode(code: string) {
     refreshToken: tokens.refresh_token,
     accessToken: tokens.access_token,
     expiresAt: new Date(Date.now() + (tokens.expires_in - 60) * 1000),
+    scopes: tokens.scope ?? null,
   };
 }
 
@@ -101,6 +102,7 @@ async function accessToken(conn: GoogleConnection) {
         accessTokenExpiresAt: new Date(Date.now() + (tokens.expires_in - 60) * 1000),
         lastError: null,
         ...(tokens.refresh_token ? { refreshToken: sealToken(tokens.refresh_token) } : {}),
+        ...(tokens.scope ? { scopes: tokens.scope } : {}),
       },
     });
     return tokens.access_token;
@@ -141,9 +143,14 @@ async function api<T>(conn: GoogleConnection, method: string, path: string, body
 
 const cal = (id: string) => `/calendar/v3/calendars/${encodeURIComponent(id)}`;
 
-/** Creates an event with a Meet link and emails invitations to every attendee. */
+/**
+ * Creates an event with a Meet link, makes the link open to anyone who has it,
+ * and emails invitations to every attendee.
+ */
 export async function createEvent(conn: GoogleConnection, input: EventInput) {
-  return api<GoogleEvent>(conn, "POST", `${cal(conn.calendarId)}/events?conferenceDataVersion=1&sendUpdates=all`, eventBody(input));
+  const event = await api<GoogleEvent>(conn, "POST", `${cal(conn.calendarId)}/events?conferenceDataVersion=1&sendUpdates=all`, eventBody(input));
+  if (input.meet) await openMeetLink(conn, meetLinkOf(event));
+  return event;
 }
 
 /** One event, as Google has it now. */
@@ -158,12 +165,14 @@ export async function getEvent(conn: GoogleConnection, calendarId: string, event
 export async function updateEvent(conn: GoogleConnection, calendarId: string, eventId: string, changes: EventChanges) {
   // Guests who stay keep their yes/no/maybe, so read the current list before replacing it.
   const current = changes.attendeeEmails || changes.removeEmails ? await getEvent(conn, calendarId, eventId) : undefined;
-  return api<GoogleEvent>(
+  const event = await api<GoogleEvent>(
     conn,
     "PATCH",
     `${cal(calendarId)}/events/${encodeURIComponent(eventId)}?conferenceDataVersion=1&sendUpdates=all`,
     eventPatch(changes, current),
   );
+  if (changes.addMeet) await openMeetLink(conn, meetLinkOf(event));
+  return event;
 }
 
 /** Cancels an event and tells everyone invited. */
@@ -244,6 +253,80 @@ export async function shareCalendar(conn: GoogleConnection, emails: string[], op
     }
   }
   return { shared, alreadyShared: already.size, failed, removed };
+}
+
+/* ------------------------------------------------------------------ Meet -- */
+
+/** Did the account allow the app to change Meet settings (so links can be made open)? */
+export function canOpenMeetings(conn: Pick<GoogleConnection, "scopes">) {
+  return !!conn.scopes?.split(/\s+/).includes(MEET_SETTINGS_SCOPE);
+}
+
+const MEET_CODE = /meet\.google\.com\/([a-z]{3}-[a-z]{4}-[a-z]{3})(?:[/?#]|$)/i;
+
+interface MeetSpace {
+  name?: string;
+  config?: { accessType?: string };
+}
+
+/**
+ * Makes a Meet link open: anyone who has the link joins straight away, with no
+ * "Ask to join" and no need to be on the invite or signed in to the invited
+ * Google account. (Google's default only lets invited accounts in directly.)
+ *
+ * Best effort and never throws: the meeting is booked either way. A failure is
+ * kept on the connection so founders see why on the Calendar page.
+ */
+export async function openMeetLink(conn: GoogleConnection, meetUrl: string | null | undefined) {
+  const code = meetUrl?.match(MEET_CODE)?.[1]?.toLowerCase();
+  if (!code || !canOpenMeetings(conn)) return false;
+  try {
+    const token = await accessToken(conn);
+    const call = async (method: string, path: string, body?: unknown) => {
+      const res = await fetch(`${googleConfig.meetApiBase()}${path}`, {
+        method,
+        headers: { Authorization: `Bearer ${token}`, ...(body ? { "Content-Type": "application/json" } : {}) },
+        body: body ? JSON.stringify(body) : undefined,
+        signal: AbortSignal.timeout(10_000),
+      });
+      const json = (await res.json().catch(() => ({}))) as MeetSpace & { error?: { message?: string } };
+      // The space is gone (e.g. an old link): nothing to open, and nothing wrong with the setup.
+      if (res.status === 404) return null;
+      if (!res.ok) throw new GoogleError(json.error?.message || `Google Meet error ${res.status}.`);
+      return json;
+    };
+    const space = await call("GET", `/v2/spaces/${code}`);
+    if (!space) return false;
+    if (space.config?.accessType !== "OPEN") {
+      await call("PATCH", `/v2/${space.name ?? `spaces/${code}`}?updateMask=config.accessType`, { config: { accessType: "OPEN" } });
+    }
+    if (conn.meetError) await db.googleConnection.update({ where: { id: conn.id }, data: { meetError: null } }).catch(() => {});
+    return true;
+  } catch (error) {
+    console.error("Couldn't make the Meet link open", code, error);
+    const message = error instanceof Error ? error.message.slice(0, 300) : "Unknown error";
+    await db.googleConnection.update({ where: { id: conn.id }, data: { meetError: message } }).catch(() => {});
+    return false;
+  }
+}
+
+/** Opens the Meet links of every upcoming meeting on a connection — after it's (re)connected. */
+export async function openUpcomingMeetLinks(conn: GoogleConnection) {
+  if (!canOpenMeetings(conn)) return 0;
+  const now = new Date();
+  const meetings = await db.meeting.findMany({
+    where: {
+      status: "SCHEDULED",
+      endAt: { gt: now },
+      ...(conn.kind === "PERSONAL" ? { calendarKind: "PERSONAL", hostId: conn.userId } : { calendarKind: "TEAM", googleCalendarId: conn.calendarId }),
+    },
+    select: { meetUrl: true, slots: { where: { endAt: { gt: now } }, select: { meetUrl: true } } },
+    take: 200,
+  });
+  const links = new Set(meetings.flatMap((m) => [m.meetUrl, ...m.slots.map((s) => s.meetUrl)]).filter((u): u is string => !!u));
+  let opened = 0;
+  for (const link of links) if (await openMeetLink(conn, link)) opened++;
+  return opened;
 }
 
 /** Tells Google to forget our access, best effort. */

@@ -677,6 +677,11 @@ model GoogleConnection {
   accessTokenExpiresAt DateTime?
   /// Set when Google refuses the stored token: someone has to connect again.
   lastError            String?
+  /// What the account allowed when it connected (space-separated). Without the Meet
+  /// settings permission, Meet links can't be made open to anyone with the link.
+  scopes               String?
+  /// Why the last attempt to open a Meet link failed (e.g. the Meet API isn't turned on).
+  meetError            String?
   createdAt            DateTime             @default(now())
   updatedAt            DateTime             @updatedAt
 }

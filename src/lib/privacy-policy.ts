@@ -4,7 +4,7 @@
  * Keep it true to what the code does — update it when data handling changes.
  */
 
-export const POLICY_UPDATED = "16 October 2026";
+export const POLICY_UPDATED = "17 October 2026";
 
 export interface PolicySection {
   title: string;
@@ -43,13 +43,14 @@ export function policySections(contact: string): PolicySection[] {
     {
       title: "Google Calendar and Google Meet",
       body: [
-        "Connecting Google is optional and limited to founders. A founder may connect their own Google Calendar, and one shared team calendar may be connected with a separate company Google account. We ask Google for the Calendar scope (https://www.googleapis.com/auth/calendar) and use it only to:",
+        "Connecting Google is optional and limited to founders. A founder may connect their own Google Calendar, and one shared team calendar may be connected with a separate company Google account. We ask Google for the Calendar scope (https://www.googleapis.com/auth/calendar) and the Meet settings scope (https://www.googleapis.com/auth/meetings.space.settings) and use them only to:",
       ],
       list: [
         "create, update and cancel events for meetings arranged in the Workspace, with Google Meet links, and send Google's invitations to the people involved;",
         "copy meetings a founder accepts onto the shared team calendar;",
         "read busy/free times on a founder's calendar to work out open slots — only for people that founder has approved, and only the open slot times are shown, never the founder's events;",
-        "list the shared team calendar's upcoming events on the Calendar page, and share that calendar read-only with team members when a founder chooses to.",
+        "list the shared team calendar's upcoming events on the Calendar page, and share that calendar read-only with team members when a founder chooses to;",
+        "set the Meet links of those meetings to open, so anyone with the link can join without an invitation.",
       ],
     },
     {

@@ -8,7 +8,7 @@ import { MeetNowDialog, RequestFounderDialog, ScheduleMeetingDialog } from "@/co
 import { requireUser } from "@/lib/auth/current-user";
 import { db } from "@/lib/db";
 import { googleConfig } from "@/lib/google/config";
-import { listEvents, personalConnection, teamConnection } from "@/lib/google/calendar";
+import { canOpenMeetings, listEvents, personalConnection, teamConnection } from "@/lib/google/calendar";
 import { eventTimes, meetLinkOf, subscribeUrl, type GoogleEvent } from "@/lib/google/events";
 import { canCancelMeeting, canEditMeeting, meetingsFor, type MeetingRow } from "@/lib/meetings";
 import { pickablePeople } from "@/lib/people";
@@ -165,8 +165,12 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
               <CardBody>
                 <GoogleConnections
                   configured={configured}
-                  personal={personal ? { email: personal.googleEmail, broken: !!personal.lastError } : null}
-                  team={team ? { email: team.googleEmail, calendarName: team.calendarName, broken: !!team.lastError } : null}
+                  personal={personal ? { email: personal.googleEmail, broken: !!personal.lastError, openLinks: canOpenMeetings(personal), meetError: personal.meetError } : null}
+                  team={
+                    team
+                      ? { email: team.googleEmail, calendarName: team.calendarName, broken: !!team.lastError, openLinks: canOpenMeetings(team), meetError: team.meetError }
+                      : null
+                  }
                   subscribeUrl={team && team.calendarId !== "primary" ? subscribeUrl(team.calendarId) : null}
                 />
               </CardBody>

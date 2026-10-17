@@ -94,7 +94,7 @@ export function guestInvite(
     "",
     "How to join:",
     "• Open the link above a couple of minutes before the start — on a laptop (Chrome works best) or the Google Meet app on your phone.",
-    "• No Google account is needed. If asked, enter your name and click “Ask to join”; we'll let you in.",
+    "• No invitation or Google account is needed — just open the link and join. (If you see “Ask to join”, click it and we'll let you in.)",
     "• Please check your camera and microphone beforehand and join from a quiet place.",
     ...notes.flatMap((n) => ["", n]),
     // The meeting's own description is written for colleagues (often notes for the founder),
@@ -352,6 +352,27 @@ export function MyRequest({ meeting, tz }: { meeting: ClientMeeting; tz: string 
 }
 
 /** Founders: the two Google connections and what they do. */
+type MeetAccess = { openLinks: boolean; meetError: string | null };
+
+/** Whether Meet links made through this calendar let anyone with the link straight in. */
+function OpenLinksNote({ access }: { access: MeetAccess }) {
+  if (!access.openLinks) {
+    return (
+      <p className="mt-2 rounded-lg bg-warning-soft px-2.5 py-1.5 text-[12px] text-warning">
+        Reconnect to make Meet links open to anyone with the link — so guests join without an invitation or the invited Google account.
+      </p>
+    );
+  }
+  if (access.meetError) {
+    return (
+      <p className="mt-2 rounded-lg bg-warning-soft px-2.5 py-1.5 text-[12px] text-warning">
+        The last Meet link couldn&apos;t be made open: {access.meetError.replace(/[.\s]*$/, ".")} Check that the Google Meet REST API is turned on (see docs/GOOGLE_CALENDAR.md).
+      </p>
+    );
+  }
+  return <p className="mt-2 text-[12px] text-fg-subtle">Meet links are open: anyone with the link can join, no invitation needed.</p>;
+}
+
 export function GoogleConnections({
   configured,
   personal,
@@ -359,8 +380,8 @@ export function GoogleConnections({
   subscribeUrl,
 }: {
   configured: boolean;
-  personal: { email: string; broken: boolean } | null;
-  team: { email: string; calendarName: string | null; broken: boolean } | null;
+  personal: ({ email: string; broken: boolean } & MeetAccess) | null;
+  team: ({ email: string; calendarName: string | null; broken: boolean } & MeetAccess) | null;
   subscribeUrl: string | null;
 }) {
   const [pending, run] = useAction();
@@ -387,6 +408,7 @@ export function GoogleConnections({
             <span className="truncate text-fg-muted">{personal.email}</span>
           </div>
         ) : null}
+        {personal && !personal.broken && <OpenLinksNote access={personal} />}
         <div className="mt-3 flex flex-wrap gap-2">
           <Button asChild size="sm" variant={personal && !personal.broken ? "secondary" : "primary"}>
             <a href="/api/google/connect?kind=personal">
@@ -415,6 +437,7 @@ export function GoogleConnections({
             </span>
           </div>
         ) : null}
+        {team && !team.broken && <OpenLinksNote access={team} />}
         <div className="mt-3 flex flex-wrap gap-2">
           <Button asChild size="sm" variant={team && !team.broken ? "secondary" : "primary"}>
             <a href="/api/google/connect?kind=team">

@@ -4,9 +4,10 @@ import { getCurrentUser } from "@/lib/auth/current-user";
 import { audit } from "@/lib/audit";
 import { db } from "@/lib/db";
 import { config } from "@/lib/env";
-import { GoogleError, ensureTeamCalendar, exchangeCode } from "@/lib/google/calendar";
+import { GoogleError, ensureTeamCalendar, exchangeCode, openUpcomingMeetLinks } from "@/lib/google/calendar";
 import { sealToken } from "@/lib/google/crypto";
 import { isFounder } from "@/lib/permissions";
+import { inBackground } from "@/lib/push";
 import { getTimeZone } from "@/lib/tz.server";
 import { OAUTH_COOKIE } from "@/lib/google/config";
 
@@ -47,11 +48,13 @@ export async function GET(request: NextRequest) {
       accessToken: sealToken(account.accessToken),
       accessTokenExpiresAt: account.expiresAt,
       lastError: null,
+      scopes: account.scopes,
+      meetError: null,
       connectedById: user.id,
     };
 
     if (kind === "personal") {
-      await db.$transaction([
+      const [conn] = await db.$transaction([
         db.googleConnection.upsert({
           where: { userId: user.id },
           create: { kind: "PERSONAL", userId: user.id, calendarId: "primary", calendarName: account.email, ...tokens },
@@ -60,6 +63,8 @@ export async function GET(request: NextRequest) {
         // Invites to this founder now go to the calendar they actually use.
         db.user.update({ where: { id: user.id }, data: { calendarEmail: account.email } }),
       ]);
+      // Meetings booked before the Meet permission was given become open to anyone with the link too.
+      inBackground(() => openUpcomingMeetLinks(conn));
       await audit({ actorId: user.id, action: "google.personal_connected", targetType: "user", targetId: user.id, summary: `Connected Google Calendar ${account.email}` });
       return back("google=personal-connected");
     }
@@ -70,7 +75,8 @@ export async function GET(request: NextRequest) {
       update: tokens,
     });
     const calendar = await ensureTeamCalendar(conn, await getTimeZone());
-    await db.googleConnection.update({ where: { id: conn.id }, data: { calendarId: calendar.id, calendarName: calendar.name } });
+    const saved = await db.googleConnection.update({ where: { id: conn.id }, data: { calendarId: calendar.id, calendarName: calendar.name } });
+    inBackground(() => openUpcomingMeetLinks(saved));
     await audit({ actorId: user.id, action: "google.team_connected", targetType: "workspace", summary: `Connected the team calendar "${calendar.name}" through ${account.email}` });
     return back("google=team-connected");
   } catch (error) {

@@ -1,6 +1,6 @@
 # Focus Realm Workspace — Privacy Policy
 
-_Last updated: 16 October 2026_
+_Last updated: 17 October 2026_
 
 ## Who we are
 
@@ -24,12 +24,13 @@ The Focus Realm Workspace ("the Workspace") is Focus Realm's internal tool for a
 
 ## Google Calendar and Google Meet
 
-Connecting Google is optional and limited to founders. A founder may connect their own Google Calendar, and one shared team calendar may be connected with a separate company Google account. We ask Google for the Calendar scope (https://www.googleapis.com/auth/calendar) and use it only to:
+Connecting Google is optional and limited to founders. A founder may connect their own Google Calendar, and one shared team calendar may be connected with a separate company Google account. We ask Google for the Calendar scope (https://www.googleapis.com/auth/calendar) and the Meet settings scope (https://www.googleapis.com/auth/meetings.space.settings) and use them only to:
 
 - create, update and cancel events for meetings arranged in the Workspace, with Google Meet links, and send Google's invitations to the people involved;
 - copy meetings a founder accepts onto the shared team calendar;
 - read busy/free times on a founder's calendar to work out open slots — only for people that founder has approved, and only the open slot times are shown, never the founder's events;
-- list the shared team calendar's upcoming events on the Calendar page, and share that calendar read-only with team members when a founder chooses to.
+- list the shared team calendar's upcoming events on the Calendar page, and share that calendar read-only with team members when a founder chooses to;
+- set the Meet links of those meetings to open, so anyone with the link can join without an invitation.
 
 ## Google user data
 

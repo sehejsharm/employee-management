@@ -1,11 +1,13 @@
 import { AppShell } from "@/components/app/app-shell";
 import { requireUser } from "@/lib/auth/current-user";
 import { db } from "@/lib/db";
-import { ROLE_LABEL, canAdminister, canAssignTasks, canManagePeople, isFounder, isLeader } from "@/lib/permissions";
+import { config as appConfig } from "@/lib/env";
+import { ROLE_LABEL, canAdminister, canAssignTasks, canManagePeople, isFounder, isLeader, isSalesDepartment } from "@/lib/permissions";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
   const unread = await db.notification.count({ where: { userId: user.id, readAt: null } });
+  const founder = isFounder(user);
 
   return (
     <AppShell
@@ -21,10 +23,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       }}
       flags={{
         isLeader: isLeader(user),
-        isFounder: isFounder(user),
+        isFounder: founder,
         canAssign: canAssignTasks(user),
         canAdminister: canAdminister(user),
         canManagePeople: canManagePeople(user),
+        canUseHr: founder && !!appConfig.hrConsoleOrigin(),
+        canUseCrm: (founder || isSalesDepartment(user)) && !!appConfig.crmOrigin(),
       }}
       unread={unread}
     >

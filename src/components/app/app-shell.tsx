@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
-import { ChevronsUpDown, LogOut, MoreHorizontal, Plus, Search, Settings, Sun, UserRound } from "lucide-react";
+import { Briefcase, ChevronsUpDown, LayoutGrid, LogOut, MoreHorizontal, Plus, Search, Settings, Sun, UserRound, Users2 } from "lucide-react";
 import { BrandMark } from "@/components/brand/logo";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -51,12 +51,12 @@ export function AppShell({
           <div className="pointer-events-none fixed inset-x-0 top-0 -z-0 h-[420px] bg-[var(--glow)]" />
           <Sidebar nav={nav} user={user} />
           <div className="relative lg:pl-[260px]">
-            <Topbar user={user} nav={nav} />
+            <Topbar user={user} nav={nav} flags={flags} />
             <main className="safe-x mx-auto w-full max-w-[1400px] pb-28 pt-5 [--gutter:1rem] sm:[--gutter:1.5rem] lg:pb-16 lg:pt-8 lg:[--gutter:2.5rem]">
               {children}
             </main>
           </div>
-          <MobileNav nav={nav} user={user} />
+          <MobileNav nav={nav} user={user} flags={flags} />
         </div>
         <DailyBriefing />
         <IncomingCallWatcher />
@@ -191,7 +191,7 @@ function UserMenu({
   );
 }
 
-function Topbar({ user, nav }: { user: ShellUser; nav: NavItem[] }) {
+function Topbar({ user, nav, flags }: { user: ShellUser; nav: NavItem[]; flags: ShellFlags }) {
   const palette = usePalette();
   const path = usePathname();
   const current = nav.find((n) => isActive(n, path));
@@ -202,6 +202,8 @@ function Topbar({ user, nav }: { user: ShellUser; nav: NavItem[] }) {
           <BrandMark size={30} variant="tile" className="shrink-0" />
           <span className="truncate text-[15px] font-semibold tracking-tight">{current?.label ?? "Focus Realm"}</span>
         </Link>
+
+        <AppSwitcher flags={flags} />
 
         <button
           onClick={palette.open}
@@ -236,7 +238,56 @@ function Topbar({ user, nav }: { user: ShellUser; nav: NavItem[] }) {
   );
 }
 
-function MobileNav({ nav, user }: { nav: NavItem[]; user: ShellUser }) {
+/**
+ * The single Focus Realm website's app switcher: lets a founder (or, for the
+ * CRM, anyone in Sales) jump to the HR console or the Sales CRM, each served
+ * from its own origin under /hr and /crm (src/proxy.ts). Plain <a> tags, not
+ * <Link>: this crosses to a different app, not a route within this one, so a
+ * client-side transition is wrong here. /launch/hr and /launch/crm re-check
+ * access and hand off a short-lived signed ticket in place of a second login.
+ * Hidden entirely when neither app is configured for this Workspace.
+ */
+function AppSwitcher({ flags }: { flags: ShellFlags }) {
+  if (!flags.canUseHr && !flags.canUseCrm) return null;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          className="hidden h-9 shrink-0 items-center gap-2 rounded-[10px] border border-line bg-surface px-3 text-[13px] font-medium text-fg-muted shadow-xs transition hover:border-line-strong hover:text-fg sm:flex"
+          aria-label="Switch app"
+        >
+          <LayoutGrid className="size-4 text-fg-subtle" />
+          <span>Workspace</span>
+          <ChevronsUpDown className="size-3.5 text-fg-subtle" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-56">
+        <DropdownMenuLabel>Focus Realm</DropdownMenuLabel>
+        <DropdownMenuItem disabled>
+          <LayoutGrid /> Workspace
+          <span className="ml-auto text-[11px] font-medium text-fg-subtle">Current</span>
+        </DropdownMenuItem>
+        {(flags.canUseHr || flags.canUseCrm) && <DropdownMenuSeparator />}
+        {flags.canUseHr && (
+          <DropdownMenuItem asChild>
+            <a href="/launch/hr">
+              <Users2 /> HR console
+            </a>
+          </DropdownMenuItem>
+        )}
+        {flags.canUseCrm && (
+          <DropdownMenuItem asChild>
+            <a href="/launch/crm">
+              <Briefcase /> Sales CRM
+            </a>
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function MobileNav({ nav, user, flags }: { nav: NavItem[]; user: ShellUser; flags: ShellFlags }) {
   const path = usePathname();
   const [more, setMore] = React.useState(false);
   const primary = ["/dashboard", "/tasks", "/org", "/notifications"];
@@ -293,6 +344,27 @@ function MobileNav({ nav, user }: { nav: NavItem[]; user: ShellUser }) {
               </Link>
             ))}
           </div>
+          {(flags.canUseHr || flags.canUseCrm) && (
+            <div className="mt-4 space-y-1.5 border-t border-line pt-4">
+              <div className="px-1 text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">Switch app</div>
+              {flags.canUseHr && (
+                <a
+                  href="/launch/hr"
+                  className="flex h-10 items-center gap-2.5 rounded-xl border border-line bg-surface px-3 text-[13.5px] font-medium text-fg"
+                >
+                  <Users2 className="size-4 text-fg-subtle" /> HR console
+                </a>
+              )}
+              {flags.canUseCrm && (
+                <a
+                  href="/launch/crm"
+                  className="flex h-10 items-center gap-2.5 rounded-xl border border-line bg-surface px-3 text-[13.5px] font-medium text-fg"
+                >
+                  <Briefcase className="size-4 text-fg-subtle" /> Sales CRM
+                </a>
+              )}
+            </div>
+          )}
           <Button
             variant="soft"
             className="mt-4 w-full"

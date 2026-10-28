@@ -19,6 +19,18 @@ export const config = {
   hrWebhookSecret: () => process.env.HR_WEBHOOK_SECRET || "",
   cronSecret: () => process.env.CRON_SECRET || "",
   /**
+   * The single Focus Realm website: this app's address is the front door, and
+   * the HR console (/hr) and Sales CRM (/crm) are served here through
+   * src/proxy.ts, authenticated to each other with FOCUS_REALM_HUB_SECRET.
+   * Unset HR_CONSOLE_ORIGIN or CRM_ORIGIN and that app's routing, launch route
+   * and switcher entry simply don't appear — nothing else changes. This is a
+   * different secret from HR_WEBHOOK_SECRET above, which is for the one-way
+   * HR → Workspace events webhook, not this routing.
+   */
+  hubSecret: () => process.env.FOCUS_REALM_HUB_SECRET || "",
+  hrConsoleOrigin: () => process.env.HR_CONSOLE_ORIGIN?.trim().replace(/\/$/, "") || "",
+  crmOrigin: () => process.env.CRM_ORIGIN?.trim().replace(/\/$/, "") || "",
+  /**
    * Largest upload, in bytes. Vercel rejects request bodies over 4.5 MB before
    * the app runs, so 4 MB is the ceiling there (multipart adds a little); the
    * Server Action body limit (5 MB, next.config.ts) caps it elsewhere.

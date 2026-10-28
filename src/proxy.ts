@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { config as appConfig } from "@/lib/env";
 
 /**
  * Optimistic gate: anyone without a session cookie is sent to the login page
@@ -9,6 +10,49 @@ import { NextResponse, type NextRequest } from "next/server";
 const SESSION_COOKIES = ["__Host-fr_session", "fr_session"];
 
 const PUBLIC_PREFIXES = ["/login", "/setup", "/privacy", "/terms"];
+
+/** The header the HR console and CRM trust in place of their own login — see docs/one-website. */
+const HUB_HEADER = "x-focusrealm-hub";
+
+/**
+ * The single Focus Realm website: the HR console (sehejsharm/focusrealmhr) is
+ * served here under /hr, /hr-static and /api/onboarding, and the Sales CRM
+ * (sehejsharm/crm-focusrealm) under /crm — each its own app, deployment and
+ * storage, reverse-proxied by path. Runs before the session gate and before
+ * any CSP is applied: these paths are public here (candidates open
+ * /hr/<token> invitation links with no Workspace account, and the HR console
+ * and CRM check access themselves), and must not carry the Workspace's CSP or
+ * nonce, which would block the other app's own scripts.
+ *
+ * With FOCUS_REALM_HUB_SECRET unset, none of this runs — nothing changes.
+ * With HR_CONSOLE_ORIGIN (or CRM_ORIGIN) unset, that one app's routing is
+ * simply not there; the other can still be configured independently.
+ */
+function routeToHub(request: NextRequest): NextResponse | null {
+  const secret = appConfig.hubSecret();
+  if (!secret) return null;
+  const { pathname, search } = request.nextUrl;
+
+  const hrOrigin = appConfig.hrConsoleOrigin();
+  if (hrOrigin && (pathname === "/hr" || pathname.startsWith("/hr/") || pathname.startsWith("/hr-static/") || pathname.startsWith("/api/onboarding/"))) {
+    return rewriteToHub(request, `${hrOrigin}${pathname}${search}`, secret);
+  }
+
+  const crmOrigin = appConfig.crmOrigin();
+  if (crmOrigin && (pathname === "/crm" || pathname.startsWith("/crm/"))) {
+    // The CRM's own address knows nothing about the /crm prefix — strip it.
+    const rest = pathname.slice("/crm".length) || "/";
+    return rewriteToHub(request, `${crmOrigin}${rest}${search}`, secret);
+  }
+
+  return null;
+}
+
+function rewriteToHub(request: NextRequest, destination: string, secret: string) {
+  const headers = new Headers(request.headers);
+  headers.set(HUB_HEADER, secret);
+  return NextResponse.rewrite(destination, { request: { headers } });
+}
 
 /**
  * Content-Security-Policy with a fresh nonce per request: only scripts Next.js
@@ -49,6 +93,9 @@ function next(request: NextRequest) {
 }
 
 export function proxy(request: NextRequest) {
+  const hubResponse = routeToHub(request);
+  if (hubResponse) return hubResponse;
+
   const { pathname, search } = request.nextUrl;
   if (PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(p))) return next(request);
 
@@ -65,5 +112,7 @@ export const config = {
   // Skip static assets, Next internals and /api: every API route authenticates
   // itself (or is public by design: health, cron, HR webhook), and skipping
   // them halves the function invocations that notification polling costs on Vercel.
-  matcher: ["/((?!api/|_next/static|_next/image|brand/|icons/|icon.svg|apple-icon|apple-touch-icon|manifest.webmanifest|sw.js|favicon.ico|robots.txt).*)"],
+  // /api/onboarding/* is the exception: it's the HR console's own API, hub-routed
+  // above, so it must reach proxy() rather than being excluded with the rest of /api.
+  matcher: ["/((?!api/(?!onboarding/)|_next/static|_next/image|brand/|icons/|icon.svg|apple-icon|apple-touch-icon|manifest.webmanifest|sw.js|favicon.ico|robots.txt).*)"],
 };

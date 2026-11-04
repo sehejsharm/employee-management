@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
-import { Briefcase, ChevronsUpDown, LayoutGrid, LogOut, MoreHorizontal, Plus, Search, Settings, Sun, UserRound, Users2 } from "lucide-react";
+import { Briefcase, ChevronsUpDown, LayoutGrid, LogOut, Mail, MoreHorizontal, Plus, Search, Settings, Sun, UserRound, Users2 } from "lucide-react";
 import { BrandMark } from "@/components/brand/logo";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -240,15 +240,16 @@ function Topbar({ user, nav, flags }: { user: ShellUser; nav: NavItem[]; flags: 
 
 /**
  * The single Focus Realm website's app switcher: lets a founder (or, for the
- * CRM, anyone in Sales) jump to the HR console or the Sales CRM, each served
- * from its own origin under /hr and /crm (src/proxy.ts). Plain <a> tags, not
- * <Link>: this crosses to a different app, not a route within this one, so a
- * client-side transition is wrong here. /launch/hr and /launch/crm re-check
- * access and hand off a short-lived signed ticket in place of a second login.
- * Hidden entirely when neither app is configured for this Workspace.
+ * CRM, anyone in Sales; for Mail Merge, anyone) jump to the HR console, the
+ * Sales CRM or Mail Merge, each served from its own origin under /hr, /crm and
+ * /mail (src/proxy.ts). Plain <a> tags, not <Link>: this crosses to a different
+ * app, not a route within this one, so a client-side transition is wrong here.
+ * /launch/hr, /launch/crm and /launch/mail re-check access and hand off a
+ * short-lived signed ticket in place of a second login. Hidden entirely when
+ * none of the apps is configured for this Workspace.
  */
 function AppSwitcher({ flags }: { flags: ShellFlags }) {
-  if (!flags.canUseHr && !flags.canUseCrm) return null;
+  if (!flags.canUseHr && !flags.canUseCrm && !flags.canUseMail) return null;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -267,7 +268,7 @@ function AppSwitcher({ flags }: { flags: ShellFlags }) {
           <LayoutGrid /> Workspace
           <span className="ml-auto text-[11px] font-medium text-fg-subtle">Current</span>
         </DropdownMenuItem>
-        {(flags.canUseHr || flags.canUseCrm) && <DropdownMenuSeparator />}
+        {(flags.canUseHr || flags.canUseCrm || flags.canUseMail) && <DropdownMenuSeparator />}
         {flags.canUseHr && (
           <DropdownMenuItem asChild>
             <a href="/launch/hr">
@@ -279,6 +280,13 @@ function AppSwitcher({ flags }: { flags: ShellFlags }) {
           <DropdownMenuItem asChild>
             <a href="/launch/crm">
               <Briefcase /> Sales CRM
+            </a>
+          </DropdownMenuItem>
+        )}
+        {flags.canUseMail && (
+          <DropdownMenuItem asChild>
+            <a href="/launch/mail">
+              <Mail /> Mail Merge
             </a>
           </DropdownMenuItem>
         )}
@@ -344,7 +352,7 @@ function MobileNav({ nav, user, flags }: { nav: NavItem[]; user: ShellUser; flag
               </Link>
             ))}
           </div>
-          {(flags.canUseHr || flags.canUseCrm) && (
+          {(flags.canUseHr || flags.canUseCrm || flags.canUseMail) && (
             <div className="mt-4 space-y-1.5 border-t border-line pt-4">
               <div className="px-1 text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">Switch app</div>
               {flags.canUseHr && (
@@ -361,6 +369,14 @@ function MobileNav({ nav, user, flags }: { nav: NavItem[]; user: ShellUser; flag
                   className="flex h-10 items-center gap-2.5 rounded-xl border border-line bg-surface px-3 text-[13.5px] font-medium text-fg"
                 >
                   <Briefcase className="size-4 text-fg-subtle" /> Sales CRM
+                </a>
+              )}
+              {flags.canUseMail && (
+                <a
+                  href="/launch/mail"
+                  className="flex h-10 items-center gap-2.5 rounded-xl border border-line bg-surface px-3 text-[13.5px] font-medium text-fg"
+                >
+                  <Mail className="size-4 text-fg-subtle" /> Mail Merge
                 </a>
               )}
             </div>

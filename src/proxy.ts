@@ -11,22 +11,23 @@ const SESSION_COOKIES = ["__Host-fr_session", "fr_session"];
 
 const PUBLIC_PREFIXES = ["/login", "/setup", "/privacy", "/terms"];
 
-/** The header the HR console and CRM trust in place of their own login — see docs/one-website. */
+/** The header the HR console, CRM and Mail Merge trust in place of their own login — see docs/one-website. */
 const HUB_HEADER = "x-focusrealm-hub";
 
 /**
  * The single Focus Realm website: the HR console (sehejsharm/focusrealmhr) is
- * served here under /hr, /hr-static and /api/onboarding, and the Sales CRM
- * (sehejsharm/crm-focusrealm) under /crm — each its own app, deployment and
- * storage, reverse-proxied by path. Runs before the session gate and before
+ * served here under /hr, /hr-static and /api/onboarding, the Sales CRM
+ * (sehejsharm/crm-focusrealm) under /crm, and Mail Merge
+ * (Alielectricwala/mailmerge-fr) under /mail — each its own app, deployment
+ * and storage, reverse-proxied by path. Runs before the session gate and before
  * any CSP is applied: these paths are public here (candidates open
- * /hr/<token> invitation links with no Workspace account, and the HR console
- * and CRM check access themselves), and must not carry the Workspace's CSP or
- * nonce, which would block the other app's own scripts.
+ * /hr/<token> invitation links with no Workspace account, and the HR console,
+ * CRM and Mail Merge check access themselves), and must not carry the
+ * Workspace's CSP or nonce, which would block the other app's own scripts.
  *
  * With FOCUS_REALM_HUB_SECRET unset, none of this runs — nothing changes.
- * With HR_CONSOLE_ORIGIN (or CRM_ORIGIN) unset, that one app's routing is
- * simply not there; the other can still be configured independently.
+ * With HR_CONSOLE_ORIGIN, CRM_ORIGIN or MAILMERGE_ORIGIN unset, that one app's
+ * routing is simply not there; the others can still be configured independently.
  */
 function routeToHub(request: NextRequest): NextResponse | null {
   const secret = appConfig.hubSecret();
@@ -43,6 +44,13 @@ function routeToHub(request: NextRequest): NextResponse | null {
     // The CRM's own address knows nothing about the /crm prefix — strip it.
     const rest = pathname.slice("/crm".length) || "/";
     return rewriteToHub(request, `${crmOrigin}${rest}${search}`, secret);
+  }
+
+  const mailOrigin = appConfig.mailMergeOrigin();
+  if (mailOrigin && (pathname === "/mail" || pathname.startsWith("/mail/"))) {
+    // Likewise, Mail Merge's own address knows nothing about the /mail prefix.
+    const rest = pathname.slice("/mail".length) || "/";
+    return rewriteToHub(request, `${mailOrigin}${rest}${search}`, secret);
   }
 
   return null;

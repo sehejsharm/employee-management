@@ -1,5 +1,5 @@
 /**
- * A small, self-contained 403 page for /launch/hr and /launch/crm. The app
+ * A small, self-contained 403 page for /launch/hr, /launch/crm and /launch/mail. The app
  * switcher never links here forbidden (it hides what a person cannot use), so
  * this is only ever seen if someone visits the launch URL directly. It is a
  * route handler, not a React page, so it is plain HTML with inline styles

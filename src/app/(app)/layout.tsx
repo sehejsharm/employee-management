@@ -29,6 +29,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         canManagePeople: canManagePeople(user),
         canUseHr: founder && !!appConfig.hrConsoleOrigin(),
         canUseCrm: (founder || isSalesDepartment(user)) && !!appConfig.crmOrigin(),
+        canUseMail: user.status === "ACTIVE" && !!appConfig.mailMergeOrigin(),
       }}
       unread={unread}
     >

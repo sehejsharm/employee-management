@@ -214,6 +214,12 @@ Demo accounts after seeding — password `FocusRealm@2026` for all:
      `FOCUS_REALM_WORKSPACE_SECRET` in the HR console (empty keeps HR sync off).
    - Optional: `APP_TIMEZONE` (IANA, e.g. `Asia/Kolkata`), `APP_URL` (only for
      a custom domain), `MAX_UPLOAD_MB` (≤ 4), `EMPLOYEE_CODE_PREFIX`.
+   - Optional, the single Focus Realm website: `FOCUS_REALM_HUB_SECRET`
+     (`openssl rand -hex 32`, the same value in each app) plus the address of
+     each app served here — `HR_CONSOLE_ORIGIN` (`/hr`, founders),
+     `CRM_ORIGIN` (`/crm`, founders and Sales) and `MAILMERGE_ORIGIN` (`/mail`,
+     Mail Merge, every active teammate). People open them from the app switcher
+     with no second login. Leave an origin empty and that app doesn't appear.
 4. **Deployments → ⋯ → Redeploy.** Production builds apply database migrations
    once the app has built; a failed migration stops the deploy and the
    previous one keeps serving. Preview builds skip migrations.

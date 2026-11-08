@@ -32,6 +32,10 @@ export interface ShellFlags {
   canAssign: boolean;
   canAdminister: boolean;
   canManagePeople: boolean;
+  /** The single Focus Realm website's app switcher: whether this person may open the HR console / Sales CRM / Mail Merge, and whether each is configured at all. */
+  canUseHr: boolean;
+  canUseCrm: boolean;
+  canUseMail: boolean;
 }
 
 export interface NavItem {

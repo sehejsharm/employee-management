@@ -34,6 +34,19 @@ export const isFounder = (a: Pick<Actor, "role">) => a.role === "FOUNDER";
 /** Founders and management: the "admin" side of the product. */
 export const isLeader = (a: Pick<Actor, "role">) => a.role === "FOUNDER" || a.role === "MANAGER";
 
+/**
+ * Sales, for the single-website switcher: the Sales CRM is for the sales
+ * department (and founders, via isFounder elsewhere) — nobody else, including
+ * Marketing and the Founder's Office. Matches "sales", "business
+ * development", "business-development", "bd" or "inside sales" as a whole
+ * word within the department's free-text name, case-insensitively, so "Sales
+ * & Partnerships" or "Business Development" both count but "Salesforce Admin"
+ * or "Database" do not.
+ */
+const SALES_DEPARTMENT_PATTERN = /\b(sales|business[\s-]development|bd|inside sales)\b/i;
+export const isSalesDepartment = (a: { department: { name: string } | null }) =>
+  a.department !== null && SALES_DEPARTMENT_PATTERN.test(a.department.name);
+
 /** Assigning work to other people. Founders always; management when granted. */
 export const canAssignTasks = (a: Actor) => isFounder(a) || a.canAssignTasks;
 

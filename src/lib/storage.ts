@@ -94,6 +94,13 @@ export async function signedDownloadUrl(key: string, opts: { fileName: string; c
 export async function storeFile(folder: string, fileName: string, bytes: Uint8Array, contentType: string): Promise<{ storageKey: string; data: null } | { storageKey: null; data: Uint8Array<ArrayBuffer> }> {
   if (!cloudStorageConfigured()) return { storageKey: null, data: new Uint8Array(bytes) };
   const key = objectKey(folder, fileName);
-  await putObject(key, bytes, contentType);
-  return { storageKey: key, data: null };
+  try {
+    await putObject(key, bytes, contentType);
+    return { storageKey: key, data: null };
+  } catch (error) {
+    // R2 refused or is unreachable (bad keys, wrong bucket, outage). Keep the file in
+    // the database instead of failing the upload; the daily job moves it across later.
+    console.error("R2 upload failed; storing the file in the database instead", error);
+    return { storageKey: null, data: new Uint8Array(bytes) };
+  }
 }

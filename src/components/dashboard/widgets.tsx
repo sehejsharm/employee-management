@@ -13,8 +13,6 @@ import { cn } from "@/lib/utils";
 import { useNow } from "@/components/tasks/badges";
 import type { TaskStatusKey } from "@/components/tasks/meta";
 
-const EASE = [0.16, 1, 0.3, 1] as const;
-
 const TONES = {
   brand: { icon: "bg-brand-soft text-brand-soft-fg", glow: "from-brand/12" },
   warning: { icon: "bg-warning-soft text-warning", glow: "from-warning/12" },
@@ -43,12 +41,9 @@ export function StatCard({
 }) {
   const t = TONES[tone];
   const inner = (
-    <motion.div
-      initial={{ opacity: 0, y: 14 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.6, ease: EASE, delay: 0.05 + index * 0.06 }}
-      whileHover={{ y: -2 }}
-      className="group relative h-full overflow-hidden rounded-2xl border border-line bg-surface p-4 shadow-sm transition-shadow hover:shadow-md sm:p-5"
+    <div
+      style={{ animationDelay: `${Math.min(index, 4) * 15}ms` }}
+      className="group relative h-full animate-rise overflow-hidden rounded-2xl border border-line bg-surface p-4 shadow-sm transition-[box-shadow,translate] duration-200 hover:-translate-y-0.5 hover:shadow-md sm:p-5"
     >
       <div className={cn("pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-gradient-to-br to-transparent blur-2xl", t.glow)} />
       <div className="relative flex items-start justify-between gap-2">
@@ -70,7 +65,7 @@ export function StatCard({
         )}
       </div>
       {(hint || trend) && <div className="relative mt-1.5 text-xs text-fg-subtle">{trend?.label ?? hint}</div>}
-    </motion.div>
+    </div>
   );
   return href ? (
     <Link href={href} className="block h-full">
@@ -159,12 +154,9 @@ export function NextDeadline({
   const urgent = state === "overdue" || state === "urgent";
   return (
     <Link href={`/tasks/${task.id}`} className="group block">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.985 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.6, ease: EASE }}
+      <div
         className={cn(
-          "relative overflow-hidden rounded-2xl p-6 text-white shadow-lg transition-transform group-hover:-translate-y-0.5",
+          "relative animate-rise overflow-hidden rounded-2xl p-6 text-white shadow-lg transition-transform group-hover:-translate-y-0.5",
           urgent ? "bg-danger" : "bg-brand-gradient",
         )}
       >
@@ -202,17 +194,12 @@ export function NextDeadline({
                 <span className="font-semibold text-white tabular">{task.progress}%</span>
               </div>
               <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/20">
-                <motion.div
-                  className="h-full rounded-full bg-white"
-                  initial={{ width: 0 }}
-                  animate={{ width: `${task.progress}%` }}
-                  transition={{ duration: 1, ease: EASE, delay: 0.3 }}
-                />
+                <div className="h-full rounded-full bg-white transition-[width] duration-700" style={{ width: `${task.progress}%` }} />
               </div>
             </div>
           </div>
         </div>
-      </motion.div>
+      </div>
     </Link>
   );
 }

@@ -1,94 +1,58 @@
 "use client";
 
 import * as React from "react";
-import { animate, motion, useInView, useMotionValue, useReducedMotion, useTransform, type HTMLMotionProps } from "motion/react";
+import { cn } from "@/lib/utils";
 
-const EASE = [0.16, 1, 0.3, 1] as const;
+/*
+ * Entrances are CSS (the `animate-rise` utility), not JavaScript: they start
+ * with the first paint of the server-rendered page, so content is readable
+ * before the app's JavaScript has even loaded. A JS animation would have to
+ * render it invisible first and wait for hydration to reveal it.
+ */
+
+/** Longest entrance delay, so nothing waits long to appear. */
+const MAX_DELAY_MS = 60;
+
+function delayStyle(delay: number, style?: React.CSSProperties): React.CSSProperties | undefined {
+  const ms = Math.min(Math.round(delay * 1000), MAX_DELAY_MS);
+  return ms > 0 ? { animationDelay: `${ms}ms`, ...style } : style;
+}
 
 /** Content that settles into place: a short rise and fade. */
 export function FadeIn({
   delay = 0,
-  y = 10,
   className,
+  style,
   children,
   ...rest
-}: { delay?: number; y?: number } & HTMLMotionProps<"div">) {
+}: { delay?: number } & React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, ease: EASE, delay }}
-      className={className}
-      {...rest}
-    >
+    <div className={cn("animate-rise", className)} style={delayStyle(delay, style)} {...rest}>
       {children}
-    </motion.div>
+    </div>
   );
 }
 
-const container = {
-  hidden: {},
-  show: (stagger: number) => ({ transition: { staggerChildren: stagger, delayChildren: 0.04 } }),
-};
+/** A group whose items (StaggerItem) rise in together. */
+export function Stagger({ className, children, as = "div" }: { className?: string; children: React.ReactNode; as?: "div" | "ul" | "section" }) {
+  const Comp = as;
+  return <Comp className={className}>{children}</Comp>;
+}
 
-const item = {
-  hidden: { opacity: 0, y: 12 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: EASE } },
-};
-
-export function Stagger({
-  stagger = 0.05,
-  className,
-  children,
-  as = "div",
-}: {
-  stagger?: number;
-  className?: string;
-  children: React.ReactNode;
-  as?: "div" | "ul" | "section";
-}) {
-  const Comp = as === "ul" ? motion.ul : as === "section" ? motion.section : motion.div;
+export function StaggerItem({ className, children, as = "div", ...rest }: { as?: "div" | "li" } & React.HTMLAttributes<HTMLElement>) {
+  const Comp = as;
   return (
-    <Comp variants={container} custom={stagger} initial="hidden" animate="show" className={className}>
+    <Comp className={cn("animate-rise", className)} {...rest}>
       {children}
     </Comp>
   );
 }
 
-export function StaggerItem({
-  className,
-  children,
-  as = "div",
-  ...rest
-}: { as?: "div" | "li" } & HTMLMotionProps<"div">) {
-  const Comp = (as === "li" ? motion.li : motion.div) as typeof motion.div;
-  return (
-    <Comp variants={item} className={className} {...rest}>
-      {children}
-    </Comp>
-  );
-}
+const NUMBER = new Intl.NumberFormat("en-US");
 
-/** Animated number for headline stats. */
-export function CountUp({ value, className, duration = 1.1 }: { value: number; className?: string; duration?: number }) {
-  const ref = React.useRef<HTMLSpanElement>(null);
-  const inView = useInView(ref, { once: true });
-  const reduce = useReducedMotion();
-  // Start at zero on the server and the client alike (hydration-safe); reduced motion jumps straight to the value.
-  const mv = useMotionValue(0);
-  const rounded = useTransform(mv, (v) => Math.round(v).toLocaleString());
-
-  React.useEffect(() => {
-    if (!inView) return;
-    const controls = animate(mv, value, { duration: reduce ? 0 : duration, ease: EASE });
-    return () => controls.stop();
-  }, [inView, value, duration, mv, reduce]);
-
-  return (
-    <motion.span ref={ref} className={className}>
-      {rounded}
-    </motion.span>
-  );
+/** A headline figure, shown at its real value from the first paint. */
+export function CountUp({ value, className }: { value: number; className?: string }) {
+  return <span className={className}>{NUMBER.format(Math.round(value))}</span>;
 }
 
 export { motion, AnimatePresence, LayoutGroup } from "motion/react";

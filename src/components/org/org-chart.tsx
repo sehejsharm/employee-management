@@ -547,7 +547,8 @@ function NodeCard({
       id={`org-${person.id}`}
       data-org-card
       layout="position"
-      initial={{ opacity: 0, y: 8 }}
+      // Shown from the first paint (CSS entrance); motion only animates later changes.
+      initial={false}
       animate={{ opacity: dim ? 0.35 : 1, y: 0, scale: dropTarget ? 1.04 : 1 }}
       transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
       onClick={onClick}

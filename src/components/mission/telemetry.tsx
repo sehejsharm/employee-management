@@ -99,12 +99,7 @@ export function ActivityLog({ entries, tz, reference }: { entries: StreamEntry[]
         {rows.map(({ e, at, header }, i) => {
           const tag = tagOf(e);
           return (
-            <motion.li
-              key={e.id}
-              initial={{ opacity: 0, x: -8 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.4, ease: EASE, delay: 0.4 + i * 0.05 }}
-            >
+            <li key={e.id} className="animate-rise" style={{ animationDelay: `${Math.min(i, 8) * 12}ms` }}>
               {header && (
                 <div className={cn("px-1 pb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-fg-subtle", i > 0 && "mt-3 border-t border-line pt-3")}>
                   {header}
@@ -122,7 +117,7 @@ export function ActivityLog({ entries, tz, reference }: { entries: StreamEntry[]
                   <span className="font-mono text-[11px] text-fg-subtle group-hover:text-brand">T-{e.task.number}</span> {describe(e)}
                 </span>
               </Link>
-            </motion.li>
+            </li>
           );
         })}
       </ul>
@@ -166,9 +161,9 @@ export function OnTimeGauge({ value, sample }: { value: number | null; sample: n
             strokeWidth="12"
             strokeLinecap="round"
             strokeDasharray={c}
-            initial={reduce ? false : { strokeDashoffset: c }}
+            initial={false}
             animate={{ strokeDashoffset: c - (pct / 100) * c }}
-            transition={{ duration: 1.2, ease: EASE, delay: 0.4 }}
+            transition={{ duration: reduce ? 0 : 0.6, ease: EASE }}
           />
         </svg>
       ) : (
@@ -209,7 +204,7 @@ export function Workload({
         ))}
       </div>
       <ul className="space-y-2.5">
-        {rows.map((r, ri) => {
+        {rows.map((r) => {
           const filled = Math.max(1, Math.round((r.open / max) * SEGMENTS));
           const late = Math.round((r.overdue / max) * SEGMENTS);
           const soon = Math.round((r.soon / max) * SEGMENTS);
@@ -231,9 +226,9 @@ export function Workload({
                       <motion.span
                         key={i}
                         className={cn("h-2.5 flex-1 rounded-[3px]", on ? color : "bg-surface-sunken")}
-                        initial={{ opacity: 0, scaleY: 0.3 }}
+                        initial={false}
                         animate={{ opacity: 1, scaleY: 1 }}
-                        transition={{ duration: 0.25, ease: EASE, delay: 0.4 + ri * 0.05 + i * 0.02 }}
+                        transition={{ duration: 0.25, ease: EASE }}
                       />
                     );
                   })}
@@ -266,14 +261,14 @@ export function StatusMatrix({ status }: { status: Record<"TODO" | "IN_PROGRESS"
         aria-label={parts.map((p) => `${p.value} ${p.label.toLowerCase()}`).join(", ")}
       >
         {total > 0 &&
-          parts.map((p, i) =>
+          parts.map((p) =>
             p.value ? (
               <span key={p.key} className="h-full" style={{ flexGrow: p.value, flexBasis: 0 }}>
                 <motion.span
                   className={cn("block h-full w-full origin-left", p.bar)}
-                  initial={{ scaleX: 0 }}
+                  initial={false}
                   animate={{ scaleX: 1 }}
-                  transition={{ duration: 0.9, ease: EASE, delay: 0.4 + i * 0.1 }}
+                  transition={{ duration: 0.6, ease: EASE }}
                 />
               </span>
             ) : null,

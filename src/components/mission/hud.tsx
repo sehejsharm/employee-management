@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { animate, motion, useInView, useMotionValue, useReducedMotion, useTransform } from "motion/react";
+import { motion } from "motion/react";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
@@ -9,7 +9,8 @@ export const EASE = [0.16, 1, 0.3, 1] as const;
 
 /**
  * A Mission Control module: the brand Card and CardHeader, unchanged, with a
- * soft rise-in on arrival. One card spec for the whole Workspace.
+ * soft rise-in on arrival (CSS, so it shows with the first paint). One card
+ * spec for the whole Workspace.
  */
 export function HudPanel({
   title,
@@ -31,38 +32,18 @@ export function HudPanel({
   delay?: number;
 }) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 14 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.6, ease: EASE, delay }}
-      className={cn("min-w-0", className)}
-    >
+    <div className={cn("min-w-0 animate-rise", className)} style={delay ? { animationDelay: `${Math.min(Math.round(delay * 100), 60)}ms` } : undefined}>
       <Card className="flex h-full flex-col">
         <CardHeader icon={icon} title={title} description={eyebrow} action={right} />
         <CardBody className={cn("relative min-h-0 flex-1", bodyClassName)}>{children}</CardBody>
       </Card>
-    </motion.div>
+    </div>
   );
 }
 
-/** A figure that counts up from zero the first time it comes into view (instantly, under reduced motion). */
+/** A figure, shown at its real value from the first paint. */
 export function Telemetry({ value, className, suffix = "" }: { value: number; className?: string; suffix?: string }) {
-  const ref = React.useRef<HTMLSpanElement>(null);
-  const inView = useInView(ref, { once: true });
-  const reduce = useReducedMotion();
-  // Zero on server and client alike (hydration-safe); reduced motion jumps straight to the value.
-  const mv = useMotionValue(0);
-  const text = useTransform(mv, (v) => `${Math.round(v)}${suffix}`);
-  React.useEffect(() => {
-    if (!inView) return;
-    const c = animate(mv, value, { duration: reduce ? 0 : 1.2, ease: EASE });
-    return () => c.stop();
-  }, [inView, value, mv, reduce]);
-  return (
-    <motion.span ref={ref} className={cn("tabular", className)}>
-      {text}
-    </motion.span>
-  );
+  return <span className={cn("tabular", className)}>{`${Math.round(value)}${suffix}`}</span>;
 }
 
 /** Each character slides in when it changes — an odometer for clocks and countdowns. */

@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { login, type AuthFormState } from "../actions";
 
-const EASE = [0.16, 1, 0.3, 1] as const;
 
 export function LoginForm({ next }: { next: string }) {
   const [state, action, pending] = useActionState<AuthFormState, FormData>(login, {});
@@ -26,12 +25,7 @@ export function LoginForm({ next }: { next: string }) {
 
   return (
     <div className="relative flex flex-1 items-center justify-center px-6 py-12 sm:px-10">
-      <motion.div
-        initial={{ opacity: 0, y: 14 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.7, ease: EASE }}
-        className="w-full max-w-[400px]"
-      >
+      <div className="w-full max-w-[400px] animate-rise">
         <div className="mb-9 flex items-center gap-3 lg:hidden">
           <BrandMark size={40} variant="tile" />
           <div className="leading-none">
@@ -140,7 +134,7 @@ export function LoginForm({ next }: { next: string }) {
             Ask HR or a founder to reset it.
           </p>
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 }

@@ -29,12 +29,7 @@ export function TMinusBoard({ tasks, now }: { tasks: ClientTaskRow[]; now: Date 
         const st = stateOf(tm ? tm.ms : null);
         const p = PRIORITY_META[t.priority];
         return (
-          <motion.li
-            key={t.id}
-            initial={{ opacity: 0, x: 12 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5, ease: EASE, delay: 0.3 + i * 0.05 }}
-          >
+          <li key={t.id} className="animate-rise" style={{ animationDelay: `${Math.min(i, 8) * 12}ms` }}>
             <Link
               href={`/tasks/${t.id}`}
               className={cn("group relative block overflow-hidden rounded-xl border py-2.5 pl-4 pr-3 transition-colors hover:border-line-strong", st.row)}
@@ -50,9 +45,9 @@ export function TMinusBoard({ tasks, now }: { tasks: ClientTaskRow[]; now: Date 
                 <div className="h-1.5 min-w-8 flex-1 overflow-hidden rounded-full bg-surface-sunken">
                   <motion.div
                     className={cn("h-full w-full origin-left rounded-full", st.bar, tm && !tm.late && "mc-shimmer")}
-                    initial={{ scaleX: 0 }}
+                    initial={false}
                     animate={{ scaleX: Math.max(t.progress, 3) / 100 }}
-                    transition={{ duration: 1.1, ease: EASE, delay: 0.5 + i * 0.05 }}
+                    transition={{ duration: 0.6, ease: EASE }}
                   />
                 </div>
                 <span className="w-8 shrink-0 text-right text-[11px] text-fg-subtle tabular">{t.progress}%</span>
@@ -69,7 +64,7 @@ export function TMinusBoard({ tasks, now }: { tasks: ClientTaskRow[]; now: Date 
                 <AvatarStack people={t.assignees} max={2} size="xs" className="hidden shrink-0 sm:flex" />
               </div>
             </Link>
-          </motion.li>
+          </li>
         );
       })}
     </ul>

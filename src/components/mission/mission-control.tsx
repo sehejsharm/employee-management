@@ -3,7 +3,6 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { motion } from "motion/react";
 import {
   Activity,
   AlarmClock,
@@ -25,7 +24,7 @@ import { AvatarStack } from "@/components/ui/avatar";
 import type { MissionData } from "@/lib/dashboard";
 import { formatDue } from "@/lib/time";
 import { cn } from "@/lib/utils";
-import { EASE, FlipText, HudPanel, clock, tMinus, useTick } from "./hud";
+import { FlipText, HudPanel, clock, tMinus, useTick } from "./hud";
 import { OrbitRadar, RadarSummary } from "./orbit-radar";
 import { TMinusBoard } from "./t-minus";
 import { ThroughputChart } from "./throughput-chart";
@@ -73,12 +72,7 @@ export function MissionControl({ data, tz, scopeLabel }: { data: MissionData; tz
 
       <div className="relative p-3 sm:p-5 lg:p-6">
         {/* Header band — white on brand blue */}
-        <motion.header
-          initial={{ opacity: 0, y: -8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, ease: EASE }}
-          className="relative mb-4 overflow-hidden rounded-2xl bg-brand-gradient px-4 py-4 text-white shadow-brand sm:px-5"
-        >
+        <header className="relative mb-4 animate-rise overflow-hidden rounded-2xl bg-brand-gradient px-4 py-4 text-white shadow-brand sm:px-5">
           <div className="pointer-events-none absolute -right-16 -top-24 h-64 w-64 rounded-full border border-white/15" />
           <div className="pointer-events-none absolute -right-4 -top-12 h-40 w-40 rounded-full border border-white/10" />
           <div className="relative flex flex-col gap-4 xl:flex-row xl:items-center">
@@ -119,7 +113,7 @@ export function MissionControl({ data, tz, scopeLabel }: { data: MissionData; tz
               </Link>
             </div>
           </div>
-        </motion.header>
+        </header>
 
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.5fr)_minmax(0,1.2fr)]">
           {/* The next deadline and the headline numbers */}
@@ -216,12 +210,7 @@ export function MissionControl({ data, tz, scopeLabel }: { data: MissionData; tz
             ) : (
               <ul className="space-y-2">
                 {data.requests.map((r, i) => (
-                  <motion.li
-                    key={r.id}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.4, ease: EASE, delay: 0.5 + i * 0.06 }}
-                  >
+                  <li key={r.id} className="animate-rise" style={{ animationDelay: `${Math.min(i, 5) * 15}ms` }}>
                     <Link
                       href={`/tasks/${r.task.id}`}
                       className="flex items-start gap-3 rounded-xl border border-line bg-surface p-3 transition hover:border-info/40 hover:bg-info-soft/50"
@@ -239,7 +228,7 @@ export function MissionControl({ data, tz, scopeLabel }: { data: MissionData; tz
                         </div>
                       </div>
                     </Link>
-                  </motion.li>
+                  </li>
                 ))}
               </ul>
             )}

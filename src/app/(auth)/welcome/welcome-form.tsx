@@ -22,12 +22,7 @@ export function WelcomeForm({ firstName, employeeCode }: { firstName: string; em
 
   return (
     <div className="relative flex flex-1 items-center justify-center px-6 py-12 sm:px-10">
-      <motion.div
-        initial={{ opacity: 0, y: 14 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.7, ease: EASE }}
-        className="w-full max-w-[420px]"
-      >
+      <div className="w-full max-w-[420px] animate-rise">
         <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-soft px-3 py-1 text-xs font-medium text-brand-soft-fg">
           <Sparkles className="size-3.5" /> First sign-in · {employeeCode}
         </span>
@@ -126,7 +121,7 @@ export function WelcomeForm({ firstName, employeeCode }: { firstName: string; em
         <form action={logout} className="mt-4 text-center">
           <button className="text-[13px] text-fg-subtle underline-offset-4 hover:text-fg hover:underline">Sign out</button>
         </form>
-      </motion.div>
+      </div>
     </div>
   );
 }

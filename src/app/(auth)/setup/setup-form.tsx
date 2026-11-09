@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { useActionState } from "react";
-import { motion } from "motion/react";
 import { ArrowRight, Check, Eye, EyeOff, KeyRound, Rocket } from "lucide-react";
 import { BrandMark } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
@@ -10,8 +9,6 @@ import { Input, Label } from "@/components/ui/input";
 import { PASSWORD_RULES } from "@/lib/auth/password-rules";
 import { cn } from "@/lib/utils";
 import { setupWorkspace, type AuthFormState } from "../actions";
-
-const EASE = [0.16, 1, 0.3, 1] as const;
 
 /** Creates the first founder. The server re-checks everything, including that no founder exists yet. */
 export function SetupForm() {
@@ -30,12 +27,7 @@ export function SetupForm() {
 
   return (
     <div className="relative flex flex-1 items-center justify-center px-6 py-12 sm:px-10">
-      <motion.div
-        initial={{ opacity: 0, y: 14 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.7, ease: EASE }}
-        className="w-full max-w-[440px]"
-      >
+      <div className="w-full max-w-[440px] animate-rise">
         <div className="mb-9 flex items-center gap-3 lg:hidden">
           <BrandMark size={40} variant="tile" />
           <div className="leading-none">
@@ -178,7 +170,7 @@ export function SetupForm() {
             <ArrowRight className="transition-transform duration-200 group-hover:translate-x-0.5" />
           </Button>
         </form>
-      </motion.div>
+      </div>
     </div>
   );
 }

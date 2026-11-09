@@ -122,9 +122,9 @@ export function OrbitRadar({ crew }: { crew: CrewMember[] }) {
                 strokeOpacity={i % 2 ? 0.12 : 0.24}
                 strokeDasharray={i % 2 ? "2 6" : undefined}
                 vectorEffect="non-scaling-stroke"
-                initial={reduce ? false : { opacity: 0 }}
+                initial={false}
                 animate={{ opacity: 1 }}
-                transition={{ duration: 0.8, ease: EASE, delay: 0.1 + i * 0.06 }}
+                transition={{ duration: reduce ? 0 : 0.4, ease: EASE }}
               />
             ))}
             <g style={{ stroke: "var(--line-strong)" }} strokeOpacity="0.7">
@@ -164,7 +164,7 @@ export function OrbitRadar({ crew }: { crew: CrewMember[] }) {
             {/* Satellites */}
             {rings.map((ring, ri) => (
               <g key={ring.label} className={cn("mc-spin", ri % 2 && "mc-spin--rev")} style={{ ["--mc-spin" as string]: `${ring.spin}s` }}>
-                {ring.members.map(({ m, x, y }, i) => {
+                {ring.members.map(({ m, x, y }) => {
                   const h = health(m);
                   const size = (12 + Math.min(m.open, 6) * 1.6) * Math.min(k, 1.6);
                   const isActive = active?.id === m.id;
@@ -172,9 +172,9 @@ export function OrbitRadar({ crew }: { crew: CrewMember[] }) {
                   return (
                     <g key={m.id} transform={`translate(${x} ${y})`}>
                       <motion.g
-                        initial={reduce ? false : { scale: 0, opacity: 0 }}
+                        initial={false}
                         animate={{ scale: 1, opacity: 1 }}
-                        transition={{ duration: 0.6, ease: EASE, delay: 0.4 + ri * 0.15 + i * 0.04 }}
+                        transition={{ duration: reduce ? 0 : 0.4, ease: EASE }}
                       >
                         <g
                           className={cn("mc-counter outline-none", ri % 2 && "mc-counter--rev")}
@@ -257,9 +257,9 @@ export function OrbitRadar({ crew }: { crew: CrewMember[] }) {
         )}
         {/* Focus Realm at the centre — the real mark, not a redraw. */}
         <motion.div
-          initial={{ scale: 0.6, opacity: 0 }}
+          initial={false}
           animate={{ scale: 1, opacity: 1 }}
-          transition={{ duration: 0.8, ease: EASE, delay: 0.2 }}
+          transition={{ duration: 0.4, ease: EASE }}
           className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
         >
           <BrandMark size={width && width < 380 ? 40 : 52} variant="tile" className="shadow-md" />

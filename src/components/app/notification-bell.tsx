@@ -153,7 +153,7 @@ export function NotificationBell() {
           <motion.span animate={controls} className="inline-flex origin-top">
             {feed.unread > 0 ? <BellRing /> : <Bell />}
           </motion.span>
-          <AnimatePresence>
+          <AnimatePresence initial={false}>
             {feed.unread > 0 && (
               <motion.span
                 key="badge"

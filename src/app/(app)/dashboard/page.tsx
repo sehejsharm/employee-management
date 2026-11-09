@@ -96,15 +96,15 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       />
       <NotificationBanner className="mb-6" />
       {emailSharers.length > 0 && (
-        <FadeIn delay={0.03} className="mb-6">
+        <FadeIn className="mb-6">
           <SharedEmailNotice self email={user.email} others={emailSharers} />
         </FadeIn>
       )}
-      <FadeIn delay={0.05} className="mb-6">
+      <FadeIn className="mb-6">
         <FocusEditor initial={user.focus} />
       </FadeIn>
       {meetings.length > 0 && (
-        <FadeIn delay={0.08} className="mb-6">
+        <FadeIn className="mb-6">
           <UpcomingMeetings meetings={meetings} tz={tz} />
         </FadeIn>
       )}
@@ -158,15 +158,15 @@ async function MemberView({ tz, data: pending }: { tz: string; data: ReturnType<
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         <NextDeadline tz={tz} task={data.next} />
         <div className="grid grid-cols-2 gap-3 sm:gap-4">
-          <StatCard index={0} label="Open tasks" value={data.stats.open} icon={<ClipboardList />} href="/tasks" />
-          <StatCard index={1} label="Due within a day" value={data.stats.dueSoon} icon={<AlarmClock />} tone="warning" />
-          <StatCard index={2} label="Overdue" value={data.stats.overdue} icon={<TriangleAlert />} tone="danger" />
-          <StatCard index={3} label="Done this week" value={data.stats.doneThisWeek} icon={<CheckCircle2 />} tone="success" />
+          <StatCard label="Open tasks" value={data.stats.open} icon={<ClipboardList />} href="/tasks" />
+          <StatCard label="Due within a day" value={data.stats.dueSoon} icon={<AlarmClock />} tone="warning" />
+          <StatCard label="Overdue" value={data.stats.overdue} icon={<TriangleAlert />} tone="danger" />
+          <StatCard label="Done this week" value={data.stats.doneThisWeek} icon={<CheckCircle2 />} tone="success" />
         </div>
       </div>
 
       {data.requests.length > 0 && (
-        <FadeIn delay={0.15}>
+        <FadeIn>
           <div className="overflow-hidden rounded-2xl border border-info/25 bg-info-soft/60">
             <div className="flex items-center gap-2 border-b border-info/15 px-5 py-3 text-[13px] font-semibold text-info">
               <MessageCircleQuestion className="size-4" /> {data.requests.length === 1 ? "An update has" : `${data.requests.length} updates have`} been requested from you
@@ -223,8 +223,8 @@ async function MemberView({ tz, data: pending }: { tz: string; data: ReturnType<
                       {DUE_BUCKET_LABEL[b]}
                     </div>
                     <ul>
-                      {groups.get(b)!.map((t, i) => (
-                        <TaskRow key={t.id} task={t} tz={tz} index={i} canChangeStatus />
+                      {groups.get(b)!.map((t) => (
+                        <TaskRow key={t.id} task={t} tz={tz} canChangeStatus />
                       ))}
                     </ul>
                   </div>

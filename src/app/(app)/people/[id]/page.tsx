@@ -367,8 +367,8 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
                 !block && <EmptyState icon={<ClipboardList />} title="Nothing to show" description="No open tasks right now." compact />
               ) : (
                 <ul className={block ? "pt-3" : undefined}>
-                  {tasks.map((t, i) => (
-                    <TaskRow key={t.id} task={toClientRow(t)} tz={tz} index={i} canChangeStatus={false} />
+                  {tasks.map((t) => (
+                    <TaskRow key={t.id} task={toClientRow(t)} tz={tz} canChangeStatus={false} />
                   ))}
                 </ul>
               )}

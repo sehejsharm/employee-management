@@ -40,7 +40,7 @@
   --animate-spin-slow: spin 18s linear infinite;
   --animate-pulse-ring: pulse-ring 2.2s var(--ease-out-expo) infinite;
   /* Content settling into place. CSS, so it starts with the first paint — never waits for JavaScript. */
-  --animate-rise: rise 0.24s var(--ease-out-expo) both;
+  --animate-rise: rise 0.18s var(--ease-out-expo) both;
 
   @keyframes shimmer {
     0% { background-position: -400px 0; }

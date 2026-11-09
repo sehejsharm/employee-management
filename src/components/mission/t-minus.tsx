@@ -24,12 +24,12 @@ export function TMinusBoard({ tasks, now }: { tasks: ClientTaskRow[]; now: Date 
   }
   return (
     <ul className="space-y-2">
-      {tasks.map((t, i) => {
+      {tasks.map((t) => {
         const tm = now ? tMinus(new Date(t.dueAt), now) : null;
         const st = stateOf(tm ? tm.ms : null);
         const p = PRIORITY_META[t.priority];
         return (
-          <li key={t.id} className="animate-rise" style={{ animationDelay: `${Math.min(i, 8) * 12}ms` }}>
+          <li key={t.id} className="animate-rise">
             <Link
               href={`/tasks/${t.id}`}
               className={cn("group relative block overflow-hidden rounded-xl border py-2.5 pl-4 pr-3 transition-colors hover:border-line-strong", st.row)}

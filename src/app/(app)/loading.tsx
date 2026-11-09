@@ -3,7 +3,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 /** Shown instantly on navigation while the next page streams in. */
 export default function Loading() {
   return (
-    <div className="animate-[fade-in_300ms_ease-out]">
+    <div className="animate-[fade-in_150ms_ease-out]">
       <Skeleton className="h-3 w-24" />
       <Skeleton className="mt-3 h-8 w-72 max-w-full" />
       <Skeleton className="mt-3 h-4 w-96 max-w-full" />

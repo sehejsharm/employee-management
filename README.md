@@ -248,6 +248,13 @@ once a day (02:30 UTC — the Hobby plan's limit). On Pro, change it to
 cron-job.org) that calls the sweep every 5 minutes:
 `curl -H "Authorization: Bearer $CRON_SECRET" https://<your-app>/api/cron/deadlines`.
 
+**Speed:** every page waits on a few database round trips, so the database
+must sit in the same region as the app (`vercel.json` runs it in Singapore,
+`sin1`). `/api/health` reports `databaseRoundTripMs`: a few milliseconds is
+right; 50 or more means the two are far apart — put the database in Singapore,
+or change `regions` in `vercel.json` to the Vercel region nearest the database
+(e.g. `bom1` for Mumbai) and redeploy.
+
 **Custom domain:** Settings → Domains, then set `APP_URL` here and
 `FOCUS_REALM_WORKSPACE_URL` in the HR console, and redeploy both. The HR
 console must always use the production domain — per-deployment URLs sit

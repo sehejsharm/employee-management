@@ -20,7 +20,6 @@ export function HudPanel({
   children,
   className,
   bodyClassName,
-  delay = 0,
 }: {
   title: string;
   icon?: React.ReactNode;
@@ -29,10 +28,9 @@ export function HudPanel({
   children: React.ReactNode;
   className?: string;
   bodyClassName?: string;
-  delay?: number;
 }) {
   return (
-    <div className={cn("min-w-0 animate-rise", className)} style={delay ? { animationDelay: `${Math.min(Math.round(delay * 100), 60)}ms` } : undefined}>
+    <div className={cn("min-w-0 animate-rise", className)}>
       <Card className="flex h-full flex-col">
         <CardHeader icon={icon} title={title} description={eyebrow} action={right} />
         <CardBody className={cn("relative min-h-0 flex-1", bodyClassName)}>{children}</CardBody>

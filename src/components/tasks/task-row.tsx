@@ -16,26 +16,23 @@ export function TaskRow({
   task,
   tz,
   canChangeStatus,
-  index = 0,
   onStatusChange,
 }: {
   task: ClientTaskRow;
   tz: string;
   canChangeStatus: boolean;
-  index?: number;
   onStatusChange?: (status: ClientTaskRow["status"]) => void;
 }) {
   const done = task.status === "DONE";
   return (
     <motion.li
       layout="position"
-      // The entrance is CSS (animate-rise) so rows show with the first paint, not after hydration.
+      // No entrance: rows are there with the first paint (only removals animate).
       initial={false}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, height: 0 }}
       transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-      style={{ animationDelay: `${Math.min(index, 8) * 15}ms` }}
-      className="group relative animate-rise @container"
+      className="group relative @container"
     >
       <div className="flex items-center gap-3 rounded-xl px-3 py-3 transition-colors group-hover:bg-surface-hover @md:px-4">
         <div className="relative z-10">

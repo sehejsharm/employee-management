@@ -11,80 +11,21 @@ import { ProgressBar } from "@/components/ui/progress-ring";
 import { DueLabel } from "@/components/tasks/badges";
 import { STATUS_META } from "@/components/tasks/meta";
 import { requireUser } from "@/lib/auth/current-user";
-import { db } from "@/lib/db";
+import { leadershipBoards } from "@/lib/leadership";
 import { isFounder } from "@/lib/permissions";
-import { assigneeOrder } from "@/lib/tasks/queries";
 import { timeAgo } from "@/lib/time";
 import { getTimeZone } from "@/lib/tz.server";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Leadership" };
 
-const DAY = 24 * 3600_000;
-
-const taskSelect = {
-  id: true,
-  number: true,
-  title: true,
-  status: true,
-  dueAt: true,
-  progress: true,
-  assignees: { orderBy: assigneeOrder, select: { user: { select: { id: true, firstName: true, lastName: true, avatarHue: true } } } },
-} as const;
-
 /** Who in leadership is carrying what. Founders only. */
 export default async function LeadershipPage() {
   const user = await requireUser();
   // Founders' work is visible to founders alone, and this board is mostly founders' work.
   if (!isFounder(user)) notFound();
-  const tz = await getTimeZone();
   const detailed = isFounder(user);
-  const now = new Date();
-
-  const leaders = await db.user.findMany({
-    where: { role: { in: ["FOUNDER", "MANAGER"] }, status: { not: "INACTIVE" } },
-    orderBy: [{ role: "asc" }, { orgOrder: "asc" }],
-    select: {
-      id: true,
-      firstName: true,
-      lastName: true,
-      title: true,
-      role: true,
-      avatarHue: true,
-      focus: true,
-      focusUpdatedAt: true,
-      status: true,
-      department: { select: { name: true, color: true } },
-    },
-  });
-
-  const boards = await Promise.all(
-    leaders.map(async (l) => {
-      const [own, delegated, doneWeek] = await Promise.all([
-        db.task.findMany({
-          where: { archivedAt: null, status: { not: "DONE" }, assignees: { some: { userId: l.id } } },
-          orderBy: { dueAt: "asc" },
-          take: 6,
-          select: taskSelect,
-        }),
-        db.task.findMany({
-          where: { archivedAt: null, status: { not: "DONE" }, createdById: l.id, assignees: { some: { userId: { not: l.id } } } },
-          orderBy: { dueAt: "asc" },
-          take: 5,
-          select: taskSelect,
-        }),
-        db.task.count({
-          where: { status: "DONE", completedAt: { gte: new Date(now.getTime() - 7 * DAY) }, assignees: { some: { userId: l.id } } },
-        }),
-      ]);
-      const [ownCount, delegatedCount, overdue] = await Promise.all([
-        db.task.count({ where: { archivedAt: null, status: { not: "DONE" }, assignees: { some: { userId: l.id } } } }),
-        db.task.count({ where: { archivedAt: null, status: { not: "DONE" }, createdById: l.id, assignees: { some: { userId: { not: l.id } } } } }),
-        db.task.count({ where: { archivedAt: null, status: { notIn: ["DONE", "IN_REVIEW"] }, dueAt: { lt: now }, assignees: { some: { userId: l.id } } } }),
-      ]);
-      return { leader: l, own, delegated, doneWeek, ownCount, delegatedCount, overdue };
-    }),
-  );
+  const [tz, boards] = await Promise.all([getTimeZone(), leadershipBoards()]);
 
   const founders = boards.filter((b) => b.leader.role === "FOUNDER");
   const managers = boards.filter((b) => b.leader.role === "MANAGER");

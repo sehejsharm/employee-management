@@ -10,24 +10,10 @@ import { cn } from "@/lib/utils";
  * render it invisible first and wait for hydration to reveal it.
  */
 
-/** Longest entrance delay, so nothing waits long to appear. */
-const MAX_DELAY_MS = 60;
-
-function delayStyle(delay: number, style?: React.CSSProperties): React.CSSProperties | undefined {
-  const ms = Math.min(Math.round(delay * 1000), MAX_DELAY_MS);
-  return ms > 0 ? { animationDelay: `${ms}ms`, ...style } : style;
-}
-
 /** Content that settles into place: a short rise and fade. */
-export function FadeIn({
-  delay = 0,
-  className,
-  style,
-  children,
-  ...rest
-}: { delay?: number } & React.HTMLAttributes<HTMLDivElement>) {
+export function FadeIn({ className, children, ...rest }: React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={cn("animate-rise", className)} style={delayStyle(delay, style)} {...rest}>
+    <div className={cn("animate-rise", className)} {...rest}>
       {children}
     </div>
   );

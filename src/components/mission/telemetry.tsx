@@ -99,7 +99,7 @@ export function ActivityLog({ entries, tz, reference }: { entries: StreamEntry[]
         {rows.map(({ e, at, header }, i) => {
           const tag = tagOf(e);
           return (
-            <li key={e.id} className="animate-rise" style={{ animationDelay: `${Math.min(i, 8) * 12}ms` }}>
+            <li key={e.id} className="animate-rise">
               {header && (
                 <div className={cn("px-1 pb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-fg-subtle", i > 0 && "mt-3 border-t border-line pt-3")}>
                   {header}

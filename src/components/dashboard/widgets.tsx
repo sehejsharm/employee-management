@@ -28,7 +28,6 @@ export function StatCard({
   hint,
   trend,
   href,
-  index = 0,
 }: {
   label: string;
   value: number;
@@ -37,12 +36,10 @@ export function StatCard({
   hint?: string;
   trend?: { delta: number; label: string };
   href?: string;
-  index?: number;
 }) {
   const t = TONES[tone];
   const inner = (
     <div
-      style={{ animationDelay: `${Math.min(index, 4) * 15}ms` }}
       className="group relative h-full animate-rise overflow-hidden rounded-2xl border border-line bg-surface p-4 shadow-sm transition-[box-shadow,translate] duration-200 hover:-translate-y-0.5 hover:shadow-md sm:p-5"
     >
       <div className={cn("pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-gradient-to-br to-transparent blur-2xl", t.glow)} />

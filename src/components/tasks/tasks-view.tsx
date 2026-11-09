@@ -278,8 +278,8 @@ export function TasksView({
                 </div>
                 <ul className="divide-y divide-line/70 rounded-2xl border border-line bg-surface p-1 shadow-sm">
                   <AnimatePresence initial={false}>
-                    {g.tasks.map((t, i) => (
-                      <TaskRow key={t.id} task={t} tz={tz} index={i} canChangeStatus={canChange(t)} onStatusChange={(s) => updateLocal(t.id, s)} />
+                    {g.tasks.map((t) => (
+                      <TaskRow key={t.id} task={t} tz={tz} canChangeStatus={canChange(t)} onStatusChange={(s) => updateLocal(t.id, s)} />
                     ))}
                   </AnimatePresence>
                 </ul>

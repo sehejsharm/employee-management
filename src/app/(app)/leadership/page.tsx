@@ -13,6 +13,7 @@ import { STATUS_META } from "@/components/tasks/meta";
 import { requireUser } from "@/lib/auth/current-user";
 import { db } from "@/lib/db";
 import { isFounder } from "@/lib/permissions";
+import { assigneeOrder } from "@/lib/tasks/queries";
 import { timeAgo } from "@/lib/time";
 import { getTimeZone } from "@/lib/tz.server";
 import { cn } from "@/lib/utils";
@@ -28,7 +29,7 @@ const taskSelect = {
   status: true,
   dueAt: true,
   progress: true,
-  assignees: { select: { user: { select: { id: true, firstName: true, lastName: true, avatarHue: true } } } },
+  assignees: { orderBy: assigneeOrder, select: { user: { select: { id: true, firstName: true, lastName: true, avatarHue: true } } } },
 } as const;
 
 /** Who in leadership is carrying what. Founders only. */

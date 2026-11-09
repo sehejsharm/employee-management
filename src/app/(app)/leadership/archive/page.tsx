@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { STATUS_META } from "@/components/tasks/meta";
 import { requireUser } from "@/lib/auth/current-user";
 import { db } from "@/lib/db";
+import { assigneeOrder } from "@/lib/tasks/queries";
 import { isFounder } from "@/lib/permissions";
 import { formatDate } from "@/lib/time";
 import { getTimeZone } from "@/lib/tz.server";
@@ -106,7 +107,7 @@ export default async function WorkArchivePage({
         archivedAt: true,
         updatedAt: true,
         createdBy: person,
-        assignees: { select: { user: person } },
+        assignees: { orderBy: assigneeOrder, select: { user: person } },
         submissions: {
           orderBy: { createdAt: "desc" },
           select: {

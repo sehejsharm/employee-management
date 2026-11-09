@@ -2,7 +2,7 @@ import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { isFounder, type Actor } from "@/lib/permissions";
-import { taskRowSelect, taskVisibilityWhere, toClientRow } from "@/lib/tasks/queries";
+import { assigneeOrder, taskRowSelect, taskVisibilityWhere, toClientRow } from "@/lib/tasks/queries";
 import { DUE_SOON_HOURS, dayKey, startOfDayInZone } from "@/lib/time";
 
 const HOUR = 3600_000;
@@ -58,12 +58,9 @@ export async function memberDashboard(userId: string) {
 }
 
 /** Whose work a leader sees: everyone for founders; themselves plus the colleagues a founder has cleared them to see, for everyone else. */
-async function teamIds(user: Actor, clearedIds: Set<string>) {
-  if (isFounder(user)) {
-    const all = await db.user.findMany({ where: { status: { not: "INACTIVE" } }, select: { id: true } });
-    return all.map((u) => u.id);
-  }
-  return [user.id, ...clearedIds];
+function crewWhere(user: Actor, clearedIds: Set<string>): Prisma.UserWhereInput {
+  const current: Prisma.UserWhereInput = { status: { not: "INACTIVE" } };
+  return isFounder(user) ? current : { ...current, id: { in: [user.id, ...clearedIds] } };
 }
 
 /**
@@ -73,7 +70,6 @@ async function teamIds(user: Actor, clearedIds: Set<string>) {
  */
 export async function missionControl(user: Actor, clearedIds: Set<string>, tz: string) {
   const now = new Date();
-  const ids = await teamIds(user, clearedIds);
   const scope: Prisma.TaskWhereInput = isFounder(user)
     ? { archivedAt: null }
     : { AND: [{ archivedAt: null }, taskVisibilityWhere(user, clearedIds)] };
@@ -83,15 +79,15 @@ export async function missionControl(user: Actor, clearedIds: Set<string>, tz: s
   const seriesStart = startOfDayInZone(new Date(now.getTime() - 13 * DAY), tz);
   const monthAgo = new Date(now.getTime() - 30 * DAY);
 
-  const [openTasks, doneThisWeek, donePrevWeek, statusGroups, schedule, requests, recent, people, completedSeries, createdSeries, closedMonth, departments] =
+  // One round trip: every query starts at once (the pool has room for all of them). Counts that
+  // other queries already cover — status totals, the week-on-week figures, the completion
+  // series — are worked out from those rows rather than asked for separately.
+  const [openTasks, schedule, requests, recent, people, createdSeries, closedMonth, departments] =
     await Promise.all([
       db.task.findMany({
         where: { AND: [scope, open] },
         select: { id: true, dueAt: true, status: true, assignees: { select: { userId: true } } },
       }),
-      db.task.count({ where: { AND: [scope, { status: "DONE", completedAt: { gte: weekAgo } }] } }),
-      db.task.count({ where: { AND: [scope, { status: "DONE", completedAt: { gte: twoWeeksAgo, lt: weekAgo } }] } }),
-      db.task.groupBy({ by: ["status"], where: { AND: [scope, open] }, _count: { _all: true } }),
       db.task.findMany({ where: { AND: [scope, open] }, select: taskRowSelect, orderBy: { dueAt: "asc" }, take: 8 }),
       db.updateRequest.findMany({
         where: { resolvedAt: null, task: { AND: [scope, open] }, ...(isFounder(user) ? {} : { requestedById: user.id }) },
@@ -107,7 +103,7 @@ export async function missionControl(user: Actor, clearedIds: Set<string>, tz: s
               id: true,
               number: true,
               title: true,
-              assignees: { select: { user: { select: { id: true, firstName: true, lastName: true, avatarHue: true } } } },
+              assignees: { orderBy: assigneeOrder, select: { user: { select: { id: true, firstName: true, lastName: true, avatarHue: true } } } },
             },
           },
         },
@@ -130,7 +126,7 @@ export async function missionControl(user: Actor, clearedIds: Set<string>, tz: s
         },
       }),
       db.user.findMany({
-        where: { id: { in: ids }, status: { not: "INACTIVE" } },
+        where: crewWhere(user, clearedIds),
         orderBy: { orgOrder: "asc" },
         select: {
           id: true,
@@ -144,7 +140,6 @@ export async function missionControl(user: Actor, clearedIds: Set<string>, tz: s
           department: { select: { name: true, color: true } },
         },
       }),
-      db.task.findMany({ where: { AND: [scope, { status: "DONE", completedAt: { gte: seriesStart } }] }, select: { completedAt: true } }),
       db.task.findMany({ where: { AND: [scope, { createdAt: { gte: seriesStart } }] }, select: { createdAt: true } }),
       db.task.findMany({
         where: { AND: [scope, { status: "DONE", completedAt: { gte: monthAgo } }] },
@@ -152,6 +147,11 @@ export async function missionControl(user: Actor, clearedIds: Set<string>, tz: s
       }),
       db.department.count(),
     ]);
+
+  // All of these are subsets of the last 30 days' finished tasks (closedMonth).
+  const doneThisWeek = closedMonth.filter((t) => t.completedAt! >= weekAgo).length;
+  const donePrevWeek = closedMonth.filter((t) => t.completedAt! >= twoWeeksAgo && t.completedAt! < weekAgo).length;
+  const completedSeries = closedMonth.filter((t) => t.completedAt! >= seriesStart);
 
   const load = new Map<string, { open: number; overdue: number; soon: number }>();
   for (const t of openTasks) {
@@ -184,7 +184,8 @@ export async function missionControl(user: Actor, clearedIds: Set<string>, tz: s
   // On time = handed in by the deadline (the accepted hand-in), not when the reviewer got round to it.
   const deliveredOnTime = (t: (typeof closedMonth)[number]) => (t.submissions[0]?.createdAt ?? t.completedAt!) <= t.dueAt;
   const onTime = closedMonth.length ? Math.round((closedMonth.filter(deliveredOnTime).length / closedMonth.length) * 100) : null;
-  const counts = Object.fromEntries(statusGroups.map((g) => [g.status, g._count._all])) as Record<string, number>;
+  const counts: Record<string, number> = {};
+  for (const t of openTasks) counts[t.status] = (counts[t.status] ?? 0) + 1;
 
   return {
     generatedAt: now.toISOString(),

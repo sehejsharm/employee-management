@@ -1,14 +1,17 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { CalendarDays, Inbox, Video } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { AvailabilityAsk, GoogleConnections, MeetingCard, MyRequest, RequestToAnswer, type ClientMeeting } from "@/components/calendar/meeting-cards";
 import { MeetNowDialog, RequestFounderDialog, ScheduleMeetingDialog } from "@/components/calendar/meeting-dialogs";
 import { requireUser } from "@/lib/auth/current-user";
 import { db } from "@/lib/db";
 import { googleConfig } from "@/lib/google/config";
 import { canOpenMeetings, listEvents, personalConnection, teamConnection } from "@/lib/google/calendar";
+import type { GoogleConnection } from "@/generated/prisma/client";
 import { eventTimes, meetLinkOf, subscribeUrl, type GoogleEvent } from "@/lib/google/events";
 import { canCancelMeeting, canEditMeeting, meetingsFor, type MeetingRow } from "@/lib/meetings";
 import { pickablePeople } from "@/lib/people";
@@ -64,34 +67,6 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       : [],
   ]);
   const teamReady = configured && !!team && !team.lastError;
-
-  // The team calendar as Google has it — including anything added there directly.
-  let agenda: GoogleEvent[] | null = null;
-  if (teamReady) {
-    const now = new Date();
-    agenda = await listEvents(team, now, new Date(now.getTime() + 14 * 24 * 3600_000)).catch(() => null);
-  }
-  // Private meetings on the shared calendar show only to the people in them.
-  if (agenda?.some((e) => e.visibility === "private")) {
-    const ids = agenda.map((e) => e.id);
-    const mine = await db.meeting.findMany({
-      where: {
-        OR: [{ googleEventId: { in: ids } }, { teamEventId: { in: ids } }, { slots: { some: { googleEventId: { in: ids } } } }],
-        AND: [{ OR: [{ organizerId: user.id }, { hostId: user.id }, { attendees: { some: { userId: user.id } } }] }],
-      },
-      select: { googleEventId: true, teamEventId: true, slots: { select: { googleEventId: true } } },
-    });
-    const mineIds = new Set(mine.flatMap((m) => [m.googleEventId, m.teamEventId, ...m.slots.map((s) => s.googleEventId)]));
-    agenda = agenda.filter((e) => e.visibility !== "private" || mineIds.has(e.id));
-  }
-  const agendaByDay = new Map<string, GoogleEvent[]>();
-  for (const e of agenda ?? []) {
-    const { start, allDay } = eventTimes(e);
-    if (!start) continue;
-    // All-day events belong to their calendar date everywhere, not to a converted instant.
-    const key = allDay && e.start?.date ? e.start.date : dayKey(start, tz);
-    agendaByDay.set(key, [...(agendaByDay.get(key) ?? []), e]);
-  }
 
   const toClient = (m: MeetingRow): ClientMeeting => ({
     id: m.id,
@@ -240,44 +215,92 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
             <CardBody className="pt-3">
               {!teamReady ? (
                 <p className="text-[13px] text-fg-subtle">Once a founder connects it, everything on the shared calendar shows here.</p>
-              ) : agenda === null ? (
-                <p className="text-[13px] text-fg-subtle">Couldn&apos;t reach Google Calendar just now.</p>
-              ) : agenda.length === 0 ? (
-                <p className="text-[13px] text-fg-subtle">Nothing on the team calendar in the next two weeks.</p>
               ) : (
-                <div className="space-y-4">
-                  {[...agendaByDay.entries()].map(([day, events]) => (
-                    <div key={day}>
-                      <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">
-                        {formatDate(new Date(`${day}T12:00:00Z`), "UTC", { weekday: true })}
-                      </div>
-                      <ul className="space-y-1.5">
-                        {events.map((e) => {
-                          const t = eventTimes(e);
-                          const link = meetLinkOf(e);
-                          return (
-                            <li key={e.id} className="flex items-start gap-2.5 rounded-lg px-1.5 py-1 text-[13px] hover:bg-surface-hover">
-                              <span className="w-16 shrink-0 pt-px text-[12px] tabular text-fg-muted">{t.allDay ? "All day" : formatTime(t.start!, tz)}</span>
-                              <a href={e.htmlLink} target="_blank" rel="noopener noreferrer" className="min-w-0 flex-1 truncate font-medium hover:text-brand">
-                                {e.summary || "(No title)"}
-                              </a>
-                              {link && (
-                                <a href={link} target="_blank" rel="noopener noreferrer" className="shrink-0 text-success" aria-label="Join on Google Meet">
-                                  <Video className="size-4" />
-                                </a>
-                              )}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </div>
-                  ))}
-                </div>
+                <Suspense fallback={<AgendaSkeleton />}>
+                  <TeamAgenda team={team} userId={user.id} tz={tz} />
+                </Suspense>
               )}
             </CardBody>
           </Card>
         </aside>
       </div>
     </>
+  );
+}
+
+/**
+ * The team calendar as Google has it — including anything added there directly.
+ * Streamed in on its own, so the rest of the page never waits on Google.
+ */
+async function TeamAgenda({ team, userId, tz }: { team: GoogleConnection; userId: string; tz: string }) {
+  const now = new Date();
+  let agenda = await listEvents(team, now, new Date(now.getTime() + 14 * 24 * 3600_000)).catch(() => null);
+  // Private meetings on the shared calendar show only to the people in them.
+  if (agenda?.some((e) => e.visibility === "private")) {
+    const ids = agenda.map((e) => e.id);
+    const mine = await db.meeting.findMany({
+      where: {
+        OR: [{ googleEventId: { in: ids } }, { teamEventId: { in: ids } }, { slots: { some: { googleEventId: { in: ids } } } }],
+        AND: [{ OR: [{ organizerId: userId }, { hostId: userId }, { attendees: { some: { userId } } }] }],
+      },
+      select: { googleEventId: true, teamEventId: true, slots: { select: { googleEventId: true } } },
+    });
+    const mineIds = new Set(mine.flatMap((m) => [m.googleEventId, m.teamEventId, ...m.slots.map((s) => s.googleEventId)]));
+    agenda = agenda.filter((e) => e.visibility !== "private" || mineIds.has(e.id));
+  }
+  if (agenda === null) return <p className="text-[13px] text-fg-subtle">Couldn&apos;t reach Google Calendar just now.</p>;
+  if (agenda.length === 0) return <p className="text-[13px] text-fg-subtle">Nothing on the team calendar in the next two weeks.</p>;
+
+  const agendaByDay = new Map<string, GoogleEvent[]>();
+  for (const e of agenda) {
+    const { start, allDay } = eventTimes(e);
+    if (!start) continue;
+    // All-day events belong to their calendar date everywhere, not to a converted instant.
+    const key = allDay && e.start?.date ? e.start.date : dayKey(start, tz);
+    agendaByDay.set(key, [...(agendaByDay.get(key) ?? []), e]);
+  }
+  return (
+    <div className="space-y-4">
+      {[...agendaByDay.entries()].map(([day, events]) => (
+        <div key={day}>
+          <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">
+            {formatDate(new Date(`${day}T12:00:00Z`), "UTC", { weekday: true })}
+          </div>
+          <ul className="space-y-1.5">
+            {events.map((e) => {
+              const t = eventTimes(e);
+              const link = meetLinkOf(e);
+              return (
+                <li key={e.id} className="flex items-start gap-2.5 rounded-lg px-1.5 py-1 text-[13px] hover:bg-surface-hover">
+                  <span className="w-16 shrink-0 pt-px text-[12px] tabular text-fg-muted">{t.allDay ? "All day" : formatTime(t.start!, tz)}</span>
+                  <a href={e.htmlLink} target="_blank" rel="noopener noreferrer" className="min-w-0 flex-1 truncate font-medium hover:text-brand">
+                    {e.summary || "(No title)"}
+                  </a>
+                  {link && (
+                    <a href={link} target="_blank" rel="noopener noreferrer" className="shrink-0 text-success" aria-label="Join on Google Meet">
+                      <Video className="size-4" />
+                    </a>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AgendaSkeleton() {
+  return (
+    <div className="space-y-4" aria-hidden>
+      {Array.from({ length: 3 }).map((_, i) => (
+        <div key={i}>
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="mt-2.5 h-4 w-full" />
+          <Skeleton className="mt-2 h-4 w-4/5" />
+        </div>
+      ))}
+    </div>
   );
 }

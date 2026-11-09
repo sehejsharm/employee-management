@@ -29,29 +29,56 @@ const TONE: Record<BriefingBucket, string> = {
 /** How many tasks to list per day before summarising the rest. */
 const PER_GROUP = 5;
 
+const SEEN_KEY = "fr-briefing-seen";
+
+/** Today in this browser's time zone, e.g. "2026-11-09". */
+function localDay() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function readSeen() {
+  try {
+    return localStorage.getItem(SEEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeSeen(value: string) {
+  try {
+    localStorage.setItem(SEEN_KEY, value);
+  } catch {}
+}
+
 /**
  * The first page someone opens on a new day pops up a short summary of what
  * needs doing today, tomorrow, the day after and later. It's also filed in
  * their inbox, and can be reopened from the account menu.
  */
-export function DailyBriefing() {
+export function DailyBriefing({ userId }: { userId: string }) {
   const { refresh } = useNotifications();
   const [briefing, setBriefing] = React.useState<Briefing | null>(null);
   const [open, setOpen] = React.useState(false);
-  const claimed = React.useRef(false);
 
   React.useEffect(() => {
-    if (claimed.current) return;
-    claimed.current = true;
-    claimDailyBriefing()
-      .then((b) => {
-        if (!b) return;
-        setBriefing(b);
-        setOpen(true);
-        void refresh();
-      })
-      .catch(() => {});
-  }, [refresh]);
+    // Once today's briefing has been claimed on this device, later pages skip asking the server.
+    const mark = `${userId}:${localDay()}`;
+    if (readSeen() === mark) return;
+    // Asked once the page itself has loaded, so it never competes with it.
+    const id = window.setTimeout(() => {
+      claimDailyBriefing()
+        .then((b) => {
+          writeSeen(mark);
+          if (!b) return;
+          setBriefing(b);
+          setOpen(true);
+          void refresh();
+        })
+        .catch(() => {});
+    }, 1_000);
+    return () => window.clearTimeout(id);
+  }, [refresh, userId]);
 
   React.useEffect(() => {
     const reopen = () => {

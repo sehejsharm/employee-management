@@ -19,10 +19,11 @@ function bannerHidden() {
   }
 }
 
-/** Keeps this device's notification subscription current. Mounted once in the app shell. */
+/** Keeps this device's notification subscription current. Mounted once in the app shell; runs once the page has loaded. */
 export function PushSync() {
   React.useEffect(() => {
-    void syncPush();
+    const id = window.setTimeout(() => void syncPush(), 3_000);
+    return () => window.clearTimeout(id);
   }, []);
   return null;
 }

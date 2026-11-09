@@ -108,11 +108,33 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   return { title: task ? taskRef(task.number) : "Task" };
 }
 
+/** Other open tasks a founder could fold into this one. */
+function mergeCandidatesFor(id: string) {
+  return db.task.findMany({
+    where: { id: { not: id }, archivedAt: null, status: { not: "DONE" } },
+    orderBy: { dueAt: "asc" },
+    take: 300,
+    select: {
+      id: true,
+      number: true,
+      title: true,
+      dueAt: true,
+      assignees: { orderBy: assigneeOrder, select: { user: { select: { firstName: true, lastName: true, department: { select: { name: true } } } } } },
+    },
+  });
+}
+
 export default async function TaskPage({ params }: { params: Promise<{ id: string }> }) {
-  const user = await requireUser();
-  const tz = await getTimeZone();
-  const { id } = await params;
-  const task = await load(id);
+  const [user, tz, { id }] = await Promise.all([requireUser(), getTimeZone(), params]);
+  // Everything the page needs in one round trip. A founder can edit any task and gets the
+  // founder tools, so their people list and merge candidates load alongside the task itself.
+  const founder = isFounder(user);
+  const [task, cleared, founderPeople, founderMerge] = await Promise.all([
+    load(id),
+    getClearedIds(user),
+    founder ? pickablePeople() : null,
+    founder ? mergeCandidatesFor(id) : null,
+  ]);
   if (!task) {
     // Merged into another task: follow it there.
     const merged = await db.task.findUnique({ where: { id }, select: { mergedIntoId: true } });
@@ -120,7 +142,6 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
     notFound();
   }
 
-  const cleared = await getClearedIds(user);
   const access = {
     createdById: task.createdById,
     assigneeIds: task.assignees.map((a) => a.user.id),
@@ -158,7 +179,7 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
     ? {
         taskId: task.id,
         taskRef: ref,
-        people: await pickablePeople(),
+        people: founderPeople ?? (await pickablePeople()),
         assigneeIds: access.assigneeIds,
         leadId: lead?.id ?? null,
         selfId: user.id,
@@ -168,20 +189,7 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
   // Founders: extend the deadline, or fold other open tasks into this one.
   const founderTools = isFounder(user) && task.status !== "DONE";
   const mergeCandidates = founderTools
-    ? (
-        await db.task.findMany({
-          where: { id: { not: task.id }, archivedAt: null, status: { not: "DONE" } },
-          orderBy: { dueAt: "asc" },
-          take: 300,
-          select: {
-            id: true,
-            number: true,
-            title: true,
-            dueAt: true,
-            assignees: { orderBy: assigneeOrder, select: { user: { select: { firstName: true, lastName: true, department: { select: { name: true } } } } } },
-          },
-        })
-      ).map((t) => ({
+    ? (founderMerge ?? (await mergeCandidatesFor(task.id))).map((t) => ({
         id: t.id,
         ref: taskRef(t.number),
         title: t.title,

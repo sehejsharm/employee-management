@@ -63,6 +63,17 @@ export async function requireUser(): Promise<CurrentUser & Actor> {
   return user;
 }
 
+/**
+ * Unread notifications for whoever holds this request's session. Keyed on the
+ * session rather than the user, so it runs alongside getCurrentUser instead of
+ * waiting for it; only use the result once getCurrentUser has accepted the session.
+ */
+export const getUnreadForSession = cache(async () => {
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  if (!token) return 0;
+  return db.notification.count({ where: { readAt: null, user: { sessions: { some: { tokenHash: hashToken(token) } } } } });
+});
+
 /** Ids of everyone below a person through any reporting line (main or additional). */
 export const getSubordinateIds = cache(async (userId: string) => {
   const edges = await reportingEdges();

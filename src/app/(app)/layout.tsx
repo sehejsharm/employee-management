@@ -1,12 +1,11 @@
 import { AppShell } from "@/components/app/app-shell";
-import { requireUser } from "@/lib/auth/current-user";
-import { db } from "@/lib/db";
+import { getUnreadForSession, requireUser } from "@/lib/auth/current-user";
 import { config as appConfig } from "@/lib/env";
 import { ROLE_LABEL, canAdminister, canAssignTasks, canManagePeople, isFounder, isLeader, isSalesDepartment } from "@/lib/permissions";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const user = await requireUser();
-  const unread = await db.notification.count({ where: { userId: user.id, readAt: null } });
+  // Both in one round trip: the unread count doesn't wait for the session lookup.
+  const [user, unread] = await Promise.all([requireUser(), getUnreadForSession()]);
   const founder = isFounder(user);
 
   return (

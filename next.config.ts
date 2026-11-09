@@ -40,6 +40,10 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "5mb",
     },
     optimizePackageImports: ["lucide-react", "date-fns", "motion", "radix-ui"],
+    // Pages visited in the last 30 seconds come back instantly (back/forward and links) instead
+    // of waiting on the server again; a page loaded ahead of a click (see NavLink in
+    // app-shell.tsx) stays fresh for 30 seconds. Any change someone saves refreshes them.
+    staleTimes: { dynamic: 30, static: 30 },
   },
 
   async headers() {

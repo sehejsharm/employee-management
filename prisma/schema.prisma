@@ -5,8 +5,12 @@
 // is called out on that field.
 
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  // Related records load in the same SQL statement as their parent (LATERAL
+  // joins) instead of one extra round trip per relation level — the biggest
+  // single cut to page load time when the database is a network hop away.
+  previewFeatures = ["relationJoins"]
 }
 
 datasource db {

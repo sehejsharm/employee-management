@@ -35,13 +35,15 @@ export class DatabaseNotConfiguredError extends Error {
  * which case the certificate is verified against it. The URL's sslmode would
  * override an explicit `ssl` option, so it is removed whenever we supply one.
  *
- * Pool: small and fail-fast for serverless — a paused or unreachable database
- * errors after 10 seconds instead of hanging the request.
+ * Pool: fail-fast for serverless — a paused or unreachable database errors
+ * after 10 seconds instead of hanging the request. Ten connections let a busy
+ * page (Mission Control runs about ten queries at once) finish in one round
+ * trip instead of queueing behind a smaller pool.
  */
 export function poolConfig(connectionString: string): PoolConfig {
   const max = Number(process.env.DATABASE_POOL_MAX);
   const limits = {
-    max: Number.isInteger(max) && max > 0 ? max : 5,
+    max: Number.isInteger(max) && max > 0 ? max : 10,
     connectionTimeoutMillis: 10_000,
     idleTimeoutMillis: 10_000,
   };

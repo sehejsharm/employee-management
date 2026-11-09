@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
 import {
   AlarmClock,
@@ -19,6 +20,7 @@ import { FadeIn } from "@/components/motion";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { RichText } from "@/components/ui/rich-text";
 import { FocusEditor, NextDeadline, StatCard, WelcomeToast } from "@/components/dashboard/widgets";
@@ -27,11 +29,11 @@ import { SharedEmailNotice } from "@/components/people/shared-email-notice";
 import { sharingEmailWith } from "@/lib/shared-email";
 import { UpcomingMeetings } from "@/components/calendar/upcoming-meetings";
 import { upcomingForDashboard } from "@/lib/meetings";
-import { requireUser } from "@/lib/auth/current-user";
+import { requireUser, type CurrentUser } from "@/lib/auth/current-user";
 import { getClearedIds } from "@/lib/clearance";
 import { founderPulse, memberDashboard, missionControl } from "@/lib/dashboard";
 import { MissionControl } from "@/components/mission/mission-control";
-import { isFounder, isLeader } from "@/lib/permissions";
+import { isFounder, isLeader, type Actor } from "@/lib/permissions";
 import { DUE_BUCKET_LABEL, dueBucket, formatLongDate, greeting, timeAgo, type DueBucket } from "@/lib/time";
 import { getTimeZone } from "@/lib/tz.server";
 import { cn } from "@/lib/utils";
@@ -39,12 +41,15 @@ import { cn } from "@/lib/utils";
 export const metadata: Metadata = { title: "Home" };
 
 export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ view?: string; welcome?: string }> }) {
-  const user = await requireUser();
-  const tz = await getTimeZone();
-  const params = await searchParams;
+  const [user, tz, params] = await Promise.all([requireUser(), getTimeZone(), searchParams]);
   const leader = isLeader(user);
   const view = leader && params.view !== "me" ? "team" : "me";
   const now = new Date();
+  // The main section's data starts loading now, alongside the header's, and streams in when ready.
+  const team = view === "team" ? leaderData(user, tz) : null;
+  const mine = view === "me" ? memberDashboard(user.id) : null;
+  // Awaited below; this only stops an early failure from counting as unhandled.
+  (team ?? mine)?.catch(() => {});
   const [emailSharers, meetings] = await Promise.all([sharingEmailWith(user), upcomingForDashboard(user.id)]);
 
   return (
@@ -103,8 +108,33 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           <UpcomingMeetings meetings={meetings} tz={tz} />
         </FadeIn>
       )}
-      {view === "team" ? <LeaderView tz={tz} /> : <MemberView tz={tz} />}
+      <Suspense fallback={<MainSkeleton />}>{team ? <LeaderView tz={tz} data={team} /> : <MemberView tz={tz} data={mine!} />}</Suspense>
     </>
+  );
+}
+
+/** Holds the main section's place while its data streams in. */
+function MainSkeleton() {
+  return (
+    <div className="space-y-6" aria-hidden>
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="rounded-2xl border border-line bg-surface p-5">
+            <Skeleton className="h-3 w-20" />
+            <Skeleton className="mt-4 h-8 w-14" />
+          </div>
+        ))}
+      </div>
+      <div className="rounded-2xl border border-line bg-surface p-5">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-3 border-b border-line py-3.5 last:border-0">
+            <Skeleton className="h-5 w-5 rounded-full" />
+            <Skeleton className="h-4 flex-1" />
+            <Skeleton className="h-6 w-20 rounded-full" />
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -112,9 +142,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 /* Employee / intern view                                                     */
 /* -------------------------------------------------------------------------- */
 
-async function MemberView({ tz }: { tz: string }) {
-  const user = await requireUser();
-  const data = await memberDashboard(user.id);
+async function MemberView({ tz, data: pending }: { tz: string; data: ReturnType<typeof memberDashboard> }) {
+  const data = await pending;
   const now = new Date();
 
   const groups = new Map<DueBucket, typeof data.rows>();
@@ -242,10 +271,14 @@ async function MemberView({ tz }: { tz: string }) {
 /* Founders / management view — Mission Control                               */
 /* -------------------------------------------------------------------------- */
 
-async function LeaderView({ tz }: { tz: string }) {
-  const user = await requireUser();
+async function leaderData(user: CurrentUser & Actor, tz: string) {
   const cleared = await getClearedIds(user);
   const [data, pulse] = await Promise.all([missionControl(user, cleared, tz), isFounder(user) ? founderPulse() : Promise.resolve([])]);
+  return { user, data, pulse };
+}
+
+async function LeaderView({ tz, data: pending }: { tz: string; data: ReturnType<typeof leaderData> }) {
+  const { user, data, pulse } = await pending;
 
   return (
     <div className="space-y-6">

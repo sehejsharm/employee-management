@@ -32,6 +32,34 @@ function isActive(item: NavItem, path: string) {
   return item.match ? item.match(path) : path === item.href;
 }
 
+/**
+ * A navigation link that starts loading the whole page as soon as someone
+ * points at it (hover, touch or keyboard focus), so by the time they click it
+ * is usually already here. Until then it prefetches only the page's shell, as
+ * every link does — loading every page up front would be wasted work.
+ */
+function NavLink({ onMouseEnter, onTouchStart, onFocus, ...props }: React.ComponentProps<typeof Link>) {
+  const [intent, setIntent] = React.useState(false);
+  return (
+    <Link
+      {...props}
+      prefetch={intent ? true : null}
+      onMouseEnter={(e) => {
+        setIntent(true);
+        onMouseEnter?.(e);
+      }}
+      onTouchStart={(e) => {
+        setIntent(true);
+        onTouchStart?.(e);
+      }}
+      onFocus={(e) => {
+        setIntent(true);
+        onFocus?.(e);
+      }}
+    />
+  );
+}
+
 export function AppShell({
   user,
   flags,
@@ -58,7 +86,7 @@ export function AppShell({
           </div>
           <MobileNav nav={nav} user={user} flags={flags} />
         </div>
-        <DailyBriefing />
+        <DailyBriefing userId={user.id} />
         <IncomingCallWatcher />
         <PushSync />
       </CommandPalette>
@@ -95,7 +123,7 @@ function Sidebar({ nav, user }: { nav: NavItem[]; user: ShellUser }) {
                 const active = isActive(item, path);
                 return (
                   <li key={item.href}>
-                    <Link
+                    <NavLink
                       href={item.href}
                       className={cn(
                         "group relative flex h-9 items-center gap-3 rounded-[10px] px-3 text-[13.5px] font-medium transition-colors",
@@ -118,7 +146,7 @@ function Sidebar({ nav, user }: { nav: NavItem[]; user: ShellUser }) {
                       )}
                       <item.icon className={cn("relative size-[17px]", active ? "text-brand" : "text-fg-subtle group-hover:text-fg-muted")} />
                       <span className="relative">{item.label}</span>
-                    </Link>
+                    </NavLink>
                   </li>
                 );
               })}
@@ -338,7 +366,7 @@ function MobileNav({ nav, user, flags }: { nav: NavItem[]; user: ShellUser; flag
         <SheetContent title="Menu" description={`${user.firstName} ${user.lastName} · ${user.employeeCode}`}>
           <div className="grid grid-cols-2 gap-2 min-[400px]:grid-cols-3">
             {[...tabs.slice(3), ...rest].map((item) => (
-              <Link
+              <NavLink
                 key={item.href}
                 href={item.href}
                 onClick={() => setMore(false)}
@@ -349,7 +377,7 @@ function MobileNav({ nav, user, flags }: { nav: NavItem[]; user: ShellUser; flag
               >
                 <item.icon className="size-5" />
                 {item.label}
-              </Link>
+              </NavLink>
             ))}
           </div>
           {(flags.canUseHr || flags.canUseCrm || flags.canUseMail) && (
@@ -404,7 +432,7 @@ function MobileNav({ nav, user, flags }: { nav: NavItem[]; user: ShellUser; flag
 
 function TabLink({ item, active }: { item: NavItem; active: boolean }) {
   return (
-    <Link href={item.href} className={cn("relative flex flex-col items-center gap-1 text-[10.5px] font-medium", active ? "text-brand" : "text-fg-subtle")}>
+    <NavLink href={item.href} className={cn("relative flex flex-col items-center gap-1 text-[10.5px] font-medium", active ? "text-brand" : "text-fg-subtle")}>
       <AnimatePresence>
         {active && (
           <motion.span
@@ -416,6 +444,6 @@ function TabLink({ item, active }: { item: NavItem; active: boolean }) {
       </AnimatePresence>
       <item.icon className="size-[22px]" />
       {item.label}
-    </Link>
+    </NavLink>
   );
 }

@@ -16,6 +16,8 @@ import { pushOnHere } from "@/lib/push-client";
 import { NotificationIcon } from "./notification-icon";
 
 const POLL_MS = 60_000;
+const FIRST_POLL_MS = 1_500;
+const RETURN_GAP_MS = 15_000;
 
 /** Meeting calls link straight to Google Meet: open those in a new tab, everything else in the app. */
 const isExternal = (href: string) => /^https?:\/\//.test(href);
@@ -96,18 +98,25 @@ export function NotificationsProvider({ initialUnread, children }: { initialUnre
   }, [router]);
 
   React.useEffect(() => {
-    const first = window.setTimeout(refresh, 0);
+    // The first check waits until the page itself has loaded; the server already sent the unread count.
+    let last = Date.now();
+    const run = () => {
+      last = Date.now();
+      void refresh();
+    };
+    const first = window.setTimeout(run, FIRST_POLL_MS);
     const id = window.setInterval(() => {
-      if (document.visibilityState === "visible") refresh();
+      if (document.visibilityState === "visible") run();
     }, POLL_MS);
-    const onVisible = () => document.visibilityState === "visible" && refresh();
-    document.addEventListener("visibilitychange", onVisible);
-    window.addEventListener("focus", refresh);
+    // Coming back to the tab checks straight away — unless it checked moments ago.
+    const onReturn = () => document.visibilityState === "visible" && Date.now() - last > RETURN_GAP_MS && run();
+    document.addEventListener("visibilitychange", onReturn);
+    window.addEventListener("focus", onReturn);
     return () => {
       window.clearTimeout(first);
       window.clearInterval(id);
-      document.removeEventListener("visibilitychange", onVisible);
-      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", onReturn);
+      window.removeEventListener("focus", onReturn);
     };
   }, [refresh]);
 

@@ -19,7 +19,7 @@ import {
 import { NoClearance } from "@/components/clearance/no-clearance";
 import { SubmissionsPanel, SubmitWorkPanel } from "@/components/tasks/submissions";
 import { SeriesBadge } from "@/components/tasks/founder-task-tools";
-import { REPEAT_LABEL } from "@/lib/task-series";
+import { repeatLabel } from "@/lib/repeat-rule";
 import { ReassignDialog } from "@/components/tasks/reassign-dialog";
 import { ExtendDeadlineDialog, MergeTasksDialog } from "@/components/tasks/founder-task-tools";
 import { pickablePeople } from "@/lib/people";
@@ -37,8 +37,11 @@ import {
   canSubmitWork,
   canViewTask,
   isFounder,
+  isInvolved,
 } from "@/lib/permissions";
 import { assigneeOrder } from "@/lib/tasks/queries";
+import { threadOf } from "@/lib/tasks/thread";
+import { TaskThread } from "@/components/tasks/task-thread";
 import { formatDate, formatDateTime, timeAgo } from "@/lib/time";
 import { getTimeZone } from "@/lib/tz.server";
 import { taskRef } from "@/lib/utils";
@@ -65,7 +68,7 @@ async function load(id: string) {
       createdBy: { select: person },
       assignees: { select: { role: true, user: { select: { ...person, role: true } } }, orderBy: assigneeOrder },
       checklist: { orderBy: { position: "asc" }, select: { id: true, text: true, done: true } },
-      series: { select: { id: true, frequency: true, total: true, created: true, stoppedAt: true, createdById: true } },
+      series: { select: { id: true, frequency: true, weekdays: true, monthDay: true, total: true, created: true, stoppedAt: true, createdById: true } },
       // Task material only; proof lives with its submission.
       attachments: { where: { submissionId: null }, orderBy: { createdAt: "asc" }, select: attachmentSelect },
       submissions: {
@@ -108,11 +111,34 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   return { title: task ? taskRef(task.number) : "Task" };
 }
 
+/** Other open tasks a founder could fold into this one. */
+function mergeCandidatesFor(id: string) {
+  return db.task.findMany({
+    where: { id: { not: id }, archivedAt: null, status: { not: "DONE" } },
+    orderBy: { dueAt: "asc" },
+    take: 300,
+    select: {
+      id: true,
+      number: true,
+      title: true,
+      dueAt: true,
+      assignees: { orderBy: assigneeOrder, select: { user: { select: { firstName: true, lastName: true, department: { select: { name: true } } } } } },
+    },
+  });
+}
+
 export default async function TaskPage({ params }: { params: Promise<{ id: string }> }) {
-  const user = await requireUser();
-  const tz = await getTimeZone();
-  const { id } = await params;
-  const task = await load(id);
+  const [user, tz, { id }] = await Promise.all([requireUser(), getTimeZone(), params]);
+  // Everything the page needs in one round trip. A founder can edit any task and gets the
+  // founder tools, so their people list and merge candidates load alongside the task itself.
+  const founder = isFounder(user);
+  const [task, cleared, thread, founderPeople, founderMerge] = await Promise.all([
+    load(id),
+    getClearedIds(user),
+    threadOf(id),
+    founder ? pickablePeople() : null,
+    founder ? mergeCandidatesFor(id) : null,
+  ]);
   if (!task) {
     // Merged into another task: follow it there.
     const merged = await db.task.findUnique({ where: { id }, select: { mergedIntoId: true } });
@@ -120,7 +146,6 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
     notFound();
   }
 
-  const cleared = await getClearedIds(user);
   const access = {
     createdById: task.createdById,
     assigneeIds: task.assignees.map((a) => a.user.id),
@@ -158,7 +183,7 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
     ? {
         taskId: task.id,
         taskRef: ref,
-        people: await pickablePeople(),
+        people: founderPeople ?? (await pickablePeople()),
         assigneeIds: access.assigneeIds,
         leadId: lead?.id ?? null,
         selfId: user.id,
@@ -168,20 +193,7 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
   // Founders: extend the deadline, or fold other open tasks into this one.
   const founderTools = isFounder(user) && task.status !== "DONE";
   const mergeCandidates = founderTools
-    ? (
-        await db.task.findMany({
-          where: { id: { not: task.id }, archivedAt: null, status: { not: "DONE" } },
-          orderBy: { dueAt: "asc" },
-          take: 300,
-          select: {
-            id: true,
-            number: true,
-            title: true,
-            dueAt: true,
-            assignees: { orderBy: assigneeOrder, select: { user: { select: { firstName: true, lastName: true, department: { select: { name: true } } } } } },
-          },
-        })
-      ).map((t) => ({
+    ? (founderMerge ?? (await mergeCandidatesFor(task.id))).map((t) => ({
         id: t.id,
         ref: taskRef(t.number),
         title: t.title,
@@ -191,6 +203,10 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
       }))
     : [];
   const openRequests = task.updateRequests;
+  // The thread shows only the steps this person may open.
+  const threadSteps = thread.filter(
+    (s) => s.id === task.id || canViewTask(user, { createdById: s.createdById, assigneeIds: s.assignees.map((a) => a.user.id), involvesFounder: s.assignees.some((a) => a.user.role === "FOUNDER") }, cleared),
+  );
   // Keyed on the pending submission, so a task left "In review" with nothing handed in can still be submitted.
   const canSubmit = canSubmitWork(user, access) && task.status !== "DONE" && !task.submissions.some((s) => s.status === "SUBMITTED");
   const lastSentBack = task.submissions[0]?.status === "CHANGES_REQUESTED" ? task.submissions[0].reviewNote : null;
@@ -223,7 +239,7 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
             {task.series && task.seriesIndex && (
               <SeriesBadge
                 seriesId={task.series.id}
-                label={`Repeats ${REPEAT_LABEL[task.series.frequency]} · ${task.seriesIndex} of ${task.series.total}`}
+                label={`Repeats ${repeatLabel(task.series)} · ${task.seriesIndex} of ${task.series.total}`}
                 canStop={!task.series.stoppedAt && task.series.created < task.series.total && (task.series.createdById === user.id || isFounder(user))}
                 stopped={!!task.series.stoppedAt}
               />
@@ -284,6 +300,7 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-6">
+          <TaskThread steps={threadSteps} currentId={task.id} tz={tz} canExtend={isFounder(user) || isInvolved(user, access)} />
           <Card>
             <CardHeader title="Brief" />
             <CardBody>

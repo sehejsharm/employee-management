@@ -3,7 +3,7 @@ import { PageHeader } from "@/components/app/page-header";
 import { NotificationBanner } from "@/components/app/notification-setup";
 import { InboxList } from "@/components/app/inbox-list";
 import { requireUser } from "@/lib/auth/current-user";
-import { syncDeadlineAlertsFor } from "@/lib/notifications";
+import { claimDeadlineSweep, syncDeadlineAlertsFor } from "@/lib/notifications";
 import { notificationFeed } from "@/lib/notification-feed";
 import { getTimeZone } from "@/lib/tz.server";
 
@@ -11,7 +11,8 @@ export const metadata: Metadata = { title: "Inbox" };
 
 export default async function NotificationsPage() {
   const user = await requireUser();
-  await syncDeadlineAlertsFor(user.id);
+  // Usually the inbox poll swept moments ago; only sweep here when it hasn't.
+  if (claimDeadlineSweep(user.id)) await syncDeadlineAlertsFor(user.id);
   const [feed, tz] = await Promise.all([notificationFeed(user.id, 150), getTimeZone()]);
   return (
     <>

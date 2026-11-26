@@ -3,44 +3,38 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
-import { FileText, FileUp, Link2, ListChecks, Plus, Repeat, StickyNote, Trash2, X } from "lucide-react";
+import Link from "next/link";
+import { CalendarPlus, FileText, FileUp, GitBranch, Link2, ListChecks, Plus, Repeat, StickyNote, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Field, Input, NativeSelect, Textarea } from "@/components/ui/input";
+import { Field, fieldBase, Input, NativeSelect, Textarea } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import { createTask, updateTask, uploadFile } from "@/actions/tasks";
 import { useMounted } from "@/lib/hooks";
 import { cn, formatBytes, hostOf, safeHttpUrl } from "@/lib/utils";
 import { AssigneePicker, type PickablePerson } from "./assignee-picker";
 import { DuePicker, toLocalInput } from "./due-picker";
+import { MAX_OCCURRENCES, repeatLabel, seriesDueDates, WEEKDAY_SHORT, type RepeatFrequency, type RepeatRule } from "@/lib/repeat-rule";
 import { PRIORITY_META, PRIORITY_ORDER, type TaskPriorityKey } from "./meta";
 
 type AttachTab = "link" | "note" | "file";
-type RepeatChoice = "NONE" | "DAILY" | "WEEKDAYS" | "WEEKLY";
+type RepeatChoice = "NONE" | RepeatFrequency;
 
-const REPEAT_OPTIONS: { value: RepeatChoice; label: string; noun: string }[] = [
-  { value: "NONE", label: "Doesn't repeat", noun: "" },
-  { value: "DAILY", label: "Every day", noun: "day" },
-  { value: "WEEKDAYS", label: "Every weekday (Mon–Fri)", noun: "weekday" },
-  { value: "WEEKLY", label: "Every week", noun: "week" },
+const REPEAT_OPTIONS: { value: RepeatChoice; label: string }[] = [
+  { value: "NONE", label: "Doesn't repeat" },
+  { value: "DAILY", label: "Every day" },
+  { value: "WEEKDAYS", label: "Every weekday (Mon–Fri)" },
+  { value: "WEEKLY", label: "Every week" },
+  { value: "DAYS_OF_WEEK", label: "On chosen days…" },
+  { value: "MONTHLY", label: "Every month" },
+  { value: "DATES", label: "On chosen dates…" },
 ];
 
-/** The deadlines a repeat will produce, in the browser's time (the same rules the server applies). */
-function previewDates(start: Date, repeat: RepeatChoice, count: number) {
-  const weekend = (d: Date) => d.getDay() === 0 || d.getDay() === 6;
-  const step = (d: Date) => {
-    const n = new Date(d);
-    n.setDate(n.getDate() + (repeat === "WEEKLY" ? 7 : 1));
-    while (repeat === "WEEKDAYS" && weekend(n)) n.setDate(n.getDate() + 1);
-    return n;
-  };
-  const first = new Date(start);
-  while (repeat === "WEEKDAYS" && weekend(first)) first.setDate(first.getDate() + 1);
-  const out = [first];
-  while (out.length < count) out.push(step(out[out.length - 1]));
-  return out;
-}
+/** Monday first, the way a work week reads. */
+const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
+
+const browserTz = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 export interface TaskFormInitial {
   id: string;
@@ -59,6 +53,8 @@ export function TaskForm({
   maxUploadBytes,
   initial,
   presetAssignee,
+  presetAssignees,
+  continues,
   canRepeat = false,
 }: {
   people: PickablePerson[];
@@ -67,6 +63,10 @@ export function TaskForm({
   maxUploadBytes: number;
   initial?: TaskFormInitial;
   presetAssignee?: string;
+  /** Start with these people picked (a next step starts with the same team). */
+  presetAssignees?: string[];
+  /** The task this one follows on from: the new task joins its thread. */
+  continues?: { id: string; ref: string; title: string };
   /** Founders can set a task to repeat (e.g. every day for 30 days). */
   canRepeat?: boolean;
 }) {
@@ -81,7 +81,7 @@ export function TaskForm({
   const [editedDue, setDue] = React.useState<string | null>(null);
   const due = editedDue ?? (initial && mounted ? toLocalInput(new Date(initial.dueAt)) : "");
   const [assignees, setAssignees] = React.useState<string[]>(
-    initial?.assigneeIds ?? (presetAssignee ? [presetAssignee] : canAssignOthers ? [] : [selfId]),
+    initial?.assigneeIds ?? (presetAssignees?.length ? presetAssignees : presetAssignee ? [presetAssignee] : canAssignOthers ? [] : [selfId]),
   );
   // The lead answers for the task; everyone else follows. Defaults to the first person picked.
   const [chosenLead, setLead] = React.useState<string | null>(initial?.leadId ?? null);
@@ -95,10 +95,36 @@ export function TaskForm({
   const [repeat, setRepeat] = React.useState<RepeatChoice>("NONE");
   // Kept as text so the field can be cleared and retyped without snapping back.
   const [repeatCount, setRepeatCount] = React.useState("30");
-  const count = Math.floor(Number(repeatCount));
-  const countValid = Number.isInteger(count) && count >= 2 && count <= 90;
-  const repeating = canRepeat && !editing && repeat !== "NONE";
-  const preview = repeating && due && countValid ? previewDates(new Date(due), repeat, count) : null;
+  // On chosen days of the week: none picked until the founder picks (defaults to the deadline's day).
+  const [weekdays, setWeekdays] = React.useState<number[] | null>(null);
+  // On specific dates: the deadline is the first; these are the rest, each with its own time.
+  const [extraDates, setExtraDates] = React.useState<string[]>([]);
+  const repeating = canRepeat && !editing && !continues && repeat !== "NONE";
+  const dueDate = due ? new Date(due) : null;
+  const dueValid = !!dueDate && !Number.isNaN(dueDate.getTime());
+  const pickedDays = weekdays ?? (dueValid ? [dueDate!.getDay()] : [1]);
+  const datesList = repeat === "DATES" && dueValid
+    ? [...new Set([dueDate!, ...extraDates.filter(Boolean).map((d) => new Date(d))].filter((d) => !Number.isNaN(d.getTime())).map((d) => d.getTime()))]
+        .sort((x, y) => x - y)
+        .map((t) => new Date(t))
+    : [];
+  const count = repeat === "DATES" ? datesList.length : Math.floor(Number(repeatCount));
+  const countValid =
+    repeat === "DATES"
+      ? count >= 2 && count <= MAX_OCCURRENCES
+      : repeat === "DAYS_OF_WEEK" && pickedDays.length === 0
+        ? false
+        : Number.isInteger(count) && count >= 2 && count <= MAX_OCCURRENCES;
+  const rule: RepeatRule | null =
+    repeat === "NONE" ? null : { frequency: repeat, weekdays: pickedDays, monthDay: dueValid ? dueDate!.getDate() : null, dates: datesList };
+  const preview = repeating && rule && dueValid && countValid ? seriesDueDates(dueDate!, rule, count, browserTz()) : null;
+  const toggleDay = (d: number) => setWeekdays(pickedDays.includes(d) ? pickedDays.filter((x) => x !== d) : [...pickedDays, d]);
+  const addDate = () => {
+    const last = datesList[datesList.length - 1] ?? (dueValid ? dueDate! : null);
+    const next = last ? new Date(last) : new Date();
+    next.setDate(next.getDate() + 7);
+    setExtraDates((list) => [...list, toLocalInput(next)]);
+  };
 
 
   const submit = async (e: React.FormEvent) => {
@@ -115,7 +141,10 @@ export function TaskForm({
         router.push(`/tasks/${initial!.id}`);
         return;
       }
-      if (repeating && !countValid) return void toast.error("Repeat between 2 and 90 times.");
+      if (repeating && !countValid)
+        return void toast.error(
+          repeat === "DATES" ? "Add at least one more date." : repeat === "DAYS_OF_WEEK" && pickedDays.length === 0 ? "Pick at least one day." : "Repeat between 2 and 90 times.",
+        );
       const res = await createTask({
         title,
         description,
@@ -126,7 +155,16 @@ export function TaskForm({
         links,
         notes,
         checklist,
-        repeat: repeating ? { frequency: repeat as Exclude<RepeatChoice, "NONE">, count } : undefined,
+        continuesId: continues?.id,
+        repeat:
+          repeating && rule
+            ? {
+                frequency: rule.frequency,
+                count,
+                weekdays: rule.frequency === "DAYS_OF_WEEK" ? pickedDays : undefined,
+                dates: rule.frequency === "DATES" ? datesList.map((d) => d.toISOString()) : undefined,
+              }
+            : undefined,
       });
       if (!res.ok) return void toast.error(res.error);
       const id = res.data!.id;
@@ -153,11 +191,23 @@ export function TaskForm({
   return (
     <form onSubmit={submit} className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
       <div className="space-y-5">
+        {continues && (
+          <div className="flex items-start gap-3 rounded-2xl border border-brand/20 bg-brand-soft/70 px-4 py-3 text-[13.5px]">
+            <GitBranch className="mt-0.5 size-4 shrink-0 text-brand" />
+            <p className="min-w-0 text-fg-muted">
+              Next step after{" "}
+              <Link href={`/tasks/${continues.id}`} className="font-medium text-fg hover:text-brand">
+                {continues.ref} · {continues.title}
+              </Link>
+              . It joins the same thread, so everyone can follow the work from one step to the next.
+            </p>
+          </div>
+        )}
         <Card className="p-5 sm:p-6">
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="What needs to be done?"
+            placeholder={continues ? "What's the next step?" : "What needs to be done?"}
             aria-label="Task title"
             className="w-full bg-transparent text-[22px] font-semibold tracking-[-0.02em] text-fg outline-none placeholder:text-fg-subtle/70 focus-visible:outline-none sm:text-[26px]"
             maxLength={200}
@@ -250,10 +300,10 @@ export function TaskForm({
               restrictedToSelf={!canAssignOthers}
             />
           </Field>
-          <Field label={repeating ? "First deadline" : "Deadline"} htmlFor="due" hint="Date and time, in your time zone.">
+          <Field label={repeating ? (repeat === "DATES" ? "First date" : "First deadline") : "Deadline"} htmlFor="due" hint={repeating && repeat !== "DATES" ? "Date and time, in your time zone. Every repeat is due at this time." : "Date and time, in your time zone."}>
             <DuePicker id="due" value={due} onChange={setDue} />
           </Field>
-          {canRepeat && !editing && (
+          {canRepeat && !editing && !continues && (
             <Field label="Repeat" htmlFor="repeat">
               <div className="flex gap-2">
                 <NativeSelect id="repeat" value={repeat} onChange={(e) => setRepeat(e.target.value as RepeatChoice)} className="min-w-0">
@@ -263,7 +313,7 @@ export function TaskForm({
                     </option>
                   ))}
                 </NativeSelect>
-                {repeat !== "NONE" && (
+                {repeat !== "NONE" && repeat !== "DATES" && (
                   <div className="flex shrink-0 items-center gap-2">
                     <Input
                       inputMode="numeric"
@@ -277,23 +327,70 @@ export function TaskForm({
                   </div>
                 )}
               </div>
+              {repeat === "DAYS_OF_WEEK" && (
+                <div className="mt-2 grid grid-cols-7 gap-1" role="group" aria-label="Days of the week">
+                  {WEEK_ORDER.map((d) => {
+                    const on = pickedDays.includes(d);
+                    return (
+                      <button
+                        key={d}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => toggleDay(d)}
+                        className={cn(
+                          "h-9 rounded-lg border text-[12.5px] font-medium transition",
+                          on ? "border-brand/40 bg-brand-soft text-brand-soft-fg" : "border-line text-fg-muted hover:border-line-strong hover:text-fg",
+                        )}
+                      >
+                        {WEEKDAY_SHORT[d]}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {repeat === "DATES" && (
+                <div className="mt-2 space-y-2">
+                  <p className="text-[12.5px] text-fg-muted">The deadline above is the first date. Add the others — each can have its own time.</p>
+                  {extraDates.map((d, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <input
+                        type="datetime-local"
+                        value={d}
+                        onChange={(e) => setExtraDates((list) => list.map((x, j) => (j === i ? e.target.value : x)))}
+                        className={cn(fieldBase, "h-10 min-w-0 flex-1 px-3 tabular")}
+                        aria-label={`Date ${i + 2}`}
+                      />
+                      <Button type="button" variant="ghost" size="icon" aria-label="Remove date" onClick={() => setExtraDates((list) => list.filter((_, j) => j !== i))}>
+                        <X />
+                      </Button>
+                    </div>
+                  ))}
+                  {count < MAX_OCCURRENCES && (
+                    <Button type="button" variant="secondary" size="sm" onClick={addDate} disabled={!dueValid}>
+                      <CalendarPlus /> Add date
+                    </Button>
+                  )}
+                </div>
+              )}
               {repeat !== "NONE" && (
                 <div className="mt-2 flex gap-2 rounded-xl border border-brand/20 bg-brand-soft/40 px-3 py-2.5 text-[12.5px] text-fg-muted">
                   <Repeat className="mt-0.5 size-3.5 shrink-0 text-brand" />
                   <span>
-                    {!countValid ? (
-                      "Choose between 2 and 90 times."
-                    ) : preview ? (
+                    {!dueValid ? (
+                      repeat === "DATES" ? "Pick the first date above, then add the rest." : "Pick the first deadline to see the dates."
+                    ) : !countValid ? (
+                      repeat === "DATES" ? "Add at least one more date." : repeat === "DAYS_OF_WEEK" && pickedDays.length === 0 ? "Pick at least one day." : "Choose between 2 and 90 times."
+                    ) : preview && rule ? (
                       <>
-                        <span className="font-medium text-fg">{count} tasks</span>,{" "}
-                        {preview[0].toLocaleDateString([], { day: "numeric", month: "short" })} →{" "}
-                        {preview[preview.length - 1].toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" })}. Each appears{" "}
-                        {repeat === "WEEKLY" ? "a week" : "a day"} before its deadline, so the assignee sees one at a time. Links, notes and steps are
-                        copied to every one; uploaded files go on the first.
+                        <span className="font-medium text-fg">{preview.length} tasks</span>, {repeatLabel(rule)}
+                        {repeat !== "DATES" && <> at {dueDate!.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</>}:{" "}
+                        {preview.length <= 6
+                          ? preview.map((d) => d.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" })).join(", ")
+                          : `${preview[0].toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" })} → ${preview[preview.length - 1].toLocaleDateString([], { weekday: "short", day: "numeric", month: "short", year: "numeric" })}`}
+                        . Each appears {rule.frequency === "WEEKLY" || rule.frequency === "MONTHLY" ? "a week" : "a day"} before its deadline, so the assignee sees one at a
+                        time. Links, notes and steps are copied to every one; uploaded files go on the first.
                       </>
-                    ) : (
-                      "Pick the first deadline to see the dates."
-                    )}
+                    ) : null}
                   </span>
                 </div>
               )}

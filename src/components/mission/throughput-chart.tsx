@@ -121,9 +121,9 @@ export function ThroughputChart({ series }: { series: { key: string; completed: 
             <motion.path
               d={area}
               fill="url(#mc-area)"
-              initial={reduce ? false : { opacity: 0 }}
+              initial={false}
               animate={{ opacity: 1 }}
-              transition={{ duration: 0.8, ease: EASE, delay: 0.6 }}
+              transition={{ duration: reduce ? 0 : 0.4, ease: EASE }}
             />
             <motion.path
               d={made}
@@ -131,9 +131,9 @@ export function ThroughputChart({ series }: { series: { key: string; completed: 
               style={{ stroke: "var(--fg-subtle)" }}
               strokeWidth="1.5"
               strokeDasharray="4 5"
-              initial={reduce ? false : { opacity: 0 }}
+              initial={false}
               animate={{ opacity: 0.9 }}
-              transition={{ duration: 0.8, ease: EASE, delay: 0.5 }}
+              transition={{ duration: reduce ? 0 : 0.4, ease: EASE }}
             />
             <motion.path
               d={done}
@@ -141,9 +141,9 @@ export function ThroughputChart({ series }: { series: { key: string; completed: 
               style={{ stroke: "var(--brand)" }}
               strokeWidth="2.5"
               strokeLinecap="round"
-              initial={reduce ? false : { pathLength: 0 }}
+              initial={false}
               animate={{ pathLength: 1 }}
-              transition={{ duration: 1.2, ease: EASE, delay: 0.3 }}
+              transition={{ duration: reduce ? 0 : 0.4, ease: EASE }}
             />
             {series.map((d, i) => (
               <motion.circle
@@ -153,9 +153,9 @@ export function ThroughputChart({ series }: { series: { key: string; completed: 
                 r={hover === i ? 5 : 3}
                 style={{ fill: "var(--surface)", stroke: "var(--brand)" }}
                 strokeWidth="2"
-                initial={reduce ? false : { opacity: 0 }}
+                initial={false}
                 animate={{ opacity: 1 }}
-                transition={{ duration: 0.3, delay: 0.4 + i * 0.05 }}
+                transition={{ duration: reduce ? 0 : 0.2 }}
               />
             ))}
             <AnimatePresence>

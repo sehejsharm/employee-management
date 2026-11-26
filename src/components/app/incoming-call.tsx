@@ -99,7 +99,8 @@ export function IncomingCallWatcher() {
         setCall((cur) => (cur?.id === next?.id ? cur : next));
       } catch {}
     };
-    const first = window.setTimeout(check, 0);
+    // The first check waits until the page has loaded; a call pushed to this device rings at once anyway.
+    const first = window.setTimeout(check, 2_000);
     const id = window.setInterval(check, POLL_MS);
     // A call pushed to this device: ring now rather than at the next check.
     const onMessage = (e: MessageEvent) => {

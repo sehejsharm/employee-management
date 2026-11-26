@@ -5,8 +5,12 @@
 // is called out on that field.
 
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  // Related records load in the same SQL statement as their parent (LATERAL
+  // joins) instead of one extra round trip per relation level — the biggest
+  // single cut to page load time when the database is a network hop away.
+  previewFeatures = ["relationJoins"]
 }
 
 datasource db {
@@ -360,16 +364,29 @@ model Task {
   /// 1-based: "3 of 30".
   seriesIndex Int?
 
+  /// A thread of tasks (e.g. plan → execute → report): every later step points
+  /// at the thread's first task. Null for the first task and for standalone tasks.
+  threadId    String?
+  thread      Task?   @relation("TaskThread", fields: [threadId], references: [id], onDelete: SetNull)
+  threadSteps Task[]  @relation("TaskThread")
+
   @@index([dueAt])
   @@index([status])
   @@index([createdById])
   @@index([seriesId])
+  @@index([threadId])
 }
 
 enum RepeatFrequency {
   DAILY
   WEEKDAYS
   WEEKLY
+  /// On the chosen days of the week (e.g. every Mon & Thu).
+  DAYS_OF_WEEK
+  /// On the same day of every month.
+  MONTHLY
+  /// On a hand-picked list of dates, each with its own time.
+  DATES
 }
 
 /// A founder's repeating task ("Post on LinkedIn", every day for 30 days). Each
@@ -388,6 +405,12 @@ model TaskSeries {
   /// Links and notes copied onto every occurrence: [{ kind, title, url?, content? }].
   attachments Json?
   frequency   RepeatFrequency
+  /// DAYS_OF_WEEK: the days it falls on, 0 = Sunday … 6 = Saturday.
+  weekdays    Int[]           @default([])
+  /// MONTHLY: the day of the month (clamped to shorter months).
+  monthDay    Int?
+  /// DATES: every deadline, in order.
+  dates       DateTime[]      @default([])
   /// How many occurrences in all.
   total       Int
   /// How many have been created so far.

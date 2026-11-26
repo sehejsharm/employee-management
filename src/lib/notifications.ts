@@ -48,6 +48,16 @@ const openTaskSelect = {
   assignees: { select: { userId: true, user: { select: { firstName: true } } } },
 } as const;
 
+/** When each person's reminders were last swept, so the inbox poll and the inbox page don't repeat it within a minute. */
+const lastSweep = new Map<string, number>();
+
+/** True (and noted) when this person's reminders haven't been swept in the last minute. */
+export function claimDeadlineSweep(userId: string, now = Date.now()) {
+  if ((lastSweep.get(userId) ?? 0) > now - 60_000) return false;
+  lastSweep.set(userId, now);
+  return true;
+}
+
 /** Reminders for one person. Cheap; called whenever their client polls. */
 export async function syncDeadlineAlertsFor(userId: string, now = new Date()) {
   const horizon = new Date(now.getTime() + REMINDER_HORIZON_MS);

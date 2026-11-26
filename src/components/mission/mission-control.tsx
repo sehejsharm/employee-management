@@ -3,7 +3,6 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { motion } from "motion/react";
 import {
   Activity,
   AlarmClock,
@@ -25,7 +24,7 @@ import { AvatarStack } from "@/components/ui/avatar";
 import type { MissionData } from "@/lib/dashboard";
 import { formatDue } from "@/lib/time";
 import { cn } from "@/lib/utils";
-import { EASE, FlipText, HudPanel, clock, tMinus, useTick } from "./hud";
+import { FlipText, HudPanel, clock, tMinus, useTick } from "./hud";
 import { OrbitRadar, RadarSummary } from "./orbit-radar";
 import { TMinusBoard } from "./t-minus";
 import { ThroughputChart } from "./throughput-chart";
@@ -73,12 +72,7 @@ export function MissionControl({ data, tz, scopeLabel }: { data: MissionData; tz
 
       <div className="relative p-3 sm:p-5 lg:p-6">
         {/* Header band — white on brand blue */}
-        <motion.header
-          initial={{ opacity: 0, y: -8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, ease: EASE }}
-          className="relative mb-4 overflow-hidden rounded-2xl bg-brand-gradient px-4 py-4 text-white shadow-brand sm:px-5"
-        >
+        <header className="relative mb-4 animate-rise overflow-hidden rounded-2xl bg-brand-gradient px-4 py-4 text-white shadow-brand sm:px-5">
           <div className="pointer-events-none absolute -right-16 -top-24 h-64 w-64 rounded-full border border-white/15" />
           <div className="pointer-events-none absolute -right-4 -top-12 h-40 w-40 rounded-full border border-white/10" />
           <div className="relative flex flex-col gap-4 xl:flex-row xl:items-center">
@@ -119,12 +113,12 @@ export function MissionControl({ data, tz, scopeLabel }: { data: MissionData; tz
               </Link>
             </div>
           </div>
-        </motion.header>
+        </header>
 
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.5fr)_minmax(0,1.2fr)]">
           {/* The next deadline and the headline numbers */}
           <div className="grid grid-cols-2 content-start gap-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-1">
-            <HudPanel title="Next deadline" icon={<Timer />} className="col-span-2 lg:row-span-2 xl:col-span-1 xl:row-span-1" delay={0.05}>
+            <HudPanel title="Next deadline" icon={<Timer />} className="col-span-2 lg:row-span-2 xl:col-span-1 xl:row-span-1">
               {next && nextT ? (
                 <Link href={`/tasks/${next.id}`} className="group block">
                   <div className="flex items-baseline gap-2 whitespace-nowrap text-[30px] font-semibold leading-none tracking-[-0.02em] text-brand">
@@ -144,11 +138,11 @@ export function MissionControl({ data, tz, scopeLabel }: { data: MissionData; tz
                 <p className="text-[13px] text-fg-subtle">{now ? "No upcoming deadlines." : "Syncing…"}</p>
               )}
             </HudPanel>
-            <StatCard index={1} label="Open tasks" value={s.open} icon={<ClipboardList />} href="/tasks?scope=all" />
-            <StatCard index={2} label="Overdue" value={s.overdue} icon={<TriangleAlert />} tone={s.overdue ? "danger" : "success"} />
-            <StatCard index={3} label="Due within a day" value={s.dueSoon} icon={<AlarmClock />} tone={s.dueSoon ? "warning" : "brand"} />
+            <StatCard label="Open tasks" value={s.open} icon={<ClipboardList />} href="/tasks?scope=all" />
+            <StatCard label="Overdue" value={s.overdue} icon={<TriangleAlert />} tone={s.overdue ? "danger" : "success"} />
+            <StatCard label="Due within a day" value={s.dueSoon} icon={<AlarmClock />} tone={s.dueSoon ? "warning" : "brand"} />
             <StatCard
-              index={4}
+             
               label="Done this week"
               value={s.doneThisWeek}
               icon={<CheckCircle2 />}
@@ -162,7 +156,6 @@ export function MissionControl({ data, tz, scopeLabel }: { data: MissionData; tz
             title="Team radar"
             eyebrow="Deadline health by person"
             icon={<Radar />}
-            delay={0.12}
             right={<RadarSummary crew={data.crew} />}
             bodyClassName="flex flex-col justify-center"
           >
@@ -174,7 +167,6 @@ export function MissionControl({ data, tz, scopeLabel }: { data: MissionData; tz
             title="Deadline countdown"
             eyebrow="Soonest first, to the second"
             icon={<AlarmClock />}
-            delay={0.18}
             right={
               <Link href="/tasks?scope=all&view=board" className="inline-flex items-center gap-1 text-xs font-medium text-fg-muted hover:text-brand">
                 Board <ArrowUpRight className="size-3.5" />
@@ -186,19 +178,19 @@ export function MissionControl({ data, tz, scopeLabel }: { data: MissionData; tz
         </div>
 
         <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-          <HudPanel title="Throughput" eyebrow="Completed vs assigned · last 14 days" icon={<TrendingUp />} delay={0.24}>
+          <HudPanel title="Throughput" eyebrow="Completed vs assigned · last 14 days" icon={<TrendingUp />}>
             <ThroughputChart series={data.series} />
           </HudPanel>
-          <HudPanel title="Activity" eyebrow="What the team just did" icon={<Activity />} delay={0.3}>
+          <HudPanel title="Activity" eyebrow="What the team just did" icon={<Activity />}>
             <ActivityLog entries={data.recent} tz={tz} reference={data.generatedAt} />
           </HudPanel>
         </div>
 
         <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)_minmax(0,1fr)]">
-          <HudPanel title="Workload" eyebrow="Open tasks per person" icon={<UsersRound />} delay={0.36}>
+          <HudPanel title="Workload" eyebrow="Open tasks per person" icon={<UsersRound />}>
             <Workload crew={data.crew} />
           </HudPanel>
-          <HudPanel title="On-time rate" eyebrow="Closed tasks, last 30 days" icon={<Gauge />} delay={0.42}>
+          <HudPanel title="On-time rate" eyebrow="Closed tasks, last 30 days" icon={<Gauge />}>
             <OnTimeGauge value={s.onTime} sample={s.closedMonth} />
             <div className="mt-5 border-t border-line pt-4">
               <StatusMatrix status={data.status} />
@@ -208,20 +200,14 @@ export function MissionControl({ data, tz, scopeLabel }: { data: MissionData; tz
             title="Waiting on updates"
             eyebrow="Requests not yet answered"
             icon={<MessageCircleQuestion />}
-            delay={0.48}
             className="md:col-span-2 xl:col-span-1"
           >
             {data.requests.length === 0 ? (
               <p className="py-8 text-center text-[13px] text-fg-subtle">Every request has been answered.</p>
             ) : (
               <ul className="space-y-2">
-                {data.requests.map((r, i) => (
-                  <motion.li
-                    key={r.id}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.4, ease: EASE, delay: 0.5 + i * 0.06 }}
-                  >
+                {data.requests.map((r) => (
+                  <li key={r.id} className="animate-rise">
                     <Link
                       href={`/tasks/${r.task.id}`}
                       className="flex items-start gap-3 rounded-xl border border-line bg-surface p-3 transition hover:border-info/40 hover:bg-info-soft/50"
@@ -239,7 +225,7 @@ export function MissionControl({ data, tz, scopeLabel }: { data: MissionData; tz
                         </div>
                       </div>
                     </Link>
-                  </motion.li>
+                  </li>
                 ))}
               </ul>
             )}

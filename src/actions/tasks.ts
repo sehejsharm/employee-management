@@ -23,7 +23,8 @@ import { config } from "@/lib/env";
 import { deleteObjectsQuietly, storeFile } from "@/lib/storage";
 import { formatBytes, fullName, safeHttpUrl, taskRef, type ActionResult } from "@/lib/utils";
 import type { TaskStatus } from "@/generated/prisma/enums";
-import { createNextOccurrence, firstDue, MAX_OCCURRENCES, REPEAT_LABEL, seriesDueDates } from "@/lib/task-series";
+import { createNextOccurrence, firstDue, MAX_OCCURRENCES, repeatLabel, seriesDueDates } from "@/lib/task-series";
+import { localParts } from "@/lib/repeat-rule";
 import { getTimeZone } from "@/lib/tz.server";
 import { formatDate } from "@/lib/time";
 
@@ -146,11 +147,20 @@ const taskSchema = z.object({
     .max(50, "At most 50 checklist steps.")
     .optional()
     .default([]),
+  /** Makes this the next step of that task's thread (plan → execute → …). */
+  continuesId: z.string().min(1).optional(),
   /** Founders only: repeat the task, e.g. every day for 30 days. */
   repeat: z
     .object({
-      frequency: z.enum(["DAILY", "WEEKDAYS", "WEEKLY"]),
+      frequency: z.enum(["DAILY", "WEEKDAYS", "WEEKLY", "DAYS_OF_WEEK", "MONTHLY", "DATES"]),
       count: z.number().int().min(2, "Repeat at least twice.").max(MAX_OCCURRENCES, `At most ${MAX_OCCURRENCES} times.`),
+      /** DAYS_OF_WEEK: 0 = Sunday … 6 = Saturday. */
+      weekdays: z.array(z.number().int().min(0).max(6)).max(7).optional(),
+      /** DATES: every deadline (date and time). */
+      dates: z
+        .array(z.string().datetime({ offset: true, message: "One of the dates isn't valid." }))
+        .max(MAX_OCCURRENCES, `At most ${MAX_OCCURRENCES} dates.`)
+        .optional(),
     })
     .optional(),
 });
@@ -198,10 +208,38 @@ export async function createTask(input: TaskInput): Promise<ActionResult<{ id: s
     links.push({ title: l.title || new URL(url).hostname, url });
   }
 
+  // A next step joins the thread of the task it continues: anyone working on that task (or a founder) can add one.
+  let threadId: string | null = null;
+  if (data.continuesId) {
+    if (data.repeat) return { ok: false, error: "A next step can't repeat. Create the repeating task on its own." };
+    const previous = await db.task.findFirst({
+      where: { id: data.continuesId, archivedAt: null },
+      select: { id: true, threadId: true, createdById: true, assignees: { select: { userId: true } } },
+    });
+    if (!previous) return { ok: false, error: "The task this continues no longer exists." };
+    if (!isFounder(user) && !isInvolved(user, { createdById: previous.createdById, assigneeIds: previous.assignees.map((a) => a.userId) })) {
+      return { ok: false, error: "You can only add a next step to a task you're working on or assigned." };
+    }
+    threadId = previous.threadId ?? previous.id;
+  }
+
   if (data.repeat) {
     if (!isFounder(user)) return { ok: false, error: "Only founders can set up repeating tasks." };
     const tz = await getTimeZone();
-    const first = firstDue(due, data.repeat.frequency, tz);
+    const { frequency } = data.repeat;
+    const weekdays = frequency === "DAYS_OF_WEEK" ? [...new Set(data.repeat.weekdays ?? [])].sort() : [];
+    if (frequency === "DAYS_OF_WEEK" && weekdays.length === 0) return { ok: false, error: "Pick at least one day of the week." };
+    let dates: Date[] = [];
+    if (frequency === "DATES") {
+      const times = [...new Set((data.repeat.dates ?? []).map((d) => new Date(d).getTime()))].sort((a, b) => a - b);
+      if (times.length < 2) return { ok: false, error: "Pick at least two different dates." };
+      if (times[0] < Date.now() - 60_000) return { ok: false, error: "One of the dates is in the past." };
+      dates = times.map((t) => new Date(t));
+    }
+    const monthDay = frequency === "MONTHLY" ? localParts(due, tz).d : null;
+    const rule = { frequency, weekdays, monthDay, dates };
+    const total = frequency === "DATES" ? dates.length : data.repeat.count;
+    const first = firstDue(due, rule, tz);
     const series = await db.taskSeries.create({
       data: {
         createdById: user.id,
@@ -215,8 +253,11 @@ export async function createTask(input: TaskInput): Promise<ActionResult<{ id: s
           ...links.map((l) => ({ kind: "LINK", title: l.title, url: l.url })),
           ...data.notes.map((n) => ({ kind: "NOTE", title: n.title, content: n.content })),
         ],
-        frequency: data.repeat.frequency,
-        total: data.repeat.count,
+        frequency,
+        weekdays,
+        monthDay,
+        dates,
+        total,
         nextDueAt: first,
         timeZone: tz,
       },
@@ -224,11 +265,11 @@ export async function createTask(input: TaskInput): Promise<ActionResult<{ id: s
     });
     const firstTask = await createNextOccurrence(series.id, new Date(), { force: true });
     if (!firstTask) return { ok: false, error: "Couldn't create the first task. Try again." };
-    const dates = seriesDueDates(first, data.repeat.frequency, data.repeat.count, tz);
+    const all = seriesDueDates(first, rule, total, tz);
     return {
       ok: true,
       data: { id: firstTask.id },
-      message: `Repeats ${REPEAT_LABEL[data.repeat.frequency]}, ${data.repeat.count} times (${formatDate(dates[0], tz)} → ${formatDate(dates[dates.length - 1], tz)}). Each one appears ahead of its deadline.`,
+      message: `Repeats ${repeatLabel(rule)}, ${total} times (${formatDate(all[0], tz)} → ${formatDate(all[all.length - 1], tz)}). Each one appears ahead of its deadline.`,
     };
   }
 
@@ -239,6 +280,7 @@ export async function createTask(input: TaskInput): Promise<ActionResult<{ id: s
       priority: data.priority,
       dueAt: due,
       createdById: user.id,
+      threadId,
       assignees: { create: assignees.ids.map((userId) => ({ userId, role: userId === lead ? ("LEAD" as const) : ("FOLLOWER" as const) })) },
       checklist: { create: data.checklist.map((text, position) => ({ text, position })) },
       attachments: {

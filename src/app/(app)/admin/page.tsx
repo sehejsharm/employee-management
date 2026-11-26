@@ -49,10 +49,10 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
       <PageHeader eyebrow="Leadership" title="Workspace admin" description="Connections, structure and the record of administrative changes." />
 
       <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        <StatCard index={0} label="Active members" value={active} icon={<Users />} />
-        <StatCard index={1} label="On leave" value={onLeave} icon={<Activity />} tone="warning" />
-        <StatCard index={2} label="Synced from HR" value={synced} icon={<PlugZap />} tone="success" hint={`${former} former members`} />
-        <StatCard index={3} label="Departments" value={departmentsCount} icon={<Building2 />} />
+        <StatCard label="Active members" value={active} icon={<Users />} />
+        <StatCard label="On leave" value={onLeave} icon={<Activity />} tone="warning" />
+        <StatCard label="Synced from HR" value={synced} icon={<PlugZap />} tone="success" hint={`${former} former members`} />
+        <StatCard label="Departments" value={departmentsCount} icon={<Building2 />} />
       </div>
 
       <div className="no-scrollbar -mx-4 mb-6 flex gap-1 overflow-x-auto border-b border-line px-4 sm:mx-0 sm:px-0">

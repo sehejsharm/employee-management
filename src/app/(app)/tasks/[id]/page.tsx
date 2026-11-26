@@ -19,7 +19,7 @@ import {
 import { NoClearance } from "@/components/clearance/no-clearance";
 import { SubmissionsPanel, SubmitWorkPanel } from "@/components/tasks/submissions";
 import { SeriesBadge } from "@/components/tasks/founder-task-tools";
-import { REPEAT_LABEL } from "@/lib/task-series";
+import { repeatLabel } from "@/lib/repeat-rule";
 import { ReassignDialog } from "@/components/tasks/reassign-dialog";
 import { ExtendDeadlineDialog, MergeTasksDialog } from "@/components/tasks/founder-task-tools";
 import { pickablePeople } from "@/lib/people";
@@ -37,8 +37,11 @@ import {
   canSubmitWork,
   canViewTask,
   isFounder,
+  isInvolved,
 } from "@/lib/permissions";
 import { assigneeOrder } from "@/lib/tasks/queries";
+import { threadOf } from "@/lib/tasks/thread";
+import { TaskThread } from "@/components/tasks/task-thread";
 import { formatDate, formatDateTime, timeAgo } from "@/lib/time";
 import { getTimeZone } from "@/lib/tz.server";
 import { taskRef } from "@/lib/utils";
@@ -65,7 +68,7 @@ async function load(id: string) {
       createdBy: { select: person },
       assignees: { select: { role: true, user: { select: { ...person, role: true } } }, orderBy: assigneeOrder },
       checklist: { orderBy: { position: "asc" }, select: { id: true, text: true, done: true } },
-      series: { select: { id: true, frequency: true, total: true, created: true, stoppedAt: true, createdById: true } },
+      series: { select: { id: true, frequency: true, weekdays: true, monthDay: true, total: true, created: true, stoppedAt: true, createdById: true } },
       // Task material only; proof lives with its submission.
       attachments: { where: { submissionId: null }, orderBy: { createdAt: "asc" }, select: attachmentSelect },
       submissions: {
@@ -129,9 +132,10 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
   // Everything the page needs in one round trip. A founder can edit any task and gets the
   // founder tools, so their people list and merge candidates load alongside the task itself.
   const founder = isFounder(user);
-  const [task, cleared, founderPeople, founderMerge] = await Promise.all([
+  const [task, cleared, thread, founderPeople, founderMerge] = await Promise.all([
     load(id),
     getClearedIds(user),
+    threadOf(id),
     founder ? pickablePeople() : null,
     founder ? mergeCandidatesFor(id) : null,
   ]);
@@ -199,6 +203,10 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
       }))
     : [];
   const openRequests = task.updateRequests;
+  // The thread shows only the steps this person may open.
+  const threadSteps = thread.filter(
+    (s) => s.id === task.id || canViewTask(user, { createdById: s.createdById, assigneeIds: s.assignees.map((a) => a.user.id), involvesFounder: s.assignees.some((a) => a.user.role === "FOUNDER") }, cleared),
+  );
   // Keyed on the pending submission, so a task left "In review" with nothing handed in can still be submitted.
   const canSubmit = canSubmitWork(user, access) && task.status !== "DONE" && !task.submissions.some((s) => s.status === "SUBMITTED");
   const lastSentBack = task.submissions[0]?.status === "CHANGES_REQUESTED" ? task.submissions[0].reviewNote : null;
@@ -231,7 +239,7 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
             {task.series && task.seriesIndex && (
               <SeriesBadge
                 seriesId={task.series.id}
-                label={`Repeats ${REPEAT_LABEL[task.series.frequency]} · ${task.seriesIndex} of ${task.series.total}`}
+                label={`Repeats ${repeatLabel(task.series)} · ${task.seriesIndex} of ${task.series.total}`}
                 canStop={!task.series.stoppedAt && task.series.created < task.series.total && (task.series.createdById === user.id || isFounder(user))}
                 stopped={!!task.series.stoppedAt}
               />
@@ -292,6 +300,7 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-6">
+          <TaskThread steps={threadSteps} currentId={task.id} tz={tz} canExtend={isFounder(user) || isInvolved(user, access)} />
           <Card>
             <CardHeader title="Brief" />
             <CardBody>

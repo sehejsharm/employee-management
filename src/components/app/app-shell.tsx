@@ -80,7 +80,7 @@ export function AppShell({
           <Sidebar nav={nav} user={user} />
           <div className="relative lg:pl-[260px]">
             <Topbar user={user} nav={nav} flags={flags} />
-            <main className="safe-x mx-auto w-full max-w-[1400px] pb-28 pt-5 [--gutter:1rem] sm:[--gutter:1.5rem] lg:pb-16 lg:pt-8 lg:[--gutter:2.5rem]">
+            <main className="safe-x mx-auto w-full max-w-[1400px] pb-[calc(7rem+env(safe-area-inset-bottom))] pt-5 [--gutter:1rem] sm:[--gutter:1.5rem] lg:pb-16 lg:pt-8 lg:[--gutter:2.5rem]">
               {children}
             </main>
           </div>
@@ -332,7 +332,7 @@ function MobileNav({ nav, user, flags }: { nav: NavItem[]; user: ShellUser; flag
 
   return (
     <>
-      <nav className="safe-bottom fixed inset-x-0 bottom-0 z-30 border-t border-line glass lg:hidden">
+      <nav className="tab-bar safe-bottom fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface shadow-[0_-6px_20px_-12px_rgba(10,20,38,0.18)] lg:hidden">
         <div className="safe-x relative mx-auto grid h-[68px] max-w-lg grid-cols-5 items-center [--gutter:0.5rem]">
           {tabs.slice(0, 2).map((item) => (
             <TabLink key={item.href} item={item} active={isActive(item, path)} />

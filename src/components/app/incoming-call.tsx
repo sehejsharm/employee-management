@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { someoneIsHere, watchAttention } from "@/lib/attention";
 import { PhoneOff, Video } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,7 @@ interface IncomingCall {
   organizer: { id: string; firstName: string; lastName: string; avatarHue: number; title: string | null; meetingNotes: string | null };
 }
 
-const POLL_MS = 5_000;
+const POLL_MS = 10_000;
 const DISMISSED_KEY = "fr-dismissed-calls";
 
 function dismissed(): string[] {
@@ -101,7 +102,9 @@ export function IncomingCallWatcher() {
     };
     // The first check waits until the page has loaded; a call pushed to this device rings at once anyway.
     const first = window.setTimeout(check, 2_000);
-    const id = window.setInterval(check, POLL_MS);
+    watchAttention();
+    // Only while someone is at the screen; an idle or hidden tab leaves the database alone (push still rings it).
+    const id = window.setInterval(() => someoneIsHere() && void check(), POLL_MS);
     // A call pushed to this device: ring now rather than at the next check.
     const onMessage = (e: MessageEvent) => {
       if (e.data?.type === "incoming-call") void check();

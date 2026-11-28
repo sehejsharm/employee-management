@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { someoneIsHere, watchAttention } from "@/lib/attention";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useAnimationControls } from "motion/react";
@@ -104,9 +105,10 @@ export function NotificationsProvider({ initialUnread, children }: { initialUnre
       last = Date.now();
       void refresh();
     };
+    watchAttention();
     const first = window.setTimeout(run, FIRST_POLL_MS);
     const id = window.setInterval(() => {
-      if (document.visibilityState === "visible") run();
+      if (someoneIsHere()) run();
     }, POLL_MS);
     // Coming back to the tab checks straight away — unless it checked moments ago.
     const onReturn = () => document.visibilityState === "visible" && Date.now() - last > RETURN_GAP_MS && run();

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { someoneIsHere, watchAttention } from "@/lib/attention";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -50,8 +51,9 @@ export function MissionControl({ data, tz, scopeLabel }: { data: MissionData; tz
   const now = useTick(1000);
 
   React.useEffect(() => {
+    watchAttention();
     const id = window.setInterval(() => {
-      if (document.visibilityState === "visible") router.refresh();
+      if (someoneIsHere()) router.refresh();
     }, REFRESH_MS);
     return () => window.clearInterval(id);
   }, [router]);

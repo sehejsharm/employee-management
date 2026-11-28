@@ -20,7 +20,7 @@ const COPY: Record<Exclude<WorkspaceStatus, "ready">, { icon: typeof Database; t
     title: "The workspace can't reach its database right now",
     body: "This is usually temporary. Give it a minute and refresh.",
     steps: [
-      "Free Supabase projects pause after a week without use — restore it from the Supabase dashboard.",
+      "Free database plans pause when they hit a usage limit (Neon) or after a week without use (Supabase) — check the database provider's dashboard.",
       "Founders: the exact error is in Vercel → the project → Logs.",
     ],
   },

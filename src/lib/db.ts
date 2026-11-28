@@ -36,14 +36,15 @@ export class DatabaseNotConfiguredError extends Error {
  * override an explicit `ssl` option, so it is removed whenever we supply one.
  *
  * Pool: fail-fast for serverless — a paused or unreachable database errors
- * after 10 seconds instead of hanging the request. Ten connections let a busy
- * page (Mission Control runs about ten queries at once) finish in one round
- * trip instead of queueing behind a smaller pool.
+ * after 10 seconds instead of hanging the request. Kept small (5 per server
+ * instance): Supabase's session pooler allows only ~15 clients in total, and
+ * several serverless instances share them; a bigger pool exhausts it and the
+ * whole workspace shows "can't reach its database". DATABASE_POOL_MAX overrides.
  */
 export function poolConfig(connectionString: string): PoolConfig {
   const max = Number(process.env.DATABASE_POOL_MAX);
   const limits = {
-    max: Number.isInteger(max) && max > 0 ? max : 10,
+    max: Number.isInteger(max) && max > 0 ? max : 5,
     connectionTimeoutMillis: 10_000,
     idleTimeoutMillis: 10_000,
   };

@@ -306,3 +306,16 @@ integrations/hr-console/ drop-in client for the HR console
 docs/                    brand rules, HR integration, Claude Code prompt
 tests/                   unit tests (signatures, permissions, org cycles, reminders, time)
 ```
+
+## Database backups
+
+Every night (20:45 UTC, `/api/cron/backup` in `vercel.json`) the whole database is copied to Cloudflare R2 as `backups/database/YYYY-MM-DD.json.gz`, outside the database provider. The last 30 days are kept. It needs R2 set up (the same `R2_*` variables as file storage) and `CRON_SECRET`.
+
+To restore one (e.g. into a new Neon or Supabase database):
+
+1. Download the file from the R2 bucket (Cloudflare dashboard → R2 → the bucket → `backups/database/`).
+2. `DATABASE_URL=<new, empty database> npx prisma migrate deploy`
+3. `DATABASE_URL=<same database> node scripts/restore-backup.mjs 2026-12-01.json.gz`
+4. Point the app's `DATABASE_URL` / `DIRECT_URL` at it and redeploy.
+
+The script only writes into an empty database and restores everything in one transaction, so a failed restore leaves nothing behind. Sign-ins carry over: sessions are part of the backup.
